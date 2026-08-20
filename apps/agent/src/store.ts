@@ -218,7 +218,7 @@ SELECT events.id, events.schema_version, events.event_time, events.receive_time,
 FROM events
 LEFT JOIN event_processing ON event_processing.event_id = events.id
 WHERE event_processing.event_id IS NULL
-ORDER BY events.event_time, events.id
+ORDER BY julianday(events.event_time), events.id
 LIMIT @limit;
 `;
 
@@ -572,16 +572,9 @@ export function createEventStore(dbPath: string): EventStore {
     };
   }
 
-  function storedEventMatches(
-    batch: EventBatch,
-    event: OpsEvent,
-    stored: StoredEvent,
-  ): boolean {
+  function storedEventMatches(event: OpsEvent, stored: StoredEvent): boolean {
     return stored.schema_version === event.schemaVersion
       && stored.event_time === event.time
-      && stored.producer_id === batch.producer.id
-      && stored.producer_type === batch.producer.type
-      && stored.producer_version === batch.producer.version
       && stored.source === event.source
       && stored.node_id === event.nodeId
       && stored.service === event.service
@@ -622,7 +615,7 @@ export function createEventStore(dbPath: string): EventStore {
     if (result.changes === 1) return { inserted: true };
 
     const stored = getEventStmt.get(event.id) as StoredEvent | undefined;
-    if (!stored || !storedEventMatches(batch, event, stored)) {
+    if (!stored || !storedEventMatches(event, stored)) {
       throw new DuplicateEventConflictError(event.id);
     }
     return { inserted: false, stored };

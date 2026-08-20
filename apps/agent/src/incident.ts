@@ -52,7 +52,7 @@ const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
  */
 export function computeFingerprint(event: OpsEvent): string {
   const canonicalType = RECOVERY_TYPE_MAP[event.type] ?? event.type;
-  return `${event.source}:${event.nodeId}:${event.service}:${canonicalType}`;
+  return JSON.stringify([event.source, event.nodeId, event.service, canonicalType]);
 }
 
 function earlierTimestamp(a: string, b: string): string {

@@ -35,19 +35,25 @@ function setup() {
 describe('computeFingerprint', () => {
   it('ignores producer-provided fingerprint for Incident identity', () => {
     const event = makeEvent({ fingerprint: 'custom-fp' });
-    assert.equal(computeFingerprint(event), 'docker:test-svc-02:dataease:container.die');
+    assert.equal(computeFingerprint(event), JSON.stringify(['docker', 'test-svc-02', 'dataease', 'container.die']));
   });
 
   it('derives fingerprint from stable dimensions when not provided', () => {
     const event = makeEvent({ fingerprint: undefined });
     const fp = computeFingerprint(event);
-    assert.equal(fp, 'docker:test-svc-02:dataease:container.die');
+    assert.equal(fp, JSON.stringify(['docker', 'test-svc-02', 'dataease', 'container.die']));
   });
 
   it('excludes timestamps and random data from derived fingerprint', () => {
     const event1 = makeEvent({ id: 'evt-1', time: '2026-08-20T12:00:00.000Z', fingerprint: undefined });
     const event2 = makeEvent({ id: 'evt-2', time: '2026-08-20T13:00:00.000Z', fingerprint: undefined });
     assert.equal(computeFingerprint(event1), computeFingerprint(event2));
+  });
+
+  it('cannot collide when stable dimensions contain separators', () => {
+    const first = makeEvent({ nodeId: 'node:a', service: 'service', type: 'failure' });
+    const second = makeEvent({ nodeId: 'node', service: 'a:service', type: 'failure' });
+    assert.notEqual(computeFingerprint(first), computeFingerprint(second));
   });
 
   it('maps explicit recovery types to the failure fingerprint', () => {

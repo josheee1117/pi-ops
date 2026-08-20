@@ -225,6 +225,30 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 1); // no new row
   });
 
+  it('accepts an exact Event retry after producer envelope version changes', async () => {
+    const { app, store } = setupInMemory();
+    const firstBatch = makeValidBatch(1);
+    const retriedBatch = makeValidBatch(1);
+    (retriedBatch.producer as Record<string, unknown>)['version'] = '0.2.0';
+
+    const first = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(firstBatch),
+    });
+    const retry = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(retriedBatch),
+    });
+
+    assert.equal(first.status, 200);
+    assert.equal(retry.status, 200);
+    assert.equal(store.count(), 1);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+  });
+
   it('does not invoke Incident processing again for a duplicate Event', async () => {
     const config = makeTestConfig(':memory:');
     const store = createEventStore(':memory:');
@@ -285,12 +309,12 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 1);
     assert.equal(store.incidentCount(), 1);
     assert.ok(store.findActiveIncident(
-      'docker:test-svc-02:dataease:container.die',
+      JSON.stringify(['docker', 'test-svc-02', 'dataease', 'container.die']),
       '2026-08-20T12:00:00.000Z',
       config.aggregationWindowMs,
     ));
     assert.equal(store.findActiveIncident(
-      'docker:test-svc-02:dataease:container.oom',
+      JSON.stringify(['docker', 'test-svc-02', 'dataease', 'container.oom']),
       '2026-08-20T12:00:00.000Z',
       config.aggregationWindowMs,
     ), undefined);
@@ -334,7 +358,7 @@ describe('POST /v1/events', () => {
     assert.equal(store.incidentCount(), 1);
     assert.equal(store.listPendingEvidenceJobs(10).length, 1);
     const incident = store.findActiveIncident(
-      'docker:test-svc-02:dataease:container.die',
+      JSON.stringify(['docker', 'test-svc-02', 'dataease', 'container.die']),
       '2026-08-20T12:00:00.000Z',
       config.aggregationWindowMs,
     );
@@ -378,7 +402,7 @@ describe('POST /v1/events', () => {
     assert.equal((await post(recovery)).status, 200);
 
     const incident = store.findActiveIncident(
-      'health:test-svc-02:dataease:health.failure',
+      JSON.stringify(['health', 'test-svc-02', 'dataease', 'health.failure']),
       '2026-08-20T12:00:00.000Z',
       config.aggregationWindowMs,
     );
@@ -466,7 +490,7 @@ describe('POST /v1/events', () => {
     await worker.runOnce();
 
     const incident = store.findActiveIncident(
-      'docker:test-svc-02:dataease:container.die',
+      JSON.stringify(['docker', 'test-svc-02', 'dataease', 'container.die']),
       '2026-08-20T12:00:00.000Z',
       config.aggregationWindowMs,
     );
@@ -777,6 +801,40 @@ describe('persistence', () => {
     assert.ok(resumedStore.getEventProcessedAt('evt-legacy-recovery'));
     assert.equal(resumedStore.listPendingEvidenceJobs(10).length, 1);
     resumedStore.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('replays offset datetimes in chronological rather than lexical order', () => {
+    const { dbPath, tmpDir } = setupLegacyEventsDb([
+      {
+        id: 'evt-offset-failure',
+        receiveTime: '2026-08-20T12:00:00.000+02:00',
+        type: 'health.failure',
+        severity: 'error',
+        message: 'Offset health failure',
+      },
+      {
+        id: 'evt-offset-recovery',
+        receiveTime: '2026-08-20T10:30:00.000Z',
+        type: 'health.recovered',
+        severity: 'info',
+        message: 'UTC health recovery',
+      },
+    ]);
+    const store = createEventStore(dbPath);
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 5 * 60 * 1000 });
+
+    assert.equal(store.replayPendingEvents(
+      (event) => engine.processEvent(event, event.time),
+      '2026-08-20T12:30:00.000Z',
+      100,
+    ), 2);
+
+    const incident = store.findIncidentByEventId('evt-offset-failure');
+    assert.ok(incident);
+    assert.equal(incident.state, 'RECOVERED');
+    assert.equal(store.findIncidentByEventId('evt-offset-recovery')?.id, incident.id);
+    store.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
