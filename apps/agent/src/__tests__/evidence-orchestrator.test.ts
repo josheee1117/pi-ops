@@ -218,7 +218,7 @@ describe('evidence orchestration', () => {
     assert.equal(store.listEvidence(incident.id).length, 2);
     assert.deepEqual(
       store.listEvidence(incident.id).map((item) => item.id).sort(),
-      ['job-retry-evidence-0', 'job-retry-evidence-1'],
+      ['job-retry-evidence-docker.inspect', 'job-retry-evidence-docker.logs'],
     );
     store.close();
   });

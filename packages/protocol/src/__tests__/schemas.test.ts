@@ -244,6 +244,12 @@ describe('validateEvidence', () => {
     assert.ok(result.success);
   });
 
+  it('rejects evidence with missing data field', () => {
+    const { data, ...withoutData } = makeValidEvidence();
+    const result = validateEvidence(withoutData);
+    assert.ok(!result.success);
+  });
+
   it('accepts arbitrary data shape', () => {
     const result = validateEvidence(
       makeValidEvidence({ data: { nested: { deep: [1, 2, 3] }, scalar: 42 } }),

@@ -220,6 +220,10 @@ INSERT INTO evidence (
   @id, @incident_id, @node_id, @source, @kind, @collected_at, @status, @data_json, @error
 )
 ON CONFLICT(id) DO UPDATE SET
+  incident_id = excluded.incident_id,
+  node_id = excluded.node_id,
+  source = excluded.source,
+  kind = excluded.kind,
   collected_at = excluded.collected_at,
   status = excluded.status,
   data_json = excluded.data_json,
@@ -414,7 +418,10 @@ export function createEventStore(dbPath: string): EventStore {
   ): IncidentRow => {
     const id = generateId('inc');
     insertIncident(id, incident);
-    linkEventStmt.run({ incident_id: id, event_id: event.id });
+    const link = linkEventStmt.run({ incident_id: id, event_id: event.id });
+    if (link.changes !== 1) {
+      throw new Error(`Event ${event.id} is already linked to an Incident`);
+    }
     const now = new Date().toISOString();
     insertEvidenceJobStmt.run({
       id: `job-${id}`,

@@ -7,7 +7,8 @@ import type { Hono } from 'hono';
 import { createApp } from '../app.js';
 import { createEventStore, type EventStore } from '../store.js';
 import { createIncidentEngine, type IncidentEngine } from '../incident.js';
-import type { EvidenceJobWorker } from '../evidence-worker.js';
+import { createEvidenceOrchestrator, type FetchLike } from '../evidence-orchestrator.js';
+import { createEvidenceJobWorker, type EvidenceJobWorker } from '../evidence-worker.js';
 import type { AgentConfig } from '../config.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -164,6 +165,57 @@ describe('POST /v1/events', () => {
     store.close();
   });
 
+  it('runs the integrated ingress → Incident → durable job → Evidence flow', async () => {
+    const config = {
+      ...makeTestConfig(':memory:'),
+      nodeAgents: new Map([
+        ['test-svc-02', {
+          nodeId: 'test-svc-02',
+          url: 'http://node-agent.test',
+          token: 'node-token',
+        }],
+      ]),
+    };
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    let id = 0;
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const query = JSON.parse(String(init?.body)) as { type: string; incidentId: string };
+      id++;
+      return new Response(JSON.stringify({
+        id: `node-evidence-${id}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: 'docker',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:00:01.000Z',
+        data: { collected: true },
+      }), { status: 200 });
+    }) as FetchLike;
+    const orchestrator = createEvidenceOrchestrator(config, store, fetchImpl);
+    const worker = createEvidenceJobWorker(config, store, orchestrator);
+    const app = createApp(config, store, engine, worker);
+
+    const res = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+    assert.equal(res.status, 200);
+    await worker.runOnce();
+
+    const incident = store.findOpenIncident(
+      'docker:test-svc-02:dataease:container.die',
+    );
+    assert.ok(incident);
+    assert.equal(store.listEvidence(incident.id).length, 2);
+    assert.equal(store.getEvidenceJob(`job-${incident.id}`)?.state, 'COMPLETED');
+    await worker.stop();
+    store.close();
+  });
+
   it('rejects request without auth token', async () => {
     const { app } = setupInMemory();
     const res = await app.request('/v1/events', {
@@ -192,6 +244,51 @@ describe('POST /v1/events', () => {
       body: 'not json',
     });
     assert.equal(res.status, 400);
+  });
+
+  it('rejects a declared oversized event body', async () => {
+    const config = { ...makeTestConfig(':memory:'), maxBodySize: 32 };
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app = createApp(config, store, engine);
+    const res = await app.request('/v1/events', {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Length': '4096' },
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+    assert.equal(res.status, 413);
+    assert.equal(store.count(), 0);
+    store.close();
+  });
+
+  it('rejects an oversized chunked event body without Content-Length', async () => {
+    const config = { ...makeTestConfig(':memory:'), maxBodySize: 32 };
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app = createApp(config, store, engine);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"padding":"'));
+        controller.enqueue(encoder.encode('x'.repeat(256)));
+        controller.enqueue(encoder.encode('"}'));
+        controller.close();
+      },
+    });
+    const request = new Request('http://localhost/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: stream,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+    const res = await app.fetch(request);
+    assert.equal(res.status, 413);
+    assert.equal(store.count(), 0);
+    store.close();
   });
 
   it('rejects an event with missing required fields', async () => {

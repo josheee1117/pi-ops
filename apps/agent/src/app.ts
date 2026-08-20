@@ -5,6 +5,30 @@ import type { IncidentEngine } from './incident.js';
 import type { EvidenceJobWorker } from './evidence-worker.js';
 import { validateEventBatch } from '@pi-ops/protocol';
 
+class RequestBodyTooLargeError extends Error {}
+
+async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+  const declaredLength = Number(request.headers.get('content-length') ?? '0');
+  if (declaredLength > maxBytes) throw new RequestBodyTooLargeError();
+  if (!request.body) throw new SyntaxError('missing request body');
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(value);
+  }
+  const text = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf-8');
+  return JSON.parse(text) as unknown;
+}
+
 export function createApp(
   config: AgentConfig,
   store: EventStore,
@@ -40,20 +64,18 @@ export function createApp(
       return c.json({ error: 'unauthorized' }, 401);
     }
 
-    // Body size check
-    const contentLength = parseInt(c.req.header('Content-Length') ?? '0', 10);
-    if (contentLength > config.maxBodySize) {
-      return c.json(
-        { error: 'payload too large', maxBytes: config.maxBodySize },
-        413,
-      );
-    }
-
-    // Parse + validate
+    // Parse with a streaming cap. Content-Length is only an early rejection;
+    // the byte counter remains authoritative for chunked/false headers.
     let body: unknown;
     try {
-      body = await c.req.json();
-    } catch {
+      body = await readJsonBody(c.req.raw, config.maxBodySize);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) {
+        return c.json(
+          { accepted: 0, rejected: 0, error: 'payload too large', maxBytes: config.maxBodySize },
+          413,
+        );
+      }
       return c.json({ accepted: 0, rejected: 0, error: 'invalid JSON' }, 400);
     }
 

@@ -263,7 +263,7 @@ export function createEvidenceOrchestrator(
         const evidence = failureEvidence(
           incident,
           query,
-          collectionId ? `${collectionId}-evidence-0` : undefined,
+          collectionId ? `${collectionId}-evidence-http.probe` : undefined,
         );
         store.insertEvidence({
           ...evidence,
@@ -275,12 +275,12 @@ export function createEvidenceOrchestrator(
 
       const endpoint = config.nodeAgents.get(incident.node_id);
       const results = await Promise.all(
-        queries.map((query, index) => collectOne(
+        queries.map((query) => collectOne(
           endpoint,
           incident,
           query,
           collectionId
-            ? `${collectionId}-evidence-${index + planningFailures}`
+            ? `${collectionId}-evidence-${query.type}`
             : undefined,
         )),
       );

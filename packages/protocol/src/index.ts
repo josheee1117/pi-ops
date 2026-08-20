@@ -102,6 +102,14 @@ export const evidenceSchema = z.object({
   kind: z.string().min(1),
   collectedAt: z.string().datetime({ offset: true }),
   data: z.unknown(),
+}).superRefine((value, ctx) => {
+  if (!Object.prototype.hasOwnProperty.call(value, 'data')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['data'],
+      message: 'Required',
+    });
+  }
 });
 
 // ── Evidence query ───────────────────────────────────────────────────────────
