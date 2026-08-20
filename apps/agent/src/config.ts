@@ -30,6 +30,8 @@ export interface AgentConfig {
   evidenceJobMaxAttempts: number;
   /** Maximum jobs processed in one drain. */
   evidenceJobBatchSize: number;
+  /** Maximum pending Events replayed in one startup transaction. */
+  eventReplayBatchSize: number;
 }
 
 function requireEnv(key: string): string {
@@ -150,6 +152,9 @@ export function loadConfig(): AgentConfig {
     }),
     evidenceJobBatchSize: integerEnv('PI_OPS_EVIDENCE_JOB_BATCH_SIZE', 10, {
       max: 1000,
+    }),
+    eventReplayBatchSize: integerEnv('PI_OPS_EVENT_REPLAY_BATCH_SIZE', 100, {
+      max: 10_000,
     }),
   };
 }

@@ -27,6 +27,7 @@ const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   evidenceJobPollIntervalMs: 1000,
   evidenceJobMaxAttempts: 3,
   evidenceJobBatchSize: 10,
+  eventReplayBatchSize: 100,
 };
 
 function makeTestConfig(sqlitePath: string): AgentConfig {
@@ -711,6 +712,7 @@ describe('persistence', () => {
     const replay = () => migrated.replayPendingEvents(
       (replayed) => engine.processEvent(replayed, replayed.time),
       '2026-08-20T12:30:00.000Z',
+      100,
     );
 
     assert.equal(replay(), 1);
@@ -744,12 +746,17 @@ describe('persistence', () => {
     const store = createEventStore(dbPath);
     const engine = createIncidentEngine(store, { aggregationWindowMs: 5 * 60 * 1000 });
 
-    const replayed = store.replayPendingEvents(
+    const replayBatch = () => store.replayPendingEvents(
       (event) => engine.processEvent(event, event.time),
       '2026-08-20T12:30:00.000Z',
+      1,
     );
 
-    assert.equal(replayed, 2);
+    assert.equal(replayBatch(), 1);
+    assert.equal(store.findIncidentByEventId('evt-legacy-failure')?.state, 'OPEN');
+    assert.equal(store.getEventProcessedAt('evt-legacy-recovery'), undefined);
+    assert.equal(replayBatch(), 1);
+    assert.equal(replayBatch(), 0);
     assert.equal(store.incidentCount(), 1);
     const incident = store.findIncidentByEventId('evt-legacy-failure');
     assert.ok(incident);
@@ -786,6 +793,7 @@ describe('persistence', () => {
     const replayed = store.replayPendingEvents(
       (event) => engine.processEvent(event, event.time),
       '2026-08-20T12:30:00.000Z',
+      100,
     );
 
     assert.equal(replayed, 2);

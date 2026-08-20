@@ -11,10 +11,16 @@ const store = createEventStore(config.sqlitePath);
 const incidentEngine = createIncidentEngine(store, {
   aggregationWindowMs: config.aggregationWindowMs,
 });
-const replayedEvents = store.replayPendingEvents(
-  (event) => incidentEngine.processEvent(event, event.time),
-  new Date().toISOString(),
-);
+let replayedEvents = 0;
+while (true) {
+  const replayed = store.replayPendingEvents(
+    (event) => incidentEngine.processEvent(event, event.time),
+    new Date().toISOString(),
+    config.eventReplayBatchSize,
+  );
+  replayedEvents += replayed;
+  if (replayed < config.eventReplayBatchSize) break;
+}
 if (replayedEvents > 0) {
   console.log(`[pi-ops-agent] replayed ${replayedEvents} pending Event(s)`);
 }

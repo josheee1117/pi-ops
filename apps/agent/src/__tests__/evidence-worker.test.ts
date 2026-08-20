@@ -25,6 +25,7 @@ function makeConfig(sqlitePath = ':memory:'): AgentConfig {
     evidenceJobPollIntervalMs: 60_000,
     evidenceJobMaxAttempts: 3,
     evidenceJobBatchSize: 10,
+    eventReplayBatchSize: 100,
   };
 }
 

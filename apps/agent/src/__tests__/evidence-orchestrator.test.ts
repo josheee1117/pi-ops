@@ -33,6 +33,7 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     evidenceJobPollIntervalMs: 1000,
     evidenceJobMaxAttempts: 3,
     evidenceJobBatchSize: 10,
+    eventReplayBatchSize: 100,
     ...overrides,
   };
 }

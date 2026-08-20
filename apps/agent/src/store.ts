@@ -218,7 +218,8 @@ SELECT events.id, events.schema_version, events.event_time, events.receive_time,
 FROM events
 LEFT JOIN event_processing ON event_processing.event_id = events.id
 WHERE event_processing.event_id IS NULL
-ORDER BY events.event_time, events.id;
+ORDER BY events.event_time, events.id
+LIMIT @limit;
 `;
 
 const MARK_EVENT_PROCESSED_SQL = `
@@ -357,6 +358,7 @@ export interface EventStore {
   replayPendingEvents(
     processEvent: (event: OpsEvent) => void,
     processedAt: string,
+    limit: number,
   ): number;
 
   // ── Incident operations ──────────────────────────────────────────────────
@@ -661,8 +663,9 @@ export function createEventStore(dbPath: string): EventStore {
   const replayPendingEventsTransaction = db.transaction((
     processEvent: (event: OpsEvent) => void,
     processedAt: string,
+    limit: number,
   ): number => {
-    const pending = listUnprocessedEventsStmt.all() as StoredEvent[];
+    const pending = listUnprocessedEventsStmt.all({ limit }) as StoredEvent[];
     for (const stored of pending) {
       const event = mapStoredEvent(stored);
       processEvent(event);
@@ -729,8 +732,9 @@ export function createEventStore(dbPath: string): EventStore {
     replayPendingEvents(
       processEvent: (event: OpsEvent) => void,
       processedAt: string,
+      limit: number,
     ): number {
-      return replayPendingEventsTransaction(processEvent, processedAt);
+      return replayPendingEventsTransaction(processEvent, processedAt, limit);
     },
 
     // ── Incidents ─────────────────────────────────────────────────────────

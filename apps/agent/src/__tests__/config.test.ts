@@ -15,6 +15,7 @@ const CONFIG_KEYS = [
   'PI_OPS_EVIDENCE_JOB_POLL_INTERVAL_MS',
   'PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS',
   'PI_OPS_EVIDENCE_JOB_BATCH_SIZE',
+  'PI_OPS_EVENT_REPLAY_BATCH_SIZE',
 ] as const;
 
 function withConfigEnv(values: Record<string, string | undefined>, run: () => void): void {
@@ -100,6 +101,7 @@ describe('loadConfig node-agent registry', () => {
       ['PI_OPS_EVIDENCE_JOB_POLL_INTERVAL_MS', '-10'],
       ['PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS', '101'],
       ['PI_OPS_EVIDENCE_JOB_BATCH_SIZE', '1001'],
+      ['PI_OPS_EVENT_REPLAY_BATCH_SIZE', '10001'],
     ];
 
     for (const [key, value] of invalidValues) {
