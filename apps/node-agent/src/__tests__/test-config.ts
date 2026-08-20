@@ -14,6 +14,7 @@ export function makeNodeAgentConfig(overrides: Partial<NodeAgentConfig> = {}): N
     dockerQueryTimeoutMs: 5000,
     probeMaxTimeoutMs: 30000,
     maxResponseBytes: 1024 * 1024,
+    maxRequestBytes: 64 * 1024,
     agentUrl: 'http://localhost:8080',
     ingestToken: 'test-token',
     eventQueueSize: 1000,

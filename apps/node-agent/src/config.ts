@@ -29,6 +29,8 @@ export interface NodeAgentConfig {
   probeMaxTimeoutMs: number;
   /** Maximum response payload size in bytes. */
   maxResponseBytes: number;
+  /** Maximum evidence-query request body size in bytes. */
+  maxRequestBytes: number;
   // ── Event source ──────────────────────────────────────────────────────────
   /** Central agent URL for event push. */
   agentUrl: string;
@@ -152,6 +154,7 @@ export function loadConfig(): NodeAgentConfig {
     dockerQueryTimeoutMs: parseInt(process.env['PI_OPS_DOCKER_QUERY_TIMEOUT_MS'] ?? '5000', 10),
     probeMaxTimeoutMs: parseInt(process.env['PI_OPS_PROBE_MAX_TIMEOUT_MS'] ?? '30000', 10),
     maxResponseBytes: parseInt(process.env['PI_OPS_MAX_RESPONSE_BYTES'] ?? String(1024 * 1024), 10),
+    maxRequestBytes: parseInt(process.env['PI_OPS_NODE_MAX_REQUEST_BYTES'] ?? String(64 * 1024), 10),
     // Event source
     agentUrl: process.env['PI_OPS_AGENT_URL'] ?? 'http://localhost:8080',
     ingestToken: process.env['PI_OPS_INGEST_TOKEN'] ?? '',

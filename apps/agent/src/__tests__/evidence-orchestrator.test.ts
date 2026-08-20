@@ -30,6 +30,9 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     evidenceTimeoutMs: 1000,
     evidenceMaxResponseBytes: 1024 * 1024,
     evidenceLogsMaxLines: 200,
+    evidenceJobPollIntervalMs: 1000,
+    evidenceJobMaxAttempts: 3,
+    evidenceJobBatchSize: 10,
     ...overrides,
   };
 }
@@ -180,6 +183,43 @@ describe('evidence orchestration', () => {
     // Evidence is separate; the Incident remains present and unchanged.
     assert.equal(store.getIncident(incident.id)?.state, 'OPEN');
     assert.equal(store.incidentCount(), 1);
+    store.close();
+  });
+
+  it('upserts deterministic evidence records when a durable job is retried', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-retry',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const orchestrator = createEvidenceOrchestrator(
+      makeConfig(),
+      store,
+      successfulNodeFetch(),
+    );
+    await orchestrator.collectForIncident(
+      incident,
+      makeEvent({ type: 'container.die', severity: 'error' }),
+      'job-retry',
+    );
+    await orchestrator.collectForIncident(
+      incident,
+      makeEvent({ type: 'container.die', severity: 'error' }),
+      'job-retry',
+    );
+
+    assert.equal(store.listEvidence(incident.id).length, 2);
+    assert.deepEqual(
+      store.listEvidence(incident.id).map((item) => item.id).sort(),
+      ['job-retry-evidence-0', 'job-retry-evidence-1'],
+    );
     store.close();
   });
 

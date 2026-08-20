@@ -7,7 +7,7 @@ import type { Hono } from 'hono';
 import { createApp } from '../app.js';
 import { createEventStore, type EventStore } from '../store.js';
 import { createIncidentEngine, type IncidentEngine } from '../incident.js';
-import type { EvidenceOrchestrator } from '../evidence-orchestrator.js';
+import type { EvidenceJobWorker } from '../evidence-worker.js';
 import type { AgentConfig } from '../config.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -22,6 +22,9 @@ const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   evidenceTimeoutMs: 5000,
   evidenceMaxResponseBytes: 1024 * 1024,
   evidenceLogsMaxLines: 200,
+  evidenceJobPollIntervalMs: 1000,
+  evidenceJobMaxAttempts: 3,
+  evidenceJobBatchSize: 10,
 };
 
 function makeTestConfig(sqlitePath: string): AgentConfig {
@@ -133,13 +136,13 @@ describe('POST /v1/events', () => {
       aggregationWindowMs: config.aggregationWindowMs,
     });
     let calls = 0;
-    const orchestrator: EvidenceOrchestrator = {
-      collectForIncident() {
-        calls++;
-        return new Promise(() => {});
-      },
+    const worker: EvidenceJobWorker = {
+      start() {},
+      async stop() {},
+      wake() { calls++; },
+      async runOnce() {},
     };
-    const app = createApp(config, store, engine, orchestrator);
+    const app = createApp(config, store, engine, worker);
 
     const first = await app.request('/v1/events', {
       method: 'POST',
@@ -148,6 +151,7 @@ describe('POST /v1/events', () => {
     });
     assert.equal(first.status, 200);
     assert.equal(calls, 1);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
 
     // Transport retry does not create another Incident or evidence run.
     const retry = await app.request('/v1/events', {

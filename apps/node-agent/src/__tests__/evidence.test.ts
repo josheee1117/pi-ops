@@ -8,8 +8,9 @@ import { validateQueryRequest, ALLOWED_QUERY_TYPES } from '../evidence/types.js'
 import {
   createDockerEvidenceProvider,
   decodeDockerLogs,
+  fetchDockerJson,
   fetchDockerLogs,
-  type DockerClientLike,
+  type DockerJsonFetcher,
   type DockerLogFetcher,
   type DockerLogOptions,
 } from '../evidence/docker.js';
@@ -370,17 +371,34 @@ describe('Docker log evidence', () => {
     }
   });
 
+  it('rejects oversized Docker inspect/stats JSON before parsing', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'pi-ops-docker-json-'));
+    const socketPath = join(directory, 'docker.sock');
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ payload: 'x'.repeat(1024) }));
+    });
+    await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+
+    try {
+      await assert.rejects(
+        () => fetchDockerJson(
+          makeConfig({ dockerSocketPath: socketPath, dockerQueryTimeoutMs: 1000 }),
+          '/containers/dataease/json',
+          64,
+        ),
+        /exceeds 64 bytes/,
+      );
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('applies bounded tail, bytes, and since options at the Docker provider', async () => {
     let capturedOptions: DockerLogOptions | undefined;
     let capturedRawLimit: number | undefined;
-    const client: DockerClientLike = {
-      getContainer() {
-        return {
-          async inspect() { return {}; },
-          async stats() { return {}; },
-        };
-      },
-    };
+    const jsonFetcher: DockerJsonFetcher = async () => ({});
     const logFetcher: DockerLogFetcher = async (_config, _container, options, rawLimit) => {
       capturedOptions = options;
       capturedRawLimit = rawLimit;
@@ -392,7 +410,7 @@ describe('Docker log evidence', () => {
         truncated: false,
       };
     };
-    const provider = createDockerEvidenceProvider(() => client, logFetcher);
+    const provider = createDockerEvidenceProvider(jsonFetcher, logFetcher);
     const config = makeConfig({ logsMaxBytes: 100 });
     const before = Math.floor(Date.now() / 1000) - 120;
     const result = await provider.query({

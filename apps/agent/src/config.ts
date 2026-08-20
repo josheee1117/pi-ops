@@ -24,6 +24,12 @@ export interface AgentConfig {
   evidenceMaxResponseBytes: number;
   /** Bounded log lines requested by deterministic evidence plans. */
   evidenceLogsMaxLines: number;
+  /** Poll interval for durable evidence jobs. */
+  evidenceJobPollIntervalMs: number;
+  /** Maximum unexpected orchestration attempts per job. */
+  evidenceJobMaxAttempts: number;
+  /** Maximum jobs processed in one drain. */
+  evidenceJobBatchSize: number;
 }
 
 function requireEnv(key: string): string {
@@ -98,5 +104,11 @@ export function loadConfig(): AgentConfig {
       10,
     ),
     evidenceLogsMaxLines: parseInt(process.env['PI_OPS_EVIDENCE_LOGS_MAX_LINES'] ?? '200', 10),
+    evidenceJobPollIntervalMs: parseInt(
+      process.env['PI_OPS_EVIDENCE_JOB_POLL_INTERVAL_MS'] ?? '1000',
+      10,
+    ),
+    evidenceJobMaxAttempts: parseInt(process.env['PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS'] ?? '3', 10),
+    evidenceJobBatchSize: parseInt(process.env['PI_OPS_EVIDENCE_JOB_BATCH_SIZE'] ?? '10', 10),
   };
 }

@@ -1,4 +1,3 @@
-import Docker from 'dockerode';
 import { request as httpRequest } from 'node:http';
 import type { NodeAgentConfig } from '../config.js';
 import type { EvidenceQueryRequest, EvidenceQueryResult } from './types.js';
@@ -19,17 +18,6 @@ export interface DockerStatsResult {
   pids_stats?: unknown;
 }
 
-export interface DockerContainerLike {
-  inspect(options?: { abortSignal?: AbortSignal }): Promise<DockerInspectResult>;
-  stats(options: { stream: false; abortSignal?: AbortSignal }): Promise<DockerStatsResult>;
-}
-
-export interface DockerClientLike {
-  getContainer(name: string): DockerContainerLike;
-}
-
-export type DockerClientFactory = (config: NodeAgentConfig) => DockerClientLike;
-
 export interface DockerLogOptions {
   maxLines: number;
   since?: number;
@@ -41,6 +29,12 @@ export type DockerLogFetcher = (
   options: DockerLogOptions,
   rawLimit: number,
 ) => Promise<{ buffer: Buffer; truncated: boolean }>;
+
+export type DockerJsonFetcher = (
+  config: NodeAgentConfig,
+  path: string,
+  maxBytes: number,
+) => Promise<unknown>;
 
 /**
  * Docker evidence provider.
@@ -61,13 +55,85 @@ function durationToUnixSeconds(duration: string): number {
   return Math.floor(Date.now() / 1000) - seconds;
 }
 
+/** Stream one Docker Engine response and stop before it exceeds maxBytes. */
+export function fetchDockerBytes(
+  config: NodeAgentConfig,
+  path: string,
+  maxBytes: number,
+): Promise<{ buffer: Buffer; truncated: boolean }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      socketPath: config.dockerSocketPath,
+      path,
+      method: 'GET',
+    });
+
+    req.setTimeout(config.dockerQueryTimeoutMs, () => {
+      req.destroy(new Error(`Docker query timed out after ${config.dockerQueryTimeoutMs}ms`));
+    });
+
+    req.once('error', reject);
+    req.once('response', (response) => {
+      if (response.statusCode !== 200) {
+        response.destroy();
+        reject(new Error(`Docker Engine returned HTTP ${response.statusCode ?? 'unknown'}`));
+        return;
+      }
+
+      const chunks: Buffer[] = [];
+      let total = 0;
+      let truncated = false;
+      let settled = false;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve({ buffer: Buffer.concat(chunks, total), truncated });
+      };
+
+      response.on('data', (chunk: Buffer) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        const remaining = maxBytes - total;
+        if (remaining <= 0) {
+          truncated = true;
+          response.destroy();
+          finish();
+          return;
+        }
+        if (buffer.length > remaining) {
+          chunks.push(buffer.subarray(0, remaining));
+          total += remaining;
+          truncated = true;
+          response.destroy();
+          finish();
+          return;
+        }
+        chunks.push(buffer);
+        total += buffer.length;
+      });
+      response.once('end', finish);
+      response.once('close', () => {
+        if (truncated) finish();
+      });
+      response.once('error', (err) => {
+        if (truncated) finish();
+        else if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      });
+    });
+    req.end();
+  });
+}
+
 /** Stream Docker logs directly from the Engine socket and stop at rawLimit. */
-export const fetchDockerLogs: DockerLogFetcher = (
+export const fetchDockerLogs: DockerLogFetcher = async (
   config,
   container,
   options,
   rawLimit,
-) => new Promise((resolve, reject) => {
+) => {
   const params = new URLSearchParams({
     stdout: '1',
     stderr: '1',
@@ -76,70 +142,28 @@ export const fetchDockerLogs: DockerLogFetcher = (
     tail: String(options.maxLines),
   });
   if (options.since !== undefined) params.set('since', String(options.since));
+  return fetchDockerBytes(
+    config,
+    `/containers/${encodeURIComponent(container)}/logs?${params.toString()}`,
+    rawLimit,
+  );
+};
 
-  const req = httpRequest({
-    socketPath: config.dockerSocketPath,
-    path: `/containers/${encodeURIComponent(container)}/logs?${params.toString()}`,
-    method: 'GET',
-  });
-
-  req.setTimeout(config.dockerQueryTimeoutMs, () => {
-    req.destroy(new Error(`Docker logs query timed out after ${config.dockerQueryTimeoutMs}ms`));
-  });
-
-  req.once('error', reject);
-  req.once('response', (response) => {
-    if (response.statusCode !== 200) {
-      response.destroy();
-      reject(new Error(`Docker logs returned HTTP ${response.statusCode ?? 'unknown'}`));
-      return;
-    }
-
-    const chunks: Buffer[] = [];
-    let total = 0;
-    let truncated = false;
-    let settled = false;
-
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      resolve({ buffer: Buffer.concat(chunks, total), truncated });
-    };
-
-    response.on('data', (chunk: Buffer) => {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      const remaining = rawLimit - total;
-      if (remaining <= 0) {
-        truncated = true;
-        response.destroy();
-        finish();
-        return;
-      }
-      if (buffer.length > remaining) {
-        chunks.push(buffer.subarray(0, remaining));
-        total += remaining;
-        truncated = true;
-        response.destroy();
-        finish();
-        return;
-      }
-      chunks.push(buffer);
-      total += buffer.length;
-    });
-    response.once('end', finish);
-    response.once('close', () => {
-      if (truncated) finish();
-    });
-    response.once('error', (err) => {
-      if (truncated) finish();
-      else if (!settled) {
-        settled = true;
-        reject(err);
-      }
-    });
-  });
-  req.end();
-});
+export const fetchDockerJson: DockerJsonFetcher = async (
+  config,
+  path,
+  maxBytes,
+) => {
+  const response = await fetchDockerBytes(config, path, maxBytes);
+  if (response.truncated) {
+    throw new Error(`Docker JSON response exceeds ${maxBytes} bytes`);
+  }
+  try {
+    return JSON.parse(response.buffer.toString('utf-8')) as unknown;
+  } catch {
+    throw new Error('Docker Engine returned invalid JSON');
+  }
+};
 
 function isMultiplexHeader(buffer: Buffer, offset: number): boolean {
   return (
@@ -199,91 +223,81 @@ export function decodeDockerLogs(
 }
 
 export function createDockerEvidenceProvider(
-  createClient: DockerClientFactory = (config) =>
-    new Docker({ socketPath: config.dockerSocketPath }) as unknown as DockerClientLike,
+  fetchJson: DockerJsonFetcher = fetchDockerJson,
   fetchLogs: DockerLogFetcher = fetchDockerLogs,
 ): DockerEvidenceProvider {
   return {
     async query(request: EvidenceQueryRequest, config: NodeAgentConfig): Promise<EvidenceQueryResult> {
-      const docker = createClient(config);
       const containerName = request.container!;
-      const container = docker.getContainer(containerName);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        config.dockerQueryTimeoutMs,
-      );
-
       let data: unknown;
 
-      try {
-        switch (request.type) {
-          case 'docker.inspect': {
-            const inspect = await container.inspect({ abortSignal: controller.signal });
-            data = {
-              Id: inspect.Id,
-              Name: inspect.Name,
-              State: {
-                Status: inspect.State?.Status,
-                Running: inspect.State?.Running,
-                StartedAt: inspect.State?.StartedAt,
-              },
-              Config: {
-                Image: inspect.Config?.Image,
-                Env: undefined, // never expose env vars
-              },
-            };
-            break;
-          }
-          case 'docker.logs': {
-            const maxLines = request.maxLines ?? config.logsMaxLines;
-            const since = request.since ? durationToUnixSeconds(request.since) : undefined;
-            // Multiplex framing adds 8 bytes per line/frame; include only that
-            // bounded overhead while streaming the raw response.
-            const rawLimit = config.logsMaxBytes + maxLines * 8;
-            const collected = await fetchLogs(
-              config,
-              containerName,
-              { maxLines, ...(since !== undefined ? { since } : {}) },
-              rawLimit,
-            );
-            data = decodeDockerLogs(
-              collected.buffer,
-              config.logsMaxBytes,
-              maxLines,
-              collected.truncated,
-            );
-            break;
-          }
-          case 'docker.stats': {
-            const stats = await container.stats({
-              stream: false,
-              abortSignal: controller.signal,
-            });
-            data = {
-              cpu_stats: stats.cpu_stats
-                ? {
-                    cpu_usage: {
-                      total_usage: stats.cpu_stats.cpu_usage?.total_usage,
-                      system_cpu_usage: stats.cpu_stats.system_cpu_usage,
-                    },
-                  }
-                : undefined,
-              memory_stats: stats.memory_stats
-                ? {
-                    usage: stats.memory_stats.usage,
-                    limit: stats.memory_stats.limit,
-                  }
-                : undefined,
-              pids_stats: stats.pids_stats,
-            };
-            break;
-          }
-          default:
-            throw new Error(`Unsupported Docker query type: ${request.type}`);
+      switch (request.type) {
+        case 'docker.inspect': {
+          const inspect = await fetchJson(
+            config,
+            `/containers/${encodeURIComponent(containerName)}/json`,
+            config.maxResponseBytes,
+          ) as DockerInspectResult;
+          data = {
+            Id: inspect.Id,
+            Name: inspect.Name,
+            State: {
+              Status: inspect.State?.Status,
+              Running: inspect.State?.Running,
+              StartedAt: inspect.State?.StartedAt,
+            },
+            Config: {
+              Image: inspect.Config?.Image,
+              Env: undefined, // never expose env vars
+            },
+          };
+          break;
         }
-      } finally {
-        clearTimeout(timeoutId);
+        case 'docker.logs': {
+          const maxLines = request.maxLines ?? config.logsMaxLines;
+          const since = request.since ? durationToUnixSeconds(request.since) : undefined;
+          const rawLimit = config.logsMaxBytes + maxLines * 8;
+          const collected = await fetchLogs(
+            config,
+            containerName,
+            { maxLines, ...(since !== undefined ? { since } : {}) },
+            rawLimit,
+          );
+          data = decodeDockerLogs(
+            collected.buffer,
+            config.logsMaxBytes,
+            maxLines,
+            collected.truncated,
+          );
+          break;
+        }
+        case 'docker.stats': {
+          const stats = await fetchJson(
+            config,
+            `/containers/${encodeURIComponent(containerName)}/stats?stream=0`,
+            config.maxResponseBytes,
+          ) as DockerStatsResult;
+          data = {
+            cpu_stats: stats.cpu_stats
+              ? {
+                  cpu_usage: {
+                    total_usage: stats.cpu_stats.cpu_usage?.total_usage,
+                    system_cpu_usage: stats.cpu_stats.system_cpu_usage,
+                  },
+                }
+              : undefined,
+            memory_stats: stats.memory_stats
+              ? {
+                  usage: stats.memory_stats.usage,
+                  limit: stats.memory_stats.limit,
+                }
+              : undefined,
+            pids_stats: stats.pids_stats,
+          };
+          break;
+        }
+        default:
+          throw new Error(`Unsupported Docker query type: ${request.type}`);
       }
 
       return {

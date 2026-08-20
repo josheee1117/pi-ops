@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 import { createEventStore } from './store.js';
 import { createIncidentEngine } from './incident.js';
 import { createEvidenceOrchestrator } from './evidence-orchestrator.js';
+import { createEvidenceJobWorker } from './evidence-worker.js';
 import { createApp } from './app.js';
 
 const config = loadConfig();
@@ -11,7 +12,9 @@ const incidentEngine = createIncidentEngine(store, {
   aggregationWindowMs: config.aggregationWindowMs,
 });
 const evidenceOrchestrator = createEvidenceOrchestrator(config, store);
-const app = createApp(config, store, incidentEngine, evidenceOrchestrator);
+const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator);
+evidenceWorker.start();
+const app = createApp(config, store, incidentEngine, evidenceWorker);
 
 console.log(`[pi-ops-agent] starting on :${config.port}, db=${config.sqlitePath}`);
 

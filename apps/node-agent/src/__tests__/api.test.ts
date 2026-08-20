@@ -54,6 +54,40 @@ describe('POST /v1/evidence/query', () => {
     assert.equal(res.status, 400);
   });
 
+  it('rejects a declared oversized request body', async () => {
+    const app = createApp(makeConfig({ maxRequestBytes: 32 }));
+    const res = await app.request('/v1/evidence/query', {
+      method: 'POST',
+      headers: {
+        ...authHeaders(),
+        'Content-Length': '1024',
+      },
+      body: JSON.stringify({ type: 'host.memory', incidentId: 'inc-1' }),
+    });
+    assert.equal(res.status, 413);
+  });
+
+  it('rejects an oversized chunked body without Content-Length', async () => {
+    const app = createApp(makeConfig({ maxRequestBytes: 32 }));
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"padding":"'));
+        controller.enqueue(encoder.encode('x'.repeat(128)));
+        controller.enqueue(encoder.encode('"}'));
+        controller.close();
+      },
+    });
+    const request = new Request('http://localhost/v1/evidence/query', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: stream,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+    const res = await app.fetch(request);
+    assert.equal(res.status, 413);
+  });
+
   it('rejects unknown query type', async () => {
     const app = createApp(makeConfig());
     const res = await app.request('/v1/evidence/query', {

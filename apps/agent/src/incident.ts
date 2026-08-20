@@ -146,7 +146,7 @@ export function createIncidentEngine(
           });
         } else {
           // Outside window: create new incident
-          const newIncident = store.createIncident({
+          const newIncident = store.createIncidentFromEvent({
             service: event.service,
             node_id: event.nodeId,
             type: event.type,
@@ -156,8 +156,7 @@ export function createIncidentEngine(
             last_seen: timestamp,
             event_count: 1,
             severity: event.severity,
-          });
-          store.linkEventToIncident(newIncident.id, event.id);
+          }, event);
           return {
             ignored: false,
             incidentId: newIncident.id,
@@ -206,7 +205,7 @@ export function createIncidentEngine(
       }
 
       // No existing incident: create new
-      const newIncident = store.createIncident({
+      const newIncident = store.createIncidentFromEvent({
         service: event.service,
         node_id: event.nodeId,
         type: event.type,
@@ -216,8 +215,7 @@ export function createIncidentEngine(
         last_seen: timestamp,
         event_count: 1,
         severity: event.severity,
-      });
-      store.linkEventToIncident(newIncident.id, event.id);
+      }, event);
 
       return {
         ignored: false,

@@ -18,6 +18,7 @@ export interface EvidenceOrchestrator {
   collectForIncident(
     incident: IncidentRow,
     triggeringEvent: OpsEvent,
+    collectionId?: string,
   ): Promise<EvidenceCollectionSummary>;
 }
 
@@ -133,9 +134,10 @@ function redactSecret(message: string, secret: string): string {
 function failureEvidence(
   incident: IncidentRow,
   query: EvidenceQueryRequest,
+  id?: string,
 ): Evidence {
   return {
-    id: `evd-failed-${crypto.randomUUID()}`,
+    id: id ?? `evd-failed-${crypto.randomUUID()}`,
     incidentId: incident.id,
     nodeId: incident.node_id,
     source: querySource(query.type),
@@ -154,9 +156,10 @@ export function createEvidenceOrchestrator(
     endpoint: NodeAgentEndpoint | undefined,
     incident: IncidentRow,
     query: EvidenceQueryRequest,
+    evidenceId?: string,
   ): Promise<boolean> {
     if (!endpoint) {
-      const evidence = failureEvidence(incident, query);
+      const evidence = failureEvidence(incident, query, evidenceId);
       store.insertEvidence({
         ...evidence,
         status: 'failed',
@@ -220,12 +223,16 @@ export function createEvidenceOrchestrator(
         throw new Error('Evidence source does not match the requested query type');
       }
 
-      store.insertEvidence({ ...evidence, status: 'succeeded' });
+      store.insertEvidence({
+        ...evidence,
+        ...(evidenceId ? { id: evidenceId } : {}),
+        status: 'succeeded',
+      });
       return true;
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : String(err);
       const message = redactSecret(rawMessage, endpoint.token);
-      const evidence = failureEvidence(incident, query);
+      const evidence = failureEvidence(incident, query, evidenceId);
       store.insertEvidence({ ...evidence, status: 'failed', error: message });
       return false;
     } finally {
@@ -237,6 +244,7 @@ export function createEvidenceOrchestrator(
     async collectForIncident(
       incident: IncidentRow,
       triggeringEvent: OpsEvent,
+      collectionId?: string,
     ): Promise<EvidenceCollectionSummary> {
       const queries = planEvidenceQueries(
         incident,
@@ -252,7 +260,11 @@ export function createEvidenceOrchestrator(
           type: 'http.probe',
           incidentId: incident.id,
         };
-        const evidence = failureEvidence(incident, query);
+        const evidence = failureEvidence(
+          incident,
+          query,
+          collectionId ? `${collectionId}-evidence-0` : undefined,
+        );
         store.insertEvidence({
           ...evidence,
           status: 'failed',
@@ -263,7 +275,14 @@ export function createEvidenceOrchestrator(
 
       const endpoint = config.nodeAgents.get(incident.node_id);
       const results = await Promise.all(
-        queries.map((query) => collectOne(endpoint, incident, query)),
+        queries.map((query, index) => collectOne(
+          endpoint,
+          incident,
+          query,
+          collectionId
+            ? `${collectionId}-evidence-${index + planningFailures}`
+            : undefined,
+        )),
       );
       const succeeded = results.filter(Boolean).length;
       const requested = queries.length + planningFailures;

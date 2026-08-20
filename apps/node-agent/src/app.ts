@@ -5,6 +5,30 @@ import { createDockerEvidenceProvider } from './evidence/docker.js';
 import { createHostEvidenceProvider } from './evidence/host.js';
 import { createProbeEvidenceProvider } from './evidence/probe.js';
 
+class RequestBodyTooLargeError extends Error {}
+
+async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
+  const declaredLength = Number(request.headers.get('content-length') ?? '0');
+  if (declaredLength > maxBytes) throw new RequestBodyTooLargeError();
+  if (!request.body) throw new SyntaxError('missing request body');
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new RequestBodyTooLargeError();
+    }
+    chunks.push(value);
+  }
+  const text = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf-8');
+  return JSON.parse(text) as unknown;
+}
+
 export function createApp(config: NodeAgentConfig): Hono {
   const app = new Hono();
 
@@ -43,11 +67,15 @@ export function createApp(config: NodeAgentConfig): Hono {
       return c.json({ error: 'unauthorized' }, 401);
     }
 
-    // Parse body
+    // Parse a bounded body. The stream cap is authoritative even when
+    // Content-Length is absent or false.
     let body: unknown;
     try {
-      body = await c.req.json();
-    } catch {
+      body = await readJsonBody(c.req.raw, config.maxRequestBytes);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) {
+        return c.json({ error: 'payload too large', maxBytes: config.maxRequestBytes }, 413);
+      }
       return c.json({ error: 'invalid JSON' }, 400);
     }
 
