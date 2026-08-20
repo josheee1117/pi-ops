@@ -199,7 +199,8 @@ INSERT INTO incidents (
 
 const UPDATE_INCIDENT_SQL = `
 UPDATE incidents
-SET last_seen = @last_seen,
+SET first_seen = @first_seen,
+    last_seen = @last_seen,
     event_count = @event_count,
     severity = @severity,
     state = @state
@@ -301,6 +302,7 @@ export interface EventStore {
 
   /** Update an existing incident's mutable fields. */
   updateIncident(id: string, updates: {
+    first_seen: string;
     last_seen: string;
     event_count: number;
     severity: string;
@@ -496,6 +498,7 @@ export function createEventStore(dbPath: string): EventStore {
     },
 
     updateIncident(id: string, updates: {
+      first_seen: string;
       last_seen: string;
       event_count: number;
       severity: string;
@@ -503,6 +506,7 @@ export function createEventStore(dbPath: string): EventStore {
     }): void {
       updateIncidentStmt.run({
         id,
+        first_seen: updates.first_seen,
         last_seen: updates.last_seen,
         event_count: updates.event_count,
         severity: updates.severity,

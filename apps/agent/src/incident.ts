@@ -55,17 +55,12 @@ export function computeFingerprint(event: OpsEvent): string {
   return event.fingerprint ?? `${event.source}:${event.nodeId}:${event.service}:${canonicalType}`;
 }
 
-// ── Recovery detection ───────────────────────────────────────────────────────
+function earlierTimestamp(a: string, b: string): string {
+  return new Date(a).getTime() <= new Date(b).getTime() ? a : b;
+}
 
-/**
- * An event indicates recovery if its severity is lower than the incident's
- * current severity. This matches the pattern: error → info = recovered.
- * Recovery must match by fingerprint, not just service.
- */
-function isRecoveryFor(event: OpsEvent, incidentSeverity: string): boolean {
-  const eventOrder = SEVERITY_ORDER[event.severity] ?? 0;
-  const incidentOrder = SEVERITY_ORDER[incidentSeverity] ?? 0;
-  return eventOrder < incidentOrder;
+function laterTimestamp(a: string, b: string): string {
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
 // ── Engine ───────────────────────────────────────────────────────────────────
@@ -102,7 +97,8 @@ export function createIncidentEngine(
         const linked = store.linkEventToIncident(existing.id, event.id);
         const eventCount = existing.event_count + (linked ? 1 : 0);
         store.updateIncident(existing.id, {
-          last_seen: timestamp,
+          first_seen: earlierTimestamp(existing.first_seen, timestamp),
+          last_seen: laterTimestamp(existing.last_seen, timestamp),
           event_count: eventCount,
           severity: existing.severity,
           state: 'RECOVERED',
@@ -120,7 +116,7 @@ export function createIncidentEngine(
         // Check if within aggregation window
         const lastSeenMs = new Date(existing.last_seen).getTime();
         const eventTimeMs = new Date(timestamp).getTime();
-        const withinWindow = (eventTimeMs - lastSeenMs) <= config.aggregationWindowMs;
+        const withinWindow = Math.abs(eventTimeMs - lastSeenMs) <= config.aggregationWindowMs;
 
         let incidentId: string;
         let isNew: boolean;
@@ -139,7 +135,8 @@ export function createIncidentEngine(
           }
 
           store.updateIncident(incidentId, {
-            last_seen: timestamp,
+            first_seen: earlierTimestamp(existing.first_seen, timestamp),
+            last_seen: laterTimestamp(existing.last_seen, timestamp),
             event_count: eventCount,
             severity: maxSeverity(existing.severity, event.severity),
             state: existing.state,
@@ -163,23 +160,6 @@ export function createIncidentEngine(
             isNew: true,
             isRecovery: false,
             eventCount: 1,
-          };
-        }
-
-        // Check recovery: only if event severity is lower than incident's
-        if (isRecoveryFor(event, existing.severity)) {
-          store.updateIncident(incidentId, {
-            last_seen: timestamp,
-            event_count: eventCount,
-            severity: maxSeverity(existing.severity, event.severity),
-            state: 'RECOVERED',
-          });
-          return {
-            ignored: false,
-            incidentId,
-            isNew: false,
-            isRecovery: true,
-            eventCount,
           };
         }
 

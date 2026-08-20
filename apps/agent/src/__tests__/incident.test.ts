@@ -229,6 +229,30 @@ describe('aggregation window boundary', () => {
     assert.equal(store.incidentCount(), 1);
   });
 
+  it('creates a new incident for a far-older out-of-order event', () => {
+    const { store, engine } = setup();
+    const recent = makeEvent({ id: 'evt-recent', time: '2026-08-20T12:10:00.000Z' });
+    const first = engine.processEvent(recent, recent.time);
+    const old = makeEvent({ id: 'evt-old', time: '2026-08-20T12:00:00.000Z' });
+    const second = engine.processEvent(old, old.time);
+
+    assert.equal(second.isNew, true);
+    assert.notEqual(second.incidentId, first.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+
+  it('keeps firstSeen=min and lastSeen=max for in-window out-of-order events', () => {
+    const { store, engine } = setup();
+    const recent = makeEvent({ id: 'evt-recent', time: '2026-08-20T12:04:00.000Z' });
+    const result = engine.processEvent(recent, recent.time);
+    const earlier = makeEvent({ id: 'evt-earlier', time: '2026-08-20T12:00:00.000Z' });
+    engine.processEvent(earlier, earlier.time);
+
+    const incident = store.getIncident(result.incidentId!);
+    assert.equal(incident?.first_seen, earlier.time);
+    assert.equal(incident?.last_seen, recent.time);
+  });
+
   it('creates new incident one millisecond past the window', () => {
     const { store, engine } = setup();
     const event1 = makeEvent({ id: 'evt-1', time: '2026-08-20T12:00:00.000Z' });
@@ -294,7 +318,7 @@ describe('fingerprint separation', () => {
 // ── Recovery ─────────────────────────────────────────────────────────────────
 
 describe('recovery', () => {
-  it('transitions incident to RECOVERED when a lower-severity event arrives', () => {
+  it('transitions incident to RECOVERED for an explicit recovery event', () => {
     const { store, engine } = setup();
 
     // Error event creates incident
@@ -307,10 +331,10 @@ describe('recovery', () => {
     const r1 = engine.processEvent(errorEvent, errorEvent.time);
     assert.ok(r1.isNew);
 
-    // Info event with same fingerprint → recovery
+    // Explicit recovery type maps to the failure fingerprint.
     const recoveryEvent = makeEvent({
       id: 'evt-recover',
-      type: 'health.failure', // same type, but lower severity
+      type: 'health.recovered',
       severity: 'info',
       time: '2026-08-20T12:01:00.000Z',
     });
@@ -328,7 +352,7 @@ describe('recovery', () => {
 
     // Create two incidents on the same service but different types (different fingerprints)
     const e1 = engine.processEvent(
-      makeEvent({ id: 'evt-1', type: 'container.die', severity: 'error' }),
+      makeEvent({ id: 'evt-1', source: 'health', type: 'health.failure', severity: 'error' }),
       '2026-08-20T12:00:00.000Z',
     );
     const e2 = engine.processEvent(
@@ -340,7 +364,8 @@ describe('recovery', () => {
     // Recovery event matching e1's fingerprint only
     const recovery = makeEvent({
       id: 'evt-recover',
-      type: 'container.die',
+      source: 'health',
+      type: 'health.recovered',
       severity: 'info',
       time: '2026-08-20T12:01:00.000Z',
     });
@@ -395,6 +420,21 @@ describe('recovery', () => {
     assert.equal(result.ignored, true);
     assert.equal(result.incidentId, null);
     assert.equal(store.incidentCount(), 0);
+  });
+
+  it('does not recover for a generic lower-severity event', () => {
+    const { store, engine } = setup();
+    const opened = engine.processEvent(
+      makeEvent({ id: 'evt-error', severity: 'error' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const lowerSeverity = engine.processEvent(
+      makeEvent({ id: 'evt-info', severity: 'info' }),
+      '2026-08-20T12:01:00.000Z',
+    );
+
+    assert.equal(lowerSeverity.isRecovery, false);
+    assert.equal(store.getIncident(opened.incidentId!)?.state, 'OPEN');
   });
 
   it('does not recover when event severity is equal or higher', () => {
