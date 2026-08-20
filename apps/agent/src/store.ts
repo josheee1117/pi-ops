@@ -427,26 +427,34 @@ export function createEventStore(dbPath: string): EventStore {
     });
   }
 
+  function insertEventRow(
+    batch: EventBatch,
+    event: OpsEvent,
+    receiveTime: string,
+  ): boolean {
+    const result = insertStmt.run({
+      id: event.id,
+      receive_time: receiveTime,
+      producer_id: batch.producer.id,
+      producer_type: batch.producer.type,
+      producer_version: batch.producer.version,
+      source: event.source,
+      node_id: event.nodeId,
+      service: event.service,
+      type: event.type,
+      severity: event.severity,
+      fingerprint: event.fingerprint ?? null,
+      trace_id: event.traceId ?? null,
+      message: event.message,
+      attributes: JSON.stringify(event.attributes),
+    });
+    return result.changes === 1;
+  }
+
   function insertEventRows(batch: EventBatch, receiveTime: string): number {
     let inserted = 0;
     for (const event of batch.events) {
-      const result = insertStmt.run({
-        id: event.id,
-        receive_time: receiveTime,
-        producer_id: batch.producer.id,
-        producer_type: batch.producer.type,
-        producer_version: batch.producer.version,
-        source: event.source,
-        node_id: event.nodeId,
-        service: event.service,
-        type: event.type,
-        severity: event.severity,
-        fingerprint: event.fingerprint ?? null,
-        trace_id: event.traceId ?? null,
-        message: event.message,
-        attributes: JSON.stringify(event.attributes),
-      });
-      if (result.changes > 0) inserted++;
+      if (insertEventRow(batch, event, receiveTime)) inserted++;
     }
     return inserted;
   }
@@ -457,8 +465,12 @@ export function createEventStore(dbPath: string): EventStore {
     receiveTime: string,
     processEvent: (event: OpsEvent) => void,
   ): number => {
-    const inserted = insertEventRows(batch, receiveTime);
-    for (const event of batch.events) processEvent(event);
+    let inserted = 0;
+    for (const event of batch.events) {
+      if (!insertEventRow(batch, event, receiveTime)) continue;
+      inserted++;
+      processEvent(event);
+    }
     return inserted;
   });
 

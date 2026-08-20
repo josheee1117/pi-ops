@@ -133,6 +133,19 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 0);
     assert.equal(store.incidentCount(), 0);
     assert.equal(store.listPendingEvidenceJobs(10).length, 0);
+
+    // The same Event remains retryable because the failed transaction left no
+    // immutable Event row or Incident side effects behind.
+    const recoveredApp = createApp(config, store, realEngine);
+    const retry = await recoveredApp.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+    assert.equal(retry.status, 200);
+    assert.equal(store.count(), 1);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
     store.close();
   });
 
@@ -155,6 +168,124 @@ describe('POST /v1/events', () => {
     const body = await res.json();
     assert.equal(body.accepted, 1);
     assert.equal(store.count(), 1); // no new row
+  });
+
+  it('does not invoke Incident processing again for a duplicate Event', async () => {
+    const config = makeTestConfig(':memory:');
+    const store = createEventStore(':memory:');
+    const realEngine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    let processCalls = 0;
+    const countingEngine: IncidentEngine = {
+      processEvent(event, timestamp) {
+        processCalls++;
+        return realEngine.processEvent(event, timestamp);
+      },
+    };
+    const app = createApp(config, store, countingEngine);
+    const request = () => app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+
+    assert.equal((await request()).status, 200);
+    assert.equal((await request()).status, 200);
+    assert.equal(processCalls, 1);
+    assert.equal(store.count(), 1);
+    assert.equal(store.incidentCount(), 1);
+    store.close();
+  });
+
+  it('does not reprocess a duplicate id with conflicting payload', async () => {
+    const config = makeTestConfig(':memory:');
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app = createApp(config, store, engine);
+    const firstBatch = makeValidBatch(1);
+    const conflictingBatch = makeValidBatch(1);
+    Object.assign((conflictingBatch.events as Record<string, unknown>[])[0]!, {
+      type: 'container.oom',
+      message: 'Conflicting payload for immutable id',
+    });
+
+    const first = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(firstBatch),
+    });
+    const retry = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(conflictingBatch),
+    });
+
+    assert.equal(first.status, 200);
+    assert.equal(retry.status, 200);
+    assert.equal(store.count(), 1);
+    assert.equal(store.incidentCount(), 1);
+    assert.ok(store.findActiveIncident(
+      'docker:test-svc-02:dataease:container.die',
+      '2026-08-20T12:00:00.000Z',
+      config.aggregationWindowMs,
+    ));
+    assert.equal(store.findActiveIncident(
+      'docker:test-svc-02:dataease:container.oom',
+      '2026-08-20T12:00:00.000Z',
+      config.aggregationWindowMs,
+    ), undefined);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    store.close();
+  });
+
+  it('does not let a retried unmatched recovery affect a later Incident', async () => {
+    const config = makeTestConfig(':memory:');
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app = createApp(config, store, engine);
+    const producer = { id: 'node-agent-01', type: 'node-agent', version: '0.1.0' };
+    const recovery = {
+      ...makeValidEvent('evt-unmatched-recovery'),
+      time: '2026-08-20T12:05:00.000Z',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      message: 'Health recovered',
+    };
+    const failure = {
+      ...makeValidEvent('evt-later-failure'),
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      message: 'Health check failed',
+    };
+    const post = (event: Record<string, unknown>) => app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ producer, events: [event] }),
+    });
+
+    assert.equal((await post(recovery)).status, 200);
+    assert.equal(store.incidentCount(), 0);
+    assert.equal((await post(failure)).status, 200);
+    assert.equal((await post(recovery)).status, 200);
+
+    const incident = store.findActiveIncident(
+      'health:test-svc-02:dataease:health.failure',
+      '2026-08-20T12:00:00.000Z',
+      config.aggregationWindowMs,
+    );
+    assert.ok(incident);
+    assert.equal(incident.state, 'OPEN');
+    assert.equal(incident.event_count, 1);
+    assert.equal(store.count(), 2);
+    store.close();
   });
 
   it('starts evidence collection once for a new Incident without blocking ingestion', async () => {
