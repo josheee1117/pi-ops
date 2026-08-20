@@ -5,6 +5,8 @@ import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 
 export interface StoredEvent {
   id: string;
+  schema_version: number;
+  event_time: string;
   receive_time: string;
   producer_id: string;
   producer_type: string;
@@ -89,6 +91,8 @@ interface EvidenceJobRow {
 const CREATE_EVENTS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
+  schema_version INTEGER NOT NULL,
+  event_time TEXT NOT NULL,
   receive_time TEXT NOT NULL,
   producer_id TEXT NOT NULL,
   producer_type TEXT NOT NULL,
@@ -160,17 +164,20 @@ CREATE INDEX IF NOT EXISTS idx_evidence_jobs_state ON evidence_jobs (state, crea
 
 const INSERT_EVENT_SQL = `
 INSERT OR IGNORE INTO events (
-  id, receive_time, producer_id, producer_type, producer_version,
+  id, schema_version, event_time, receive_time,
+  producer_id, producer_type, producer_version,
   source, node_id, service, type, severity,
   fingerprint, trace_id, message, attributes
 ) VALUES (
-  @id, @receive_time, @producer_id, @producer_type, @producer_version,
+  @id, @schema_version, @event_time, @receive_time,
+  @producer_id, @producer_type, @producer_version,
   @source, @node_id, @service, @type, @severity,
   @fingerprint, @trace_id, @message, @attributes
 );
 `;
 
 const COUNT_EVENTS_SQL = `SELECT COUNT(*) as count FROM events`;
+const GET_EVENT_SQL = `SELECT * FROM events WHERE id = ?`;
 
 const LIST_ACTIVE_INCIDENTS_SQL = `
 SELECT * FROM incidents
@@ -289,6 +296,9 @@ export interface EventStore {
   /** Total event count. */
   count(): number;
 
+  /** Read one immutable Event exactly as persisted. */
+  getEvent(id: string): StoredEvent | undefined;
+
   // ── Incident operations ──────────────────────────────────────────────────
 
   /** Find the nearest active Incident inside the event-time aggregation window. */
@@ -375,6 +385,21 @@ export function createEventStore(dbPath: string): EventStore {
   db.pragma('foreign_keys = ON');
 
   db.exec(CREATE_EVENTS_TABLE_SQL);
+
+  // Migrate databases created before canonical event timestamps and protocol
+  // versions were persisted. receive_time is the only durable timestamp
+  // available for legacy rows, so it is the deterministic backfill.
+  const eventColumns = new Set(
+    (db.pragma('table_info(events)') as Array<{ name: string }>).map(({ name }) => name),
+  );
+  if (!eventColumns.has('schema_version')) {
+    db.exec('ALTER TABLE events ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1');
+  }
+  if (!eventColumns.has('event_time')) {
+    db.exec("ALTER TABLE events ADD COLUMN event_time TEXT NOT NULL DEFAULT ''");
+  }
+  db.exec("UPDATE events SET event_time = receive_time WHERE event_time IS NULL OR event_time = ''");
+
   db.exec(CREATE_INCIDENTS_TABLE_SQL);
   db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
   db.exec(CREATE_EVIDENCE_TABLE_SQL);
@@ -382,6 +407,7 @@ export function createEventStore(dbPath: string): EventStore {
 
   const insertStmt = db.prepare(INSERT_EVENT_SQL);
   const countStmt = db.prepare(COUNT_EVENTS_SQL);
+  const getEventStmt = db.prepare(GET_EVENT_SQL);
   const listActiveIncidentsStmt = db.prepare(LIST_ACTIVE_INCIDENTS_SQL);
   const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
   const insertIncidentStmt = db.prepare(INSERT_INCIDENT_SQL);
@@ -434,6 +460,8 @@ export function createEventStore(dbPath: string): EventStore {
   ): boolean {
     const result = insertStmt.run({
       id: event.id,
+      schema_version: event.schemaVersion,
+      event_time: event.time,
       receive_time: receiveTime,
       producer_id: batch.producer.id,
       producer_type: batch.producer.type,
@@ -513,6 +541,10 @@ export function createEventStore(dbPath: string): EventStore {
     count(): number {
       const row = countStmt.get() as { count: number };
       return row.count;
+    },
+
+    getEvent(id: string): StoredEvent | undefined {
+      return getEventStmt.get(id) as StoredEvent | undefined;
     },
 
     // ── Incidents ─────────────────────────────────────────────────────────

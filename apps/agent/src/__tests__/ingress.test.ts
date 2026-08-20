@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
+import Database from 'better-sqlite3';
 import type { Hono } from 'hono';
 import { createApp } from '../app.js';
 import { createEventStore, type EventStore } from '../store.js';
@@ -522,16 +523,110 @@ describe('persistence', () => {
         },
       ],
     };
-    store1.insertBatch(batch, '2026-08-20T12:00:00.000Z');
+    store1.insertBatch(batch, '2026-08-20T12:00:05.000Z');
     assert.equal(store1.count(), 1);
     store1.close();
 
-    // Simulate restart: open a new store on the same file
+    // Simulate restart: open a new store on the same file.
     const store2 = createEventStore(dbPath);
     assert.equal(store2.count(), 1);
+    const persisted = store2.getEvent('evt-survivor');
+    assert.ok(persisted);
+    assert.equal(persisted.schema_version, 1);
+    assert.equal(persisted.event_time, '2026-08-20T12:00:00.000Z');
+    assert.equal(persisted.receive_time, '2026-08-20T12:00:05.000Z');
+    assert.equal(persisted.attributes, JSON.stringify({ persisted: true }));
     store2.close();
 
     rmSync(dbPath, { recursive: true, force: true });
+  });
+
+  it('preserves each canonical event time when events aggregate into one Incident', () => {
+    const { store: store1, dbPath } = setupFileDb();
+    const engine = createIncidentEngine(store1, { aggregationWindowMs: 5 * 60 * 1000 });
+    const first = {
+      schemaVersion: 1 as const,
+      id: 'evt-aggregate-first',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'docker' as const,
+      nodeId: 'test-svc-02',
+      service: 'dataease',
+      type: 'container.die',
+      severity: 'error' as const,
+      message: 'First failure',
+      attributes: { sequence: 1 },
+    };
+    const second = {
+      ...first,
+      id: 'evt-aggregate-second',
+      time: '2026-08-20T12:01:00.000Z',
+      message: 'Second failure',
+      attributes: { sequence: 2 },
+    };
+    const batch = {
+      producer: { id: 'p1', type: 'node-agent' as const, version: '0.1.0' },
+      events: [first, second],
+    };
+
+    store1.processBatch(batch, '2026-08-20T12:10:00.000Z', (event) => {
+      engine.processEvent(event, event.time);
+    });
+    assert.equal(store1.incidentCount(), 1);
+    store1.close();
+
+    const store2 = createEventStore(dbPath);
+    assert.equal(store2.incidentCount(), 1);
+    assert.equal(store2.getEvent(first.id)?.event_time, first.time);
+    assert.equal(store2.getEvent(second.id)?.event_time, second.time);
+    assert.equal(store2.getEvent(first.id)?.receive_time, '2026-08-20T12:10:00.000Z');
+    assert.equal(store2.getEvent(second.id)?.receive_time, '2026-08-20T12:10:00.000Z');
+    assert.equal(store2.getEvent(first.id)?.schema_version, 1);
+    assert.equal(store2.getEvent(second.id)?.schema_version, 1);
+    store2.close();
+
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
+  it('migrates legacy Event rows with a deterministic event-time backfill', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'pi-ops-legacy-test-'));
+    const dbPath = join(tmpDir, 'legacy.db');
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      CREATE TABLE events (
+        id TEXT PRIMARY KEY,
+        receive_time TEXT NOT NULL,
+        producer_id TEXT NOT NULL,
+        producer_type TEXT NOT NULL,
+        producer_version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        service TEXT NOT NULL,
+        type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        fingerprint TEXT,
+        trace_id TEXT,
+        message TEXT NOT NULL,
+        attributes TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO events (
+        id, receive_time, producer_id, producer_type, producer_version,
+        source, node_id, service, type, severity, message, attributes
+      ) VALUES (
+        'evt-legacy', '2026-08-20T11:59:00.000Z', 'legacy-agent', 'node-agent', '0.0.1',
+        'docker', 'test-svc-02', 'dataease', 'container.die', 'error', 'Legacy event', '{}'
+      );
+    `);
+    legacy.close();
+
+    const migrated = createEventStore(dbPath);
+    const event = migrated.getEvent('evt-legacy');
+    assert.ok(event);
+    assert.equal(event.schema_version, 1);
+    assert.equal(event.event_time, event.receive_time);
+    assert.equal(event.event_time, '2026-08-20T11:59:00.000Z');
+    migrated.close();
+
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('evidence survives database close and reopen', () => {
