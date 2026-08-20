@@ -103,6 +103,31 @@ describe('validateOpsEvent', () => {
     assert.ok(result.success);
   });
 
+  it('rejects event with invalid time format', () => {
+    const result = validateOpsEvent(makeValidEvent({ time: '2026-08-20 12:00:00' }));
+    assert.ok(!result.success);
+  });
+
+  it('rejects event with empty time string', () => {
+    const result = validateOpsEvent(makeValidEvent({ time: '' }));
+    assert.ok(!result.success);
+  });
+
+  it('rejects event with non-datetime time value', () => {
+    const result = validateOpsEvent(makeValidEvent({ time: 'not-a-date' }));
+    assert.ok(!result.success);
+  });
+
+  it('accepts valid ISO datetime with timezone offset', () => {
+    const result = validateOpsEvent(makeValidEvent({ time: '2026-08-20T12:00:00+08:00' }));
+    assert.ok(result.success);
+  });
+
+  it('accepts valid ISO datetime with Z suffix', () => {
+    const result = validateOpsEvent(makeValidEvent({ time: '2026-08-20T12:00:00.000Z' }));
+    assert.ok(result.success);
+  });
+
   it('accepts all valid source values', () => {
     const sources = ['jfr', 'application', 'docker', 'host', 'health', 'middleware', 'deployment'];
     for (const source of sources) {
@@ -199,6 +224,23 @@ describe('validateEvidence', () => {
     const { incidentId, ...rest } = makeValidEvidence();
     const result = validateEvidence(rest);
     assert.ok(!result.success);
+  });
+
+  it('rejects evidence with invalid collectedAt format', () => {
+    const result = validateEvidence(makeValidEvidence({ collectedAt: '2026-08-20 12:01:00' }));
+    assert.ok(!result.success);
+  });
+
+  it('rejects evidence with empty collectedAt', () => {
+    const result = validateEvidence(makeValidEvidence({ collectedAt: '' }));
+    assert.ok(!result.success);
+  });
+
+  it('accepts valid evidence with timezone offset in collectedAt', () => {
+    const result = validateEvidence(
+      makeValidEvidence({ collectedAt: '2026-08-20T12:01:00+08:00' }),
+    );
+    assert.ok(result.success);
   });
 
   it('accepts arbitrary data shape', () => {

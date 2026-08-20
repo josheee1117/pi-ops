@@ -21,7 +21,7 @@ export function loadConfig(): AgentConfig {
   return {
     port: parseInt(process.env['PI_OPS_AGENT_PORT'] ?? '8080', 10),
     ingestToken: requireEnv('PI_OPS_INGEST_TOKEN'),
-    sqlitePath: process.env['PI_OPS_SQLITE_PATH'] ?? ':memory:',
+    sqlitePath: requireEnv('PI_OPS_SQLITE_PATH'),
     nodeId: process.env['PI_OPS_NODE_ID'] ?? 'default',
     maxBodySize: parseInt(process.env['PI_OPS_MAX_BODY_SIZE'] ?? String(1024 * 1024), 10),
   };

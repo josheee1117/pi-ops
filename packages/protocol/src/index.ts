@@ -50,7 +50,7 @@ const opsEventSeveritySchema = z.enum(['info', 'warning', 'error', 'critical']);
 export const opsEventSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
-  time: z.string().datetime({ offset: true }).or(z.string().min(1)),
+  time: z.string().datetime({ offset: true }),
   source: opsEventSourceSchema,
   nodeId: z.string().min(1),
   service: z.string().min(1),
@@ -100,7 +100,7 @@ export const evidenceSchema = z.object({
   nodeId: z.string().min(1),
   source: z.string().min(1),
   kind: z.string().min(1),
-  collectedAt: z.string().datetime({ offset: true }).or(z.string().min(1)),
+  collectedAt: z.string().datetime({ offset: true }),
   data: z.unknown(),
 });
 
