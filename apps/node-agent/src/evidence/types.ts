@@ -1,42 +1,14 @@
+import {
+  EVIDENCE_QUERY_TYPES,
+  type Evidence,
+  type EvidenceQueryRequest,
+  type EvidenceQueryType,
+} from '@pi-ops/protocol';
 import type { NodeAgentConfig } from '../config.js';
 
-// ── Query types ──────────────────────────────────────────────────────────────
+export type { EvidenceQueryRequest, EvidenceQueryType } from '@pi-ops/protocol';
 
-export type EvidenceQueryType =
-  | 'docker.inspect'
-  | 'docker.logs'
-  | 'docker.stats'
-  | 'host.memory'
-  | 'host.load'
-  | 'host.disk'
-  | 'http.probe';
-
-export const ALLOWED_QUERY_TYPES: ReadonlySet<string> = new Set([
-  'docker.inspect',
-  'docker.logs',
-  'docker.stats',
-  'host.memory',
-  'host.load',
-  'host.disk',
-  'http.probe',
-]);
-
-// ── Request ──────────────────────────────────────────────────────────────────
-
-export interface EvidenceQueryRequest {
-  type: EvidenceQueryType;
-  incidentId: string;
-  // Docker params
-  container?: string;
-  maxLines?: number;
-  since?: string;
-  // Host params
-  path?: string;
-  // HTTP probe params
-  url?: string;
-  method?: string;
-  timeout?: number;
-}
+export const ALLOWED_QUERY_TYPES: ReadonlySet<string> = new Set(EVIDENCE_QUERY_TYPES);
 
 // ── Validation errors ────────────────────────────────────────────────────────
 
@@ -103,8 +75,19 @@ export function validateQueryRequest(
           request.maxLines = maxLines;
         }
         const since = req['since'];
-        if (since !== undefined && typeof since === 'string') {
-          request.since = since;
+        if (since !== undefined) {
+          if (typeof since !== 'string' || !/^\d+[smh]$/.test(since)) {
+            errors.push({ field: 'since', message: 'since must be a duration such as 30s, 2m, or 1h' });
+          } else {
+            const amount = parseInt(since.slice(0, -1), 10);
+            const unit = since.at(-1);
+            const seconds = amount * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
+            if (seconds > 3600) {
+              errors.push({ field: 'since', message: 'since cannot exceed 1h' });
+            } else {
+              request.since = since;
+            }
+          }
         }
       }
       break;
@@ -161,15 +144,7 @@ export function validateQueryRequest(
 
 // ── Result ───────────────────────────────────────────────────────────────────
 
-export interface EvidenceQueryResult {
-  id: string;
-  incidentId: string;
-  nodeId: string;
-  source: string;
-  kind: string;
-  collectedAt: string;
-  data: unknown;
-}
+export type EvidenceQueryResult = Evidence;
 
 // ── Source mapping ───────────────────────────────────────────────────────────
 

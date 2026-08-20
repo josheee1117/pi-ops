@@ -130,6 +130,22 @@ describe('validateQueryRequest', () => {
     }
   });
 
+  it('accepts a bounded docker.logs since duration', () => {
+    const result = validateQueryRequest(
+      { type: 'docker.logs', incidentId: 'inc-1', container: 'dataease', since: '2m' },
+      makeConfig(),
+    );
+    assert.ok(result.valid);
+  });
+
+  it('rejects an unbounded docker.logs since duration', () => {
+    const result = validateQueryRequest(
+      { type: 'docker.logs', incidentId: 'inc-1', container: 'dataease', since: '24h' },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
+  });
+
   // ── Host disk ───────────────────────────────────────────────────────────
 
   it('rejects host.disk without path', () => {

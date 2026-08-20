@@ -91,7 +91,11 @@ describe('health detector', () => {
     const detector = createHealthDetector(
       makeNodeAgentConfig({
         healthFailureDuration: 2,
-        healthTargets: [{ name: 'dataease', url: 'http://127.0.0.1:18080/health' }],
+        healthTargets: [{
+          name: 'dataease',
+          url: 'http://127.0.0.1:18080/health',
+          container: 'dataease',
+        }],
       }),
       sender,
       probe,
@@ -112,6 +116,7 @@ describe('health detector', () => {
     assert.equal(sender.events[0]!.type, 'health.failure');
     assert.equal(sender.events[0]!.severity, 'error');
     assert.equal(sender.events[0]!.service, 'dataease');
+    assert.equal(sender.events[0]!.attributes.containerName, 'dataease');
 
     // Flood of failures — still one event
     for (let i = 0; i < 10; i++) {

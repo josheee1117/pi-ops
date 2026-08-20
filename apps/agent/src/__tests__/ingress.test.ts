@@ -7,6 +7,7 @@ import type { Hono } from 'hono';
 import { createApp } from '../app.js';
 import { createEventStore, type EventStore } from '../store.js';
 import { createIncidentEngine, type IncidentEngine } from '../incident.js';
+import type { EvidenceOrchestrator } from '../evidence-orchestrator.js';
 import type { AgentConfig } from '../config.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -17,6 +18,10 @@ const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   nodeId: 'test-node',
   maxBodySize: 1024 * 1024,
   aggregationWindowMs: 5 * 60 * 1000,
+  nodeAgents: new Map(),
+  evidenceTimeoutMs: 5000,
+  evidenceMaxResponseBytes: 1024 * 1024,
+  evidenceLogsMaxLines: 200,
 };
 
 function makeTestConfig(sqlitePath: string): AgentConfig {
@@ -119,6 +124,40 @@ describe('POST /v1/events', () => {
     const body = await res.json();
     assert.equal(body.accepted, 1);
     assert.equal(store.count(), 1); // no new row
+  });
+
+  it('starts evidence collection once for a new Incident without blocking ingestion', async () => {
+    const config = makeTestConfig(':memory:');
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    let calls = 0;
+    const orchestrator: EvidenceOrchestrator = {
+      collectForIncident() {
+        calls++;
+        return new Promise(() => {});
+      },
+    };
+    const app = createApp(config, store, engine, orchestrator);
+
+    const first = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+    assert.equal(first.status, 200);
+    assert.equal(calls, 1);
+
+    // Transport retry does not create another Incident or evidence run.
+    const retry = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+    assert.equal(retry.status, 200);
+    assert.equal(calls, 1);
+    store.close();
   });
 
   it('rejects request without auth token', async () => {
@@ -229,6 +268,30 @@ describe('persistence', () => {
     // Simulate restart: open a new store on the same file
     const store2 = createEventStore(dbPath);
     assert.equal(store2.count(), 1);
+    store2.close();
+
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
+  it('evidence survives database close and reopen', () => {
+    const { store: store1, dbPath } = setupFileDb();
+    store1.insertEvidence({
+      id: 'evd-survivor',
+      incidentId: 'inc-survivor',
+      nodeId: 'test-svc-02',
+      source: 'docker',
+      kind: 'docker.inspect',
+      collectedAt: '2026-08-20T12:01:00.000Z',
+      data: { persisted: true },
+      status: 'succeeded',
+    });
+    store1.close();
+
+    const store2 = createEventStore(dbPath);
+    const evidence = store2.listEvidence('inc-survivor');
+    assert.equal(evidence.length, 1);
+    assert.deepEqual(evidence[0]?.data, { persisted: true });
+    assert.equal(evidence[0]?.status, 'succeeded');
     store2.close();
 
     rmSync(dbPath, { recursive: true, force: true });

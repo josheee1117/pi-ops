@@ -14,6 +14,13 @@ export interface DockerEvidenceProvider {
   query(request: EvidenceQueryRequest, config: NodeAgentConfig): Promise<EvidenceQueryResult>;
 }
 
+function durationToUnixSeconds(duration: string): number {
+  const amount = parseInt(duration.slice(0, -1), 10);
+  const unit = duration.at(-1);
+  const seconds = amount * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
+  return Math.floor(Date.now() / 1000) - seconds;
+}
+
 export function createDockerEvidenceProvider(): DockerEvidenceProvider {
   const docker = new Docker({ socketPath: '/var/run/docker.sock' });
 
@@ -52,11 +59,13 @@ export function createDockerEvidenceProvider(): DockerEvidenceProvider {
         }
         case 'docker.logs': {
           const maxLines = request.maxLines ?? config.logsMaxLines;
+          const since = request.since ? durationToUnixSeconds(request.since) : undefined;
           const logOpts = {
             stdout: true,
             stderr: true,
             tail: maxLines,
             timestamps: false,
+            ...(since !== undefined ? { since } : {}),
           };
           const stream = await container.logs(logOpts);
           const chunks: Buffer[] = [];

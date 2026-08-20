@@ -49,6 +49,12 @@ describe('computeFingerprint', () => {
     const event2 = makeEvent({ id: 'evt-2', time: '2026-08-20T13:00:00.000Z', fingerprint: undefined });
     assert.equal(computeFingerprint(event1), computeFingerprint(event2));
   });
+
+  it('maps explicit recovery types to the failure fingerprint', () => {
+    const failure = makeEvent({ source: 'health', type: 'health.failure' });
+    const recovery = makeEvent({ source: 'health', type: 'health.recovered' });
+    assert.equal(computeFingerprint(recovery), computeFingerprint(failure));
+  });
 });
 
 // ── Incident creation ────────────────────────────────────────────────────────
@@ -68,7 +74,7 @@ describe('incident creation', () => {
     const { store, engine } = setup();
     const event = makeEvent();
     const result = engine.processEvent(event, event.time);
-    const incident = store.getIncident(result.incidentId);
+    const incident = store.getIncident(result.incidentId!);
     assert.ok(incident);
     assert.equal(incident.state, 'OPEN');
     assert.equal(incident.service, 'dataease');
@@ -115,7 +121,7 @@ describe('aggregation within window', () => {
         time,
       );
       if (i === 0) {
-        incidentId = result.incidentId;
+        incidentId = result.incidentId ?? undefined;
       } else {
         assert.equal(result.incidentId, incidentId);
       }
@@ -147,10 +153,50 @@ describe('event retransmission safety', () => {
       assert.equal(result.eventCount, 1); // still 1, not 100
     }
 
-    const incident = store.getIncident(r1.incidentId);
+    const incident = store.getIncident(r1.incidentId!);
     assert.ok(incident);
     assert.equal(incident.event_count, 1);
     assert.equal(store.incidentCount(), 1);
+  });
+
+  it('retry outside the aggregation window does not create another Incident', () => {
+    const { store, engine } = setup();
+    const event = makeEvent({ id: 'evt-old-retry', time: '2026-08-20T12:00:00.000Z' });
+    const first = engine.processEvent(event, event.time);
+    const retry = engine.processEvent(event, '2026-08-20T12:30:00.000Z');
+
+    assert.equal(retry.incidentId, first.incidentId);
+    assert.equal(retry.isNew, false);
+    assert.equal(retry.eventCount, 1);
+    assert.equal(store.incidentCount(), 1);
+  });
+
+  it('retry after recovery does not create a new Incident', () => {
+    const { store, engine } = setup();
+    const failure = makeEvent({
+      id: 'evt-failure',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+    });
+    const first = engine.processEvent(failure, failure.time);
+    assert.ok(first.incidentId);
+    const recovery = makeEvent({
+      id: 'evt-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:10:00.000Z',
+    });
+    const recovered = engine.processEvent(recovery, recovery.time);
+    assert.equal(recovered.isRecovery, true);
+    assert.equal(store.getIncident(first.incidentId)?.state, 'RECOVERED');
+
+    const retry = engine.processEvent(failure, '2026-08-20T13:00:00.000Z');
+    assert.equal(retry.incidentId, first.incidentId);
+    assert.equal(retry.isNew, false);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.getIncident(first.incidentId)?.event_count, 2);
   });
 });
 
@@ -272,7 +318,7 @@ describe('recovery', () => {
     assert.ok(r2.isRecovery);
     assert.equal(r2.incidentId, r1.incidentId);
 
-    const incident = store.getIncident(r1.incidentId);
+    const incident = store.getIncident(r1.incidentId!);
     assert.ok(incident);
     assert.equal(incident.state, 'RECOVERED');
   });
@@ -303,12 +349,52 @@ describe('recovery', () => {
     assert.equal(r3.incidentId, e1.incidentId);
 
     // e1 should be RECOVERED
-    const inc1 = store.getIncident(e1.incidentId);
+    const inc1 = store.getIncident(e1.incidentId!);
     assert.equal(inc1!.state, 'RECOVERED');
 
     // e2 should still be OPEN (not recovered)
-    const inc2 = store.getIncident(e2.incidentId);
+    const inc2 = store.getIncident(e2.incidentId!);
     assert.equal(inc2!.state, 'OPEN');
+  });
+
+  it('correlates an explicit health.recovered event even outside the aggregation window', () => {
+    const { store, engine } = setup();
+    const failure = makeEvent({
+      id: 'evt-health-failure',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T12:00:00.000Z',
+    });
+    const opened = engine.processEvent(failure, failure.time);
+    assert.ok(opened.incidentId);
+
+    const recovery = makeEvent({
+      id: 'evt-health-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T13:00:00.000Z',
+    });
+    const result = engine.processEvent(recovery, recovery.time);
+    assert.equal(result.isRecovery, true);
+    assert.equal(result.incidentId, opened.incidentId);
+    assert.equal(store.getIncident(opened.incidentId)?.state, 'RECOVERED');
+    assert.equal(store.incidentCount(), 1);
+  });
+
+  it('ignores an explicit recovery that has no correlated OPEN Incident', () => {
+    const { store, engine } = setup();
+    const recovery = makeEvent({
+      id: 'evt-unmatched-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+    });
+    const result = engine.processEvent(recovery, recovery.time);
+    assert.equal(result.ignored, true);
+    assert.equal(result.incidentId, null);
+    assert.equal(store.incidentCount(), 0);
   });
 
   it('does not recover when event severity is equal or higher', () => {
@@ -326,7 +412,7 @@ describe('recovery', () => {
     );
     assert.ok(!r2.isRecovery);
 
-    const incident = store.getIncident(r1.incidentId);
+    const incident = store.getIncident(r1.incidentId!);
     assert.equal(incident!.state, 'OPEN');
   });
 });
@@ -346,7 +432,7 @@ describe('severity escalation', () => {
       '2026-08-20T12:01:00.000Z',
     );
 
-    const incident = store.getIncident(r2.incidentId);
+    const incident = store.getIncident(r2.incidentId!);
     assert.ok(incident);
     assert.equal(incident.severity, 'critical');
   });
@@ -365,7 +451,7 @@ describe('severity escalation', () => {
       '2026-08-20T12:01:00.000Z',
     );
 
-    const incident = store.getIncident(r2.incidentId);
+    const incident = store.getIncident(r2.incidentId!);
     assert.ok(incident);
     assert.equal(incident.severity, 'critical');
   });

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { OpsEvent, EventBatch } from '@pi-ops/protocol';
+import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -35,6 +35,27 @@ export interface IncidentRow {
   last_seen: string;
   event_count: number;
   severity: string;
+}
+
+// ── Evidence types ───────────────────────────────────────────────────────────
+
+export type EvidenceStatus = 'succeeded' | 'failed';
+
+export interface EvidenceRecord extends Evidence {
+  status: EvidenceStatus;
+  error?: string;
+}
+
+export interface EvidenceRow {
+  id: string;
+  incident_id: string;
+  node_id: string;
+  source: string;
+  kind: string;
+  collected_at: string;
+  status: EvidenceStatus;
+  data_json: string;
+  error: string | null;
 }
 
 // ── SQL ──────────────────────────────────────────────────────────────────────
@@ -82,6 +103,21 @@ CREATE TABLE IF NOT EXISTS incident_events (
 );
 `;
 
+const CREATE_EVIDENCE_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS evidence (
+  id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  collected_at TEXT NOT NULL,
+  status TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_evidence_incident_id ON evidence (incident_id);
+`;
+
 const INSERT_EVENT_SQL = `
 INSERT OR IGNORE INTO events (
   id, receive_time, producer_id, producer_type, producer_version,
@@ -100,6 +136,14 @@ const FIND_OPEN_INCIDENT_SQL = `
 SELECT * FROM incidents
 WHERE fingerprint = @fingerprint AND state = 'OPEN'
 ORDER BY last_seen DESC
+LIMIT 1;
+`;
+
+const FIND_INCIDENT_BY_EVENT_ID_SQL = `
+SELECT incidents.*
+FROM incidents
+JOIN incident_events ON incident_events.incident_id = incidents.id
+WHERE incident_events.event_id = ?
 LIMIT 1;
 `;
 
@@ -129,6 +173,20 @@ VALUES (@incident_id, @event_id);
 
 const COUNT_INCIDENTS_SQL = `SELECT COUNT(*) as count FROM incidents`;
 
+const INSERT_EVIDENCE_SQL = `
+INSERT INTO evidence (
+  id, incident_id, node_id, source, kind, collected_at, status, data_json, error
+) VALUES (
+  @id, @incident_id, @node_id, @source, @kind, @collected_at, @status, @data_json, @error
+);
+`;
+
+const LIST_EVIDENCE_SQL = `
+SELECT * FROM evidence WHERE incident_id = ? ORDER BY collected_at, id;
+`;
+
+const COUNT_EVIDENCE_SQL = `SELECT COUNT(*) as count FROM evidence`;
+
 // ── Store interface ──────────────────────────────────────────────────────────
 
 export interface EventStore {
@@ -142,6 +200,9 @@ export interface EventStore {
 
   /** Find the most recent OPEN incident with the given fingerprint. */
   findOpenIncident(fingerprint: string): IncidentRow | undefined;
+
+  /** Find the Incident already linked to an immutable Event fact. */
+  findIncidentByEventId(eventId: string): IncidentRow | undefined;
 
   /** Create a new incident. */
   createIncident(incident: Omit<IncidentRow, 'id'>): IncidentRow;
@@ -162,6 +223,17 @@ export interface EventStore {
 
   /** Get an incident by id. */
   getIncident(id: string): IncidentRow | undefined;
+
+  // ── Evidence operations ──────────────────────────────────────────────────
+
+  /** Persist one successful or failed evidence item. */
+  insertEvidence(evidence: EvidenceRecord): void;
+
+  /** List evidence records for one incident. */
+  listEvidence(incidentId: string): EvidenceRecord[];
+
+  /** Total evidence record count. */
+  evidenceCount(): number;
 
   /** Close the database connection. */
   close(): void;
@@ -189,14 +261,19 @@ export function createEventStore(dbPath: string): EventStore {
   db.exec(CREATE_EVENTS_TABLE_SQL);
   db.exec(CREATE_INCIDENTS_TABLE_SQL);
   db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
+  db.exec(CREATE_EVIDENCE_TABLE_SQL);
 
   const insertStmt = db.prepare(INSERT_EVENT_SQL);
   const countStmt = db.prepare(COUNT_EVENTS_SQL);
   const findOpenIncidentStmt = db.prepare(FIND_OPEN_INCIDENT_SQL);
+  const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
   const insertIncidentStmt = db.prepare(INSERT_INCIDENT_SQL);
   const updateIncidentStmt = db.prepare(UPDATE_INCIDENT_SQL);
   const linkEventStmt = db.prepare(LINK_EVENT_SQL);
   const countIncidentsStmt = db.prepare(COUNT_INCIDENTS_SQL);
+  const insertEvidenceStmt = db.prepare(INSERT_EVIDENCE_SQL);
+  const listEvidenceStmt = db.prepare(LIST_EVIDENCE_SQL);
+  const countEvidenceStmt = db.prepare(COUNT_EVIDENCE_SQL);
 
   return {
     // ── Events ────────────────────────────────────────────────────────────
@@ -243,6 +320,10 @@ export function createEventStore(dbPath: string): EventStore {
       return findOpenIncidentStmt.get({ fingerprint }) as IncidentRow | undefined;
     },
 
+    findIncidentByEventId(eventId: string): IncidentRow | undefined {
+      return findIncidentByEventIdStmt.get(eventId) as IncidentRow | undefined;
+    },
+
     createIncident(incident: Omit<IncidentRow, 'id'>): IncidentRow {
       const id = generateId('inc');
       insertIncidentStmt.run({
@@ -287,6 +368,42 @@ export function createEventStore(dbPath: string): EventStore {
 
     getIncident(id: string): IncidentRow | undefined {
       return db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as IncidentRow | undefined;
+    },
+
+    // ── Evidence ──────────────────────────────────────────────────────────
+
+    insertEvidence(evidence: EvidenceRecord): void {
+      insertEvidenceStmt.run({
+        id: evidence.id,
+        incident_id: evidence.incidentId,
+        node_id: evidence.nodeId,
+        source: evidence.source,
+        kind: evidence.kind,
+        collected_at: evidence.collectedAt,
+        status: evidence.status,
+        data_json: JSON.stringify(evidence.data ?? null),
+        error: evidence.error ?? null,
+      });
+    },
+
+    listEvidence(incidentId: string): EvidenceRecord[] {
+      const rows = listEvidenceStmt.all(incidentId) as EvidenceRow[];
+      return rows.map((row) => ({
+        id: row.id,
+        incidentId: row.incident_id,
+        nodeId: row.node_id,
+        source: row.source,
+        kind: row.kind,
+        collectedAt: row.collected_at,
+        data: JSON.parse(row.data_json) as unknown,
+        status: row.status,
+        ...(row.error ? { error: row.error } : {}),
+      }));
+    },
+
+    evidenceCount(): number {
+      const row = countEvidenceStmt.get() as { count: number };
+      return row.count;
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

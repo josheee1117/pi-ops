@@ -2,12 +2,14 @@ import { Hono } from 'hono';
 import type { AgentConfig } from './config.js';
 import type { EventStore } from './store.js';
 import type { IncidentEngine } from './incident.js';
+import type { EvidenceOrchestrator } from './evidence-orchestrator.js';
 import { validateEventBatch } from '@pi-ops/protocol';
 
 export function createApp(
   config: AgentConfig,
   store: EventStore,
   incidentEngine: IncidentEngine,
+  evidenceOrchestrator?: EvidenceOrchestrator,
 ): Hono {
   const app = new Hono();
 
@@ -70,10 +72,21 @@ export function createApp(
     const receiveTime = new Date().toISOString();
     store.insertBatch(batch, receiveTime);
 
-    // Process each event through the incident engine
-    // Use the event's own time for the incident timeline, not receiveTime.
+    // Process each event through the incident engine.
+    // Evidence collection starts only for a newly created Incident and runs
+    // asynchronously so a slow/unavailable node agent cannot block ingestion.
     for (const event of batch.events) {
-      incidentEngine.processEvent(event, event.time);
+      const incidentResult = incidentEngine.processEvent(event, event.time);
+      if (incidentResult.isNew && evidenceOrchestrator) {
+        const incident = store.getIncident(incidentResult.incidentId);
+        if (incident) {
+          void evidenceOrchestrator.collectForIncident(incident, event).catch((err) => {
+            console.error(
+              `[agent] evidence orchestration failed for ${incident.id}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
+      }
     }
 
     return c.json({

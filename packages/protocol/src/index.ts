@@ -104,6 +104,44 @@ export const evidenceSchema = z.object({
   data: z.unknown(),
 });
 
+// ── Evidence query ───────────────────────────────────────────────────────────
+
+export const EVIDENCE_QUERY_TYPES = [
+  'docker.inspect',
+  'docker.logs',
+  'docker.stats',
+  'host.memory',
+  'host.load',
+  'host.disk',
+  'http.probe',
+] as const;
+
+export type EvidenceQueryType = (typeof EVIDENCE_QUERY_TYPES)[number];
+
+export interface EvidenceQueryRequest {
+  type: EvidenceQueryType;
+  incidentId: string;
+  container?: string;
+  maxLines?: number;
+  since?: string;
+  path?: string;
+  url?: string;
+  method?: string;
+  timeout?: number;
+}
+
+export const evidenceQueryRequestSchema = z.object({
+  type: z.enum(EVIDENCE_QUERY_TYPES),
+  incidentId: z.string().min(1),
+  container: z.string().min(1).optional(),
+  maxLines: z.number().int().positive().optional(),
+  since: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
+  url: z.string().url().optional(),
+  method: z.string().min(1).optional(),
+  timeout: z.number().int().positive().optional(),
+});
+
 // ── Validation helpers ───────────────────────────────────────────────────────
 
 export interface ValidationResult<T> {
@@ -129,6 +167,12 @@ export function validateEventBatch(data: unknown): ValidationOutcome<EventBatch>
 
 export function validateEvidence(data: unknown): ValidationOutcome<Evidence> {
   return validate(evidenceSchema, data) as ValidationOutcome<Evidence>;
+}
+
+export function validateEvidenceQueryRequest(
+  data: unknown,
+): ValidationOutcome<EvidenceQueryRequest> {
+  return validate(evidenceQueryRequestSchema, data) as ValidationOutcome<EvidenceQueryRequest>;
 }
 
 function validate<T>(schema: z.ZodSchema<T>, data: unknown): ValidationOutcome<T> {

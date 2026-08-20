@@ -82,6 +82,7 @@ export function createHealthDetector(
           target: target.name,
           url: target.url,
           method,
+          containerName: target.container,
           status: result.status,
           error: result.error,
         },
@@ -104,6 +105,7 @@ export function createHealthDetector(
           target: target.name,
           url: target.url,
           method,
+          containerName: target.container,
           status: result.status,
         },
       };

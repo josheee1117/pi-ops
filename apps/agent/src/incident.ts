@@ -8,12 +8,21 @@ export interface IncidentConfig {
   aggregationWindowMs: number;
 }
 
-export interface IncidentResult {
-  incidentId: string;
-  isNew: boolean;
-  isRecovery: boolean;
-  eventCount: number;
-}
+export type IncidentResult =
+  | {
+      ignored: false;
+      incidentId: string;
+      isNew: boolean;
+      isRecovery: boolean;
+      eventCount: number;
+    }
+  | {
+      ignored: true;
+      incidentId: null;
+      isNew: false;
+      isRecovery: false;
+      eventCount: 0;
+    };
 
 // ── Severity ordering (higher index = more severe) ───────────────────────────
 
@@ -28,9 +37,11 @@ function maxSeverity(a: string, b: string): string {
   return (SEVERITY_ORDER[a] ?? 0) >= (SEVERITY_ORDER[b] ?? 0) ? a : b;
 }
 
-const SEVERITY_ORDER_SORTED = Object.entries(SEVERITY_ORDER).sort(
-  ([, a], [, b]) => a - b,
-);
+const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
+  'health.recovered': 'health.failure',
+  'host.memory_recovered': 'host.memory_pressure',
+  'host.disk_recovered': 'host.disk_pressure',
+};
 
 // ── Fingerprint ──────────────────────────────────────────────────────────────
 
@@ -40,7 +51,8 @@ const SEVERITY_ORDER_SORTED = Object.entries(SEVERITY_ORDER).sort(
  * (source, nodeId, service, type). Never includes timestamps or random data.
  */
 export function computeFingerprint(event: OpsEvent): string {
-  return event.fingerprint ?? `${event.source}:${event.nodeId}:${event.service}:${event.type}`;
+  const canonicalType = RECOVERY_TYPE_MAP[event.type] ?? event.type;
+  return event.fingerprint ?? `${event.source}:${event.nodeId}:${event.service}:${canonicalType}`;
 }
 
 // ── Recovery detection ───────────────────────────────────────────────────────
@@ -69,8 +81,40 @@ export function createIncidentEngine(
 ): IncidentEngine {
   return {
     processEvent(event: OpsEvent, timestamp: string): IncidentResult {
+      // Transport retry guard: an immutable Event can belong to only one
+      // Incident, regardless of time window or current Incident state.
+      const linkedIncident = store.findIncidentByEventId(event.id);
+      if (linkedIncident) {
+        return {
+          ignored: false,
+          incidentId: linkedIncident.id,
+          isNew: false,
+          isRecovery: false,
+          eventCount: linkedIncident.event_count,
+        };
+      }
+
       const fingerprint = computeFingerprint(event);
       const existing = store.findOpenIncident(fingerprint);
+      const isExplicitRecovery = RECOVERY_TYPE_MAP[event.type] !== undefined;
+
+      if (existing && isExplicitRecovery) {
+        const linked = store.linkEventToIncident(existing.id, event.id);
+        const eventCount = existing.event_count + (linked ? 1 : 0);
+        store.updateIncident(existing.id, {
+          last_seen: timestamp,
+          event_count: eventCount,
+          severity: existing.severity,
+          state: 'RECOVERED',
+        });
+        return {
+          ignored: false,
+          incidentId: existing.id,
+          isNew: false,
+          isRecovery: true,
+          eventCount,
+        };
+      }
 
       if (existing) {
         // Check if within aggregation window
@@ -115,6 +159,7 @@ export function createIncidentEngine(
           });
           store.linkEventToIncident(newIncident.id, event.id);
           return {
+            ignored: false,
             incidentId: newIncident.id,
             isNew: true,
             isRecovery: false,
@@ -131,6 +176,7 @@ export function createIncidentEngine(
             state: 'RECOVERED',
           });
           return {
+            ignored: false,
             incidentId,
             isNew: false,
             isRecovery: true,
@@ -138,7 +184,25 @@ export function createIncidentEngine(
           };
         }
 
-        return { incidentId, isNew: false, isRecovery: false, eventCount };
+        return {
+          ignored: false,
+          incidentId,
+          isNew: false,
+          isRecovery: false,
+          eventCount,
+        };
+      }
+
+      // A recovery without a matching OPEN Incident is an observation, not a
+      // new failure Incident.
+      if (isExplicitRecovery) {
+        return {
+          ignored: true,
+          incidentId: null,
+          isNew: false,
+          isRecovery: false,
+          eventCount: 0,
+        };
       }
 
       // No existing incident: create new
@@ -156,6 +220,7 @@ export function createIncidentEngine(
       store.linkEventToIncident(newIncident.id, event.id);
 
       return {
+        ignored: false,
         incidentId: newIncident.id,
         isNew: true,
         isRecovery: false,

@@ -4,6 +4,7 @@ import {
   validateOpsEvent,
   validateEventBatch,
   validateEvidence,
+  validateEvidenceQueryRequest,
   CURRENT_SCHEMA_VERSION,
   MAX_BATCH_SIZE,
 } from '../index.js';
@@ -248,6 +249,35 @@ describe('validateEvidence', () => {
       makeValidEvidence({ data: { nested: { deep: [1, 2, 3] }, scalar: 42 } }),
     );
     assert.ok(result.success);
+  });
+});
+
+// ── Evidence query validation ────────────────────────────────────────────────
+
+describe('validateEvidenceQueryRequest', () => {
+  it('accepts a typed bounded docker.logs query', () => {
+    const result = validateEvidenceQueryRequest({
+      type: 'docker.logs',
+      incidentId: 'inc-0001',
+      container: 'dataease',
+      since: '2m',
+      maxLines: 200,
+    });
+    assert.ok(result.success);
+  });
+
+  it('rejects an arbitrary command query', () => {
+    const result = validateEvidenceQueryRequest({
+      type: 'shell.exec',
+      incidentId: 'inc-0001',
+      command: 'whoami',
+    });
+    assert.ok(!result.success);
+  });
+
+  it('rejects query without incidentId', () => {
+    const result = validateEvidenceQueryRequest({ type: 'host.memory' });
+    assert.ok(!result.success);
   });
 });
 

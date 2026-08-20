@@ -5,6 +5,8 @@ export interface HealthTarget {
   url: string;
   method?: string;
   intervalMs?: number;
+  /** Optional container mapping used for deterministic follow-up evidence. */
+  container?: string;
 }
 
 export interface NodeAgentConfig {
