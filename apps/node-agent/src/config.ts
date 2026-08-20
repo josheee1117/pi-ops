@@ -17,6 +17,8 @@ export interface NodeAgentConfig {
   allowedContainers: Set<string>;
   /** Path to Docker Engine API socket. */
   dockerSocketPath: string;
+  /** Explicit paths allowed for host.disk evidence queries. */
+  allowedDiskPaths: Set<string>;
   /** Maximum log lines returned by docker.logs. */
   logsMaxLines: number;
   /** Maximum log bytes returned by docker.logs. */
@@ -68,18 +70,69 @@ function requireEnv(key: string): string {
 function parseHealthTargets(): HealthTarget[] {
   const raw = process.env['PI_OPS_HEALTH_TARGETS'] ?? '';
   if (!raw) return [];
+
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as HealthTarget[];
+    parsed = JSON.parse(raw);
   } catch {
-    console.warn('[node-agent] failed to parse PI_OPS_HEALTH_TARGETS, ignoring');
-    return [];
+    throw new Error('PI_OPS_HEALTH_TARGETS must be valid JSON');
   }
+  if (!Array.isArray(parsed)) {
+    throw new Error('PI_OPS_HEALTH_TARGETS must be a JSON array');
+  }
+
+  return parsed.map((item) => {
+    if (!item || typeof item !== 'object') {
+      throw new Error('Each health target requires name and url');
+    }
+    const candidate = item as Record<string, unknown>;
+    const name = candidate['name'];
+    const url = candidate['url'];
+    const method = candidate['method'] ?? 'GET';
+    const intervalMs = candidate['intervalMs'];
+    const container = candidate['container'];
+    if (typeof name !== 'string' || !name || typeof url !== 'string' || !url) {
+      throw new Error('Each health target requires name and url');
+    }
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error(`Invalid health target URL: ${url}`);
+    }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new Error(`Health target must use http or https: ${url}`);
+    }
+    if (typeof method !== 'string' || !['GET', 'HEAD'].includes(method.toUpperCase())) {
+      throw new Error(`Health target method must be GET or HEAD: ${name}`);
+    }
+    if (intervalMs !== undefined && (typeof intervalMs !== 'number' || intervalMs <= 0)) {
+      throw new Error(`Health target intervalMs must be positive: ${name}`);
+    }
+    if (container !== undefined && (typeof container !== 'string' || !container)) {
+      throw new Error(`Health target container must be a non-empty string: ${name}`);
+    }
+    return {
+      name,
+      url: parsedUrl.toString(),
+      method: method.toUpperCase(),
+      ...(intervalMs !== undefined ? { intervalMs } : {}),
+      ...(container !== undefined ? { container } : {}),
+    };
+  });
 }
 
 export function loadConfig(): NodeAgentConfig {
   const raw = process.env['PI_OPS_ALLOWED_CONTAINERS'] ?? '';
   const allowedContainers = new Set(
     raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const diskPressurePath = process.env['PI_OPS_DISK_PRESSURE_PATH'] ?? '/';
+  const allowedDiskPaths = new Set(
+    (process.env['PI_OPS_ALLOWED_DISK_PATHS'] ?? diskPressurePath)
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
@@ -91,6 +144,7 @@ export function loadConfig(): NodeAgentConfig {
     nodeId: process.env['PI_OPS_NODE_ID'] ?? 'default',
     allowedContainers,
     dockerSocketPath: process.env['PI_OPS_DOCKER_SOCKET'] ?? '/var/run/docker.sock',
+    allowedDiskPaths,
     logsMaxLines: parseInt(process.env['PI_OPS_LOGS_MAX_LINES'] ?? '200', 10),
     logsMaxBytes: parseInt(process.env['PI_OPS_LOGS_MAX_BYTES'] ?? String(1024 * 1024), 10),
     probeMaxTimeoutMs: parseInt(process.env['PI_OPS_PROBE_MAX_TIMEOUT_MS'] ?? '30000', 10),
@@ -107,7 +161,7 @@ export function loadConfig(): NodeAgentConfig {
     memoryPressureThreshold: parseFloat(process.env['PI_OPS_MEMORY_PRESSURE_THRESHOLD'] ?? '0.9'),
     memoryPressureDuration: parseInt(process.env['PI_OPS_MEMORY_PRESSURE_DURATION'] ?? '3', 10),
     diskPressureThreshold: parseFloat(process.env['PI_OPS_DISK_PRESSURE_THRESHOLD'] ?? '0.9'),
-    diskPressurePath: process.env['PI_OPS_DISK_PRESSURE_PATH'] ?? '/',
+    diskPressurePath,
     diskPressureDuration: parseInt(process.env['PI_OPS_DISK_PRESSURE_DURATION'] ?? '3', 10),
     healthTargets: parseHealthTargets(),
     healthFailureDuration: parseInt(process.env['PI_OPS_HEALTH_FAILURE_DURATION'] ?? '2', 10),

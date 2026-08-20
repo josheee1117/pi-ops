@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type { NodeAgentConfig } from '../config.js';
 import type { EvidenceQueryRequest, EvidenceQueryResult } from './types.js';
 
@@ -37,7 +37,7 @@ export function createHostEvidenceProvider(): HostEvidenceProvider {
           const path = request.path!;
           // Use df to get disk info for the specified path.
           // This is a bounded, typed query — not arbitrary shell execution.
-          const output = execSync(`df -k "${path}"`, {
+          const output = execFileSync('df', ['-k', path], {
             encoding: 'utf-8',
             timeout: 5000,
             maxBuffer: 1024 * 1024, // 1MB

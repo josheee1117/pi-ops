@@ -8,6 +8,7 @@ export function makeNodeAgentConfig(overrides: Partial<NodeAgentConfig> = {}): N
     nodeId: 'test-node',
     allowedContainers: new Set(['dataease']),
     dockerSocketPath: '/var/run/docker.sock',
+    allowedDiskPaths: new Set(['/', '/var']),
     logsMaxLines: 200,
     logsMaxBytes: 1024 * 1024,
     probeMaxTimeoutMs: 30000,
@@ -24,7 +25,7 @@ export function makeNodeAgentConfig(overrides: Partial<NodeAgentConfig> = {}): N
     diskPressureThreshold: 0.9,
     diskPressurePath: '/',
     diskPressureDuration: 3,
-    healthTargets: [],
+    healthTargets: [{ name: 'test-health', url: 'http://localhost:8080/health' }],
     healthFailureDuration: 2,
     ...overrides,
   };

@@ -428,4 +428,113 @@ describe('evidence orchestration', () => {
     assert.match(evidence[0]?.error ?? '', /no URL/);
     store.close();
   });
+
+  it('routes requests to the node endpoint matching Incident.node_id', async () => {
+    const store = createEventStore(':memory:');
+    const config = makeConfig({
+      nodeAgents: new Map([
+        ['node-a', { nodeId: 'node-a', url: 'http://node-a', token: 'token-a' }],
+        ['node-b', { nodeId: 'node-b', url: 'http://node-b', token: 'token-b' }],
+      ]),
+    });
+    const seen: Array<{ url: string; auth: string }> = [];
+    let id = 0;
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const headers = init?.headers as Record<string, string>;
+      seen.push({ url, auth: headers.Authorization });
+      const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
+      const nodeId = url.includes('node-a') ? 'node-a' : 'node-b';
+      id++;
+      return new Response(JSON.stringify({
+        id: `evd-route-${id}`,
+        incidentId: query.incidentId,
+        nodeId,
+        source: 'docker',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:00:01.000Z',
+        data: {},
+      }), { status: 200 });
+    }) as FetchLike;
+    const orchestrator = createEvidenceOrchestrator(config, store, fetchImpl);
+
+    for (const nodeId of ['node-a', 'node-b']) {
+      const incident = store.createIncident({
+        service: 'dataease',
+        node_id: nodeId,
+        type: 'container.die',
+        state: 'OPEN',
+        fingerprint: `fp-${nodeId}`,
+        first_seen: '2026-08-20T12:00:00.000Z',
+        last_seen: '2026-08-20T12:00:00.000Z',
+        event_count: 1,
+        severity: 'error',
+      });
+      const summary = await orchestrator.collectForIncident(
+        incident,
+        makeEvent({ nodeId, type: 'container.die' }),
+      );
+      assert.equal(summary.succeeded, 2);
+    }
+
+    assert.ok(seen.filter((call) => call.url.startsWith('http://node-a/')).length === 2);
+    assert.ok(seen.filter((call) => call.url.startsWith('http://node-b/')).length === 2);
+    assert.ok(seen.filter((call) => call.auth === 'Bearer token-a').length === 2);
+    assert.ok(seen.filter((call) => call.auth === 'Bearer token-b').length === 2);
+    store.close();
+  });
+
+  it('times out each node request and persists failures', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-timeout',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const hangingFetch = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      })) as FetchLike;
+
+    const summary = await createEvidenceOrchestrator(
+      makeConfig({ evidenceTimeoutMs: 10 }),
+      store,
+      hangingFetch,
+    ).collectForIncident(incident, makeEvent({ type: 'container.die' }));
+
+    assert.equal(summary.failed, 2);
+    assert.ok(store.listEvidence(incident.id).every((item) => item.error?.includes('aborted')));
+    store.close();
+  });
+
+  it('redacts node tokens from persisted error messages', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-secret',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const echoingFetch = (async () =>
+      new Response('authentication failed for node-token', { status: 401 })) as FetchLike;
+
+    await createEvidenceOrchestrator(makeConfig(), store, echoingFetch)
+      .collectForIncident(incident, makeEvent({ type: 'container.die' }));
+
+    const errors = store.listEvidence(incident.id).map((item) => item.error ?? '');
+    assert.ok(errors.every((error) => !error.includes('node-token')));
+    assert.ok(errors.every((error) => error.includes('[REDACTED]')));
+    store.close();
+  });
 });

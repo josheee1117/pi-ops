@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { NodeAgentConfig } from '../config.js';
 import type { EventSender } from '../events/sender.js';
@@ -24,7 +24,7 @@ export function createDiskDetector(
     let availableKb = 0;
 
     try {
-      const output = execSync(`df -k "${config.diskPressurePath}"`, {
+      const output = execFileSync('df', ['-k', config.diskPressurePath], {
         encoding: 'utf-8',
         timeout: 5000,
         maxBuffer: 1024 * 1024,

@@ -2,6 +2,36 @@ import Docker from 'dockerode';
 import type { NodeAgentConfig } from '../config.js';
 import type { EvidenceQueryRequest, EvidenceQueryResult } from './types.js';
 
+export interface DockerInspectResult {
+  Id?: string;
+  Name?: string;
+  State?: { Status?: string; Running?: boolean; StartedAt?: string };
+  Config?: { Image?: string };
+}
+
+export interface DockerStatsResult {
+  cpu_stats?: {
+    cpu_usage?: { total_usage?: number };
+    system_cpu_usage?: number;
+  };
+  memory_stats?: { usage?: number; limit?: number };
+  pids_stats?: unknown;
+}
+
+export type DockerLogResult = Buffer | (AsyncIterable<unknown> & { destroy?: () => void });
+
+export interface DockerContainerLike {
+  inspect(): Promise<DockerInspectResult>;
+  logs(options: Record<string, unknown>): Promise<DockerLogResult>;
+  stats(options: { stream: false }): Promise<DockerStatsResult>;
+}
+
+export interface DockerClientLike {
+  getContainer(name: string): DockerContainerLike;
+}
+
+export type DockerClientFactory = (config: NodeAgentConfig) => DockerClientLike;
+
 /**
  * Docker evidence provider.
  *
@@ -21,27 +51,115 @@ function durationToUnixSeconds(duration: string): number {
   return Math.floor(Date.now() / 1000) - seconds;
 }
 
-export function createDockerEvidenceProvider(): DockerEvidenceProvider {
-  const docker = new Docker({ socketPath: '/var/run/docker.sock' });
-
-  // Override socketPath from config when creating the provider
-  function createDocker(config: NodeAgentConfig): Docker {
-    return new Docker({ socketPath: config.dockerSocketPath });
+async function collectLogBuffer(
+  result: DockerLogResult,
+  rawLimit: number,
+): Promise<{ buffer: Buffer; truncated: boolean }> {
+  if (Buffer.isBuffer(result)) {
+    return {
+      buffer: result.subarray(0, rawLimit),
+      truncated: result.length > rawLimit,
+    };
   }
 
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let truncated = false;
+
+  for await (const chunk of result) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    const remaining = rawLimit - total;
+    if (remaining <= 0) {
+      truncated = true;
+      result.destroy?.();
+      break;
+    }
+    if (buffer.length > remaining) {
+      chunks.push(buffer.subarray(0, remaining));
+      total += remaining;
+      truncated = true;
+      result.destroy?.();
+      break;
+    }
+    chunks.push(buffer);
+    total += buffer.length;
+  }
+
+  return { buffer: Buffer.concat(chunks, total), truncated };
+}
+
+function isMultiplexHeader(buffer: Buffer, offset: number): boolean {
+  return (
+    offset + 8 <= buffer.length &&
+    buffer[offset]! <= 2 &&
+    buffer[offset + 1] === 0 &&
+    buffer[offset + 2] === 0 &&
+    buffer[offset + 3] === 0
+  );
+}
+
+/** Decode Docker's 8-byte multiplex frames, then enforce output byte/line caps. */
+export function decodeDockerLogs(
+  buffer: Buffer,
+  maxBytes: number,
+  maxLines: number,
+  rawTruncated = false,
+): { lines: string[]; truncated: boolean } {
+  const payloads: Buffer[] = [];
+  let payloadBytes = 0;
+  let truncated = rawTruncated;
+
+  if (isMultiplexHeader(buffer, 0)) {
+    let offset = 0;
+    while (isMultiplexHeader(buffer, offset)) {
+      const frameLength = buffer.readUInt32BE(offset + 4);
+      const payloadStart = offset + 8;
+      const available = Math.min(frameLength, buffer.length - payloadStart);
+      const remaining = maxBytes - payloadBytes;
+      const take = Math.max(0, Math.min(available, remaining));
+      if (take > 0) {
+        payloads.push(buffer.subarray(payloadStart, payloadStart + take));
+        payloadBytes += take;
+      }
+      if (available < frameLength || take < frameLength) truncated = true;
+      if (available < frameLength || remaining <= available) break;
+      offset = payloadStart + frameLength;
+    }
+  } else {
+    const take = Math.min(buffer.length, maxBytes);
+    payloads.push(buffer.subarray(0, take));
+    payloadBytes = take;
+    if (take < buffer.length) truncated = true;
+  }
+
+  let lines = Buffer.concat(payloads, payloadBytes)
+    .toString('utf-8')
+    .split(/\r?\n/)
+    .filter((line) => line.length > 0);
+
+  if (lines.length > maxLines) {
+    lines = lines.slice(-maxLines);
+    truncated = true;
+  }
+
+  return { lines, truncated };
+}
+
+export function createDockerEvidenceProvider(
+  createClient: DockerClientFactory = (config) =>
+    new Docker({ socketPath: config.dockerSocketPath }) as unknown as DockerClientLike,
+): DockerEvidenceProvider {
   return {
     async query(request: EvidenceQueryRequest, config: NodeAgentConfig): Promise<EvidenceQueryResult> {
-      const d = createDocker(config);
+      const docker = createClient(config);
       const containerName = request.container!;
-
-      const container = d.getContainer(containerName);
+      const container = docker.getContainer(containerName);
 
       let data: unknown;
 
       switch (request.type) {
         case 'docker.inspect': {
           const inspect = await container.inspect();
-          // Only return safe, read-only fields
           data = {
             Id: inspect.Id,
             Name: inspect.Name,
@@ -60,42 +178,25 @@ export function createDockerEvidenceProvider(): DockerEvidenceProvider {
         case 'docker.logs': {
           const maxLines = request.maxLines ?? config.logsMaxLines;
           const since = request.since ? durationToUnixSeconds(request.since) : undefined;
-          const logOpts = {
+          const logOptions = {
             stdout: true,
             stderr: true,
+            follow: false,
             tail: maxLines,
             timestamps: false,
             ...(since !== undefined ? { since } : {}),
           };
-          const stream = await container.logs(logOpts);
-          const chunks: Buffer[] = [];
-          let totalBytes = 0;
-
-          for await (const chunk of stream) {
-            const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
-            totalBytes += buf.length;
-            if (totalBytes > config.logsMaxBytes) {
-              chunks.push(Buffer.from('\n[...truncated: max bytes exceeded]'));
-              break;
-            }
-            chunks.push(buf);
-          }
-
-          // Docker log format: 8-byte header + payload
-          const text = Buffer.concat(chunks)
-            .toString('utf-8')
-            .split('\n')
-            .map((line) => {
-              // Strip Docker's 8-byte header from each line
-              if (line.length > 8) return line.slice(8);
-              return line;
-            })
-            .join('\n');
-
-          data = {
-            lines: text.split('\n').filter(Boolean),
-            truncated: totalBytes > config.logsMaxBytes,
-          };
+          const result = await container.logs(logOptions);
+          // Multiplex framing adds 8 bytes per line/frame; include only that
+          // bounded overhead while collecting the raw response.
+          const rawLimit = config.logsMaxBytes + maxLines * 8;
+          const collected = await collectLogBuffer(result, rawLimit);
+          data = decodeDockerLogs(
+            collected.buffer,
+            config.logsMaxBytes,
+            maxLines,
+            collected.truncated,
+          );
           break;
         }
         case 'docker.stats': {

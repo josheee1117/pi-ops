@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateQueryRequest, ALLOWED_QUERY_TYPES } from '../evidence/types.js';
+import {
+  createDockerEvidenceProvider,
+  decodeDockerLogs,
+  type DockerClientLike,
+} from '../evidence/docker.js';
 import { makeNodeAgentConfig } from './test-config.js';
 
 function makeConfig(overrides: Parameters<typeof makeNodeAgentConfig>[0] = {}) {
@@ -100,12 +105,12 @@ describe('validateQueryRequest', () => {
     assert.ok(result.valid);
   });
 
-  it('allows any container when allowlist is empty', () => {
+  it('fails closed when the container allowlist is empty', () => {
     const result = validateQueryRequest(
       { type: 'docker.inspect', incidentId: 'inc-1', container: 'anything' },
       makeConfig({ allowedContainers: new Set() }),
     );
-    assert.ok(result.valid);
+    assert.ok(!result.valid);
   });
 
   it('rejects docker.logs with maxLines exceeding limit', () => {
@@ -167,12 +172,20 @@ describe('validateQueryRequest', () => {
     }
   });
 
-  it('accepts host.disk with absolute path', () => {
+  it('accepts host.disk with an allowlisted absolute path', () => {
     const result = validateQueryRequest(
       { type: 'host.disk', incidentId: 'inc-1', path: '/var' },
       makeConfig(),
     );
     assert.ok(result.valid);
+  });
+
+  it('rejects an absolute host.disk path outside the allowlist', () => {
+    const result = validateQueryRequest(
+      { type: 'host.disk', incidentId: 'inc-1', path: '/tmp;touch /tmp/pwned' },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
   });
 
   // ── HTTP probe ──────────────────────────────────────────────────────────
@@ -203,13 +216,47 @@ describe('validateQueryRequest', () => {
 
   it('rejects http.probe with timeout exceeding max', () => {
     const result = validateQueryRequest(
-      { type: 'http.probe', incidentId: 'inc-1', url: 'http://localhost:8080', timeout: 99999 },
+      {
+        type: 'http.probe',
+        incidentId: 'inc-1',
+        url: 'http://localhost:8080/health',
+        timeout: 99999,
+      },
       makeConfig({ probeMaxTimeoutMs: 30000 }),
     );
     assert.ok(!result.valid);
   });
 
-  it('accepts valid http.probe query', () => {
+  it('rejects an unconfigured public HTTP target', () => {
+    const result = validateQueryRequest(
+      { type: 'http.probe', incidentId: 'inc-1', url: 'https://example.com/' },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
+  });
+
+  it('rejects an unconfigured metadata endpoint', () => {
+    const result = validateQueryRequest(
+      { type: 'http.probe', incidentId: 'inc-1', url: 'http://169.254.169.254/latest/meta-data/' },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
+  });
+
+  it('rejects non-read-only HTTP methods', () => {
+    const result = validateQueryRequest(
+      {
+        type: 'http.probe',
+        incidentId: 'inc-1',
+        url: 'http://localhost:8080/health',
+        method: 'POST',
+      },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
+  });
+
+  it('accepts valid configured http.probe query', () => {
     const result = validateQueryRequest(
       {
         type: 'http.probe',
@@ -226,6 +273,75 @@ describe('validateQueryRequest', () => {
       assert.equal(result.request.method, 'GET');
       assert.equal(result.request.timeout, 5000);
     }
+  });
+});
+
+// ── Docker log provider ──────────────────────────────────────────────────────
+
+function dockerFrame(streamType: 1 | 2, payload: string): Buffer {
+  const body = Buffer.from(payload);
+  const header = Buffer.alloc(8);
+  header[0] = streamType;
+  header.writeUInt32BE(body.length, 4);
+  return Buffer.concat([header, body]);
+}
+
+describe('Docker log evidence', () => {
+  it('decodes multiplexed stdout/stderr frames and enforces maxLines', () => {
+    const raw = Buffer.concat([
+      dockerFrame(1, 'first\n'),
+      dockerFrame(2, 'second\n'),
+      dockerFrame(1, 'third\n'),
+    ]);
+    const result = decodeDockerLogs(raw, 1024, 2);
+    assert.deepEqual(result.lines, ['second', 'third']);
+    assert.equal(result.truncated, true);
+  });
+
+  it('enforces the decoded payload byte cap', () => {
+    const raw = dockerFrame(1, '1234567890\n');
+    const result = decodeDockerLogs(raw, 5, 20);
+    assert.deepEqual(result.lines, ['12345']);
+    assert.equal(result.truncated, true);
+  });
+
+  it('applies bounded tail and since options at the Docker provider', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const client: DockerClientLike = {
+      getContainer() {
+        return {
+          async inspect() { return {}; },
+          async stats() { return {}; },
+          async logs(options) {
+            capturedOptions = options;
+            return Buffer.concat([
+              dockerFrame(1, 'line-one\n'),
+              dockerFrame(2, 'line-two\n'),
+            ]);
+          },
+        };
+      },
+    };
+    const provider = createDockerEvidenceProvider(() => client);
+    const before = Math.floor(Date.now() / 1000) - 120;
+    const result = await provider.query({
+      type: 'docker.logs',
+      incidentId: 'inc-1',
+      container: 'dataease',
+      since: '2m',
+      maxLines: 2,
+    }, makeConfig());
+    const after = Math.floor(Date.now() / 1000) - 120;
+
+    assert.equal(capturedOptions?.['follow'], false);
+    assert.equal(capturedOptions?.['tail'], 2);
+    const since = capturedOptions?.['since'];
+    assert.equal(typeof since, 'number');
+    assert.ok((since as number) >= before && (since as number) <= after);
+    assert.deepEqual(
+      (result.data as { lines: string[] }).lines,
+      ['line-one', 'line-two'],
+    );
   });
 });
 

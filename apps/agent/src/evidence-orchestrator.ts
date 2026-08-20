@@ -126,6 +126,10 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<st
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf-8');
 }
 
+function redactSecret(message: string, secret: string): string {
+  return secret ? message.split(secret).join('[REDACTED]') : message;
+}
+
 function failureEvidence(
   incident: IncidentRow,
   query: EvidenceQueryRequest,
@@ -219,7 +223,8 @@ export function createEvidenceOrchestrator(
       store.insertEvidence({ ...evidence, status: 'succeeded' });
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const message = redactSecret(rawMessage, endpoint.token);
       const evidence = failureEvidence(incident, query);
       store.insertEvidence({ ...evidence, status: 'failed', error: message });
       return false;

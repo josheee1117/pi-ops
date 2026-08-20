@@ -17,6 +17,18 @@ export interface QueryValidationError {
   message: string;
 }
 
+const READ_ONLY_HTTP_METHODS = new Set(['GET', 'HEAD']);
+
+function normalizeUrl(value: string): string | undefined {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function validateQueryRequest(
   body: unknown,
   config: NodeAgentConfig,
@@ -57,7 +69,7 @@ export function validateQueryRequest(
       const container = req['container'];
       if (typeof container !== 'string' || container.length === 0) {
         errors.push({ field: 'container', message: 'container is required for docker queries' });
-      } else if (config.allowedContainers.size > 0 && !config.allowedContainers.has(container)) {
+      } else if (!config.allowedContainers.has(container)) {
         errors.push({ field: 'container', message: `Container "${container}" is not in the allowlist` });
       }
       request.container = container as string;
@@ -98,26 +110,39 @@ export function validateQueryRequest(
         errors.push({ field: 'path', message: 'path is required for host.disk' });
       } else if (!path.startsWith('/')) {
         errors.push({ field: 'path', message: 'path must be absolute' });
+      } else if (!config.allowedDiskPaths.has(path)) {
+        errors.push({ field: 'path', message: `Path "${path}" is not in the allowlist` });
       }
       request.path = path as string;
       break;
     }
     case 'http.probe': {
       const url = req['url'];
-      if (typeof url !== 'string' || url.length === 0) {
-        errors.push({ field: 'url', message: 'url is required for http.probe' });
-      } else {
-        // Block internal/private IP ranges to prevent SSRF
-        try {
-          const parsed = new URL(url);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            errors.push({ field: 'url', message: 'Only http and https URLs are allowed' });
-          }
-        } catch {
-          errors.push({ field: 'url', message: 'Invalid URL format' });
+      const normalizedUrl = typeof url === 'string' ? normalizeUrl(url) : undefined;
+      if (!normalizedUrl) {
+        errors.push({ field: 'url', message: 'url must be a valid http or https URL' });
+      }
+
+      const rawMethod = req['method'];
+      const method = typeof rawMethod === 'string' ? rawMethod.toUpperCase() : 'GET';
+      if (!READ_ONLY_HTTP_METHODS.has(method)) {
+        errors.push({ field: 'method', message: 'Only GET and HEAD are allowed' });
+      }
+
+      if (normalizedUrl && READ_ONLY_HTTP_METHODS.has(method)) {
+        const isConfigured = config.healthTargets.some((target) => {
+          const targetUrl = normalizeUrl(target.url);
+          const targetMethod = (target.method ?? 'GET').toUpperCase();
+          return targetUrl === normalizedUrl && targetMethod === method;
+        });
+        if (!isConfigured) {
+          errors.push({ field: 'url', message: 'HTTP probe target is not configured' });
         }
       }
-      request.url = url as string;
+
+      request.url = normalizedUrl ?? (url as string);
+      request.method = method;
+
       const rawTimeout = req['timeout'];
       if (rawTimeout != null) {
         const timeout = Number(rawTimeout);
@@ -127,10 +152,6 @@ export function validateQueryRequest(
           errors.push({ field: 'timeout', message: `timeout exceeds maximum of ${config.probeMaxTimeoutMs}ms` });
         }
         request.timeout = timeout;
-      }
-      const method = req['method'];
-      if (method !== undefined && typeof method === 'string') {
-        request.method = method;
       }
       break;
     }
