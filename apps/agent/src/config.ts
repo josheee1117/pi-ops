@@ -7,6 +7,9 @@ export interface AgentConfig {
   nodeId: string;
   /** Maximum request body size in bytes (default 1 MB). */
   maxBodySize: number;
+  /** Aggregation window in milliseconds. Events with the same fingerprint
+   *  arriving within this window join the same incident. (default 5 min) */
+  aggregationWindowMs: number;
 }
 
 function requireEnv(key: string): string {
@@ -24,5 +27,9 @@ export function loadConfig(): AgentConfig {
     sqlitePath: requireEnv('PI_OPS_SQLITE_PATH'),
     nodeId: process.env['PI_OPS_NODE_ID'] ?? 'default',
     maxBodySize: parseInt(process.env['PI_OPS_MAX_BODY_SIZE'] ?? String(1024 * 1024), 10),
+    aggregationWindowMs: parseInt(
+      process.env['PI_OPS_AGGREGATION_WINDOW_MS'] ?? String(5 * 60 * 1000),
+      10,
+    ),
   };
 }

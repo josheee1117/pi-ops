@@ -1,4 +1,4 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import type { Hono } from 'hono';
 import { createApp } from '../app.js';
 import { createEventStore, type EventStore } from '../store.js';
+import { createIncidentEngine, type IncidentEngine } from '../incident.js';
 import type { AgentConfig } from '../config.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -15,6 +16,7 @@ const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   ingestToken: 'test-token',
   nodeId: 'test-node',
   maxBodySize: 1024 * 1024,
+  aggregationWindowMs: 5 * 60 * 1000,
 };
 
 function makeTestConfig(sqlitePath: string): AgentConfig {
@@ -50,11 +52,12 @@ function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer test-token`, 'Content-Type': 'application/json' };
 }
 
-function setupInMemory(): { app: Hono; store: EventStore } {
+function setupInMemory(): { app: Hono; store: EventStore; engine: IncidentEngine } {
   const config = makeTestConfig(':memory:');
   const store = createEventStore(':memory:');
-  const app = createApp(config, store);
-  return { app, store };
+  const engine = createIncidentEngine(store, { aggregationWindowMs: config.aggregationWindowMs });
+  const app = createApp(config, store, engine);
+  return { app, store, engine };
 }
 
 function setupFileDb(): { app: Hono; store: EventStore; dbPath: string } {
@@ -62,7 +65,8 @@ function setupFileDb(): { app: Hono; store: EventStore; dbPath: string } {
   const dbPath = join(tmpDir, 'test.db');
   const config = makeTestConfig(dbPath);
   const store = createEventStore(dbPath);
-  const app = createApp(config, store);
+  const engine = createIncidentEngine(store, { aggregationWindowMs: config.aggregationWindowMs });
+  const app = createApp(config, store, engine);
   return { app, store, dbPath };
 }
 
@@ -113,7 +117,6 @@ describe('POST /v1/events', () => {
     });
     assert.equal(res.status, 200);
     const body = await res.json();
-    // Still reports accepted (the event is valid, INSERT OR IGNORE handles dup)
     assert.equal(body.accepted, 1);
     assert.equal(store.count(), 1); // no new row
   });
@@ -202,7 +205,6 @@ describe('persistence', () => {
   it('event survives database close and reopen', () => {
     const { store: store1, dbPath } = setupFileDb();
 
-    // Insert an event
     const batch = {
       producer: { id: 'p1', type: 'node-agent' as const, version: '0.1.0' },
       events: [
@@ -229,7 +231,6 @@ describe('persistence', () => {
     assert.equal(store2.count(), 1);
     store2.close();
 
-    // Cleanup
     rmSync(dbPath, { recursive: true, force: true });
   });
 });

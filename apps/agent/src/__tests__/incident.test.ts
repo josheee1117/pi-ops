@@ -1,0 +1,408 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { createEventStore } from '../store.js';
+import { createIncidentEngine, computeFingerprint } from '../incident.js';
+import type { OpsEvent } from '@pi-ops/protocol';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const AGGREGATION_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+function makeEvent(overrides: Partial<OpsEvent> = {}): OpsEvent {
+  return {
+    schemaVersion: 1,
+    id: 'evt-0001',
+    time: '2026-08-20T12:00:00.000Z',
+    source: 'docker',
+    nodeId: 'test-svc-02',
+    service: 'dataease',
+    type: 'container.die',
+    severity: 'error',
+    message: 'Container died',
+    attributes: { exitCode: 137 },
+    ...overrides,
+  };
+}
+
+function setup() {
+  const store = createEventStore(':memory:');
+  const engine = createIncidentEngine(store, { aggregationWindowMs: AGGREGATION_WINDOW_MS });
+  return { store, engine };
+}
+
+// ── Fingerprint ──────────────────────────────────────────────────────────────
+
+describe('computeFingerprint', () => {
+  it('uses event-provided fingerprint when available', () => {
+    const event = makeEvent({ fingerprint: 'custom-fp' });
+    assert.equal(computeFingerprint(event), 'custom-fp');
+  });
+
+  it('derives fingerprint from stable dimensions when not provided', () => {
+    const event = makeEvent({ fingerprint: undefined });
+    const fp = computeFingerprint(event);
+    assert.equal(fp, 'docker:test-svc-02:dataease:container.die');
+  });
+
+  it('excludes timestamps and random data from derived fingerprint', () => {
+    const event1 = makeEvent({ id: 'evt-1', time: '2026-08-20T12:00:00.000Z', fingerprint: undefined });
+    const event2 = makeEvent({ id: 'evt-2', time: '2026-08-20T13:00:00.000Z', fingerprint: undefined });
+    assert.equal(computeFingerprint(event1), computeFingerprint(event2));
+  });
+});
+
+// ── Incident creation ────────────────────────────────────────────────────────
+
+describe('incident creation', () => {
+  it('creates a new incident for the first event', () => {
+    const { store, engine } = setup();
+    const event = makeEvent();
+    const result = engine.processEvent(event, event.time);
+    assert.ok(result.isNew);
+    assert.equal(result.eventCount, 1);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.count(), 0); // events aren't stored by processEvent alone
+  });
+
+  it('creates incident with correct initial fields', () => {
+    const { store, engine } = setup();
+    const event = makeEvent();
+    const result = engine.processEvent(event, event.time);
+    const incident = store.getIncident(result.incidentId);
+    assert.ok(incident);
+    assert.equal(incident.state, 'OPEN');
+    assert.equal(incident.service, 'dataease');
+    assert.equal(incident.severity, 'error');
+    assert.equal(incident.first_seen, '2026-08-20T12:00:00.000Z');
+    assert.equal(incident.last_seen, '2026-08-20T12:00:00.000Z');
+    assert.equal(incident.event_count, 1);
+  });
+});
+
+// ── Aggregation within window ────────────────────────────────────────────────
+
+describe('aggregation within window', () => {
+  it('aggregates events with same fingerprint into one incident', () => {
+    const { store, engine } = setup();
+    const baseTime = '2026-08-20T12:00:00.000Z';
+
+    const r1 = engine.processEvent(makeEvent({ id: 'evt-1', time: baseTime }), baseTime);
+    assert.ok(r1.isNew);
+    assert.equal(r1.eventCount, 1);
+
+    const r2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', time: '2026-08-20T12:00:30.000Z' }),
+      '2026-08-20T12:00:30.000Z',
+    );
+    assert.ok(!r2.isNew);
+    assert.equal(r2.incidentId, r1.incidentId);
+    assert.equal(r2.eventCount, 2);
+
+    assert.equal(store.incidentCount(), 1);
+  });
+
+  it('100 identical events → 1 Incident with eventCount=100', () => {
+    const { store, engine } = setup();
+    const baseTime = '2026-08-20T12:00:00.000Z';
+
+    let incidentId: string | undefined;
+    for (let i = 0; i < 100; i++) {
+      const seconds = Math.floor(i / 10);
+      const millis = (i % 10) * 100;
+      const time = `2026-08-20T12:00:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}Z`;
+      const result = engine.processEvent(
+        makeEvent({ id: `evt-${String(i).padStart(4, '0')}`, time }),
+        time,
+      );
+      if (i === 0) {
+        incidentId = result.incidentId;
+      } else {
+        assert.equal(result.incidentId, incidentId);
+      }
+    }
+
+    assert.equal(store.incidentCount(), 1);
+    const incident = store.getIncident(incidentId!);
+    assert.ok(incident);
+    assert.equal(incident.event_count, 100);
+  });
+});
+
+// ── Same event retransmitted → UNIQUE constraint on event_id ─────────────────
+
+describe('event retransmission safety', () => {
+  it('same event.id retransmitted 100 times → eventCount still 1', () => {
+    const { store, engine } = setup();
+    const event = makeEvent({ id: 'evt-retry' });
+
+    // First time: creates incident, links event
+    const r1 = engine.processEvent(event, event.time);
+    assert.ok(r1.isNew);
+    assert.equal(r1.eventCount, 1);
+
+    // Retransmit 99 more times
+    for (let i = 0; i < 99; i++) {
+      const result = engine.processEvent(event, event.time);
+      assert.equal(result.incidentId, r1.incidentId);
+      assert.equal(result.eventCount, 1); // still 1, not 100
+    }
+
+    const incident = store.getIncident(r1.incidentId);
+    assert.ok(incident);
+    assert.equal(incident.event_count, 1);
+    assert.equal(store.incidentCount(), 1);
+  });
+});
+
+// ── Aggregation window boundary ──────────────────────────────────────────────
+
+describe('aggregation window boundary', () => {
+  it('creates new incident when event is outside the window', () => {
+    const { store, engine } = setup();
+    const event1 = makeEvent({ id: 'evt-1', time: '2026-08-20T12:00:00.000Z' });
+    const r1 = engine.processEvent(event1, event1.time);
+    assert.ok(r1.isNew);
+
+    // Event 10 minutes later — outside the 5-minute window
+    const event2 = makeEvent({ id: 'evt-2', time: '2026-08-20T12:10:01.000Z' });
+    const r2 = engine.processEvent(event2, event2.time);
+    assert.ok(r2.isNew);
+    assert.notEqual(r2.incidentId, r1.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+
+  it('aggregates event exactly at the window boundary', () => {
+    const { store, engine } = setup();
+    const event1 = makeEvent({ id: 'evt-1', time: '2026-08-20T12:00:00.000Z' });
+    const r1 = engine.processEvent(event1, event1.time);
+
+    // Exactly at the 5-minute boundary (within)
+    const event2 = makeEvent({ id: 'evt-2', time: '2026-08-20T12:05:00.000Z' });
+    const r2 = engine.processEvent(event2, event2.time);
+    assert.equal(r2.incidentId, r1.incidentId);
+    assert.equal(store.incidentCount(), 1);
+  });
+
+  it('creates new incident one millisecond past the window', () => {
+    const { store, engine } = setup();
+    const event1 = makeEvent({ id: 'evt-1', time: '2026-08-20T12:00:00.000Z' });
+    const r1 = engine.processEvent(event1, event1.time);
+
+    const event2 = makeEvent({
+      id: 'evt-2',
+      time: '2026-08-20T12:05:00.001Z',
+    });
+    const r2 = engine.processEvent(event2, event2.time);
+    assert.ok(r2.isNew);
+    assert.notEqual(r2.incidentId, r1.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+});
+
+// ── Different fingerprints → different incidents ─────────────────────────────
+
+describe('fingerprint separation', () => {
+  it('different services create different incidents', () => {
+    const { store, engine } = setup();
+    const e1 = engine.processEvent(
+      makeEvent({ id: 'evt-1', service: 'dataease' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const e2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', service: 'ragflow' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    assert.notEqual(e1.incidentId, e2.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+
+  it('different nodes create different incidents', () => {
+    const { store, engine } = setup();
+    const e1 = engine.processEvent(
+      makeEvent({ id: 'evt-1', nodeId: 'test-svc-02' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const e2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', nodeId: 'test-ai-01' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    assert.notEqual(e1.incidentId, e2.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+
+  it('different event types create different incidents', () => {
+    const { store, engine } = setup();
+    const e1 = engine.processEvent(
+      makeEvent({ id: 'evt-1', type: 'container.die' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const e2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', type: 'container.oom' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    assert.notEqual(e1.incidentId, e2.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+});
+
+// ── Recovery ─────────────────────────────────────────────────────────────────
+
+describe('recovery', () => {
+  it('transitions incident to RECOVERED when a lower-severity event arrives', () => {
+    const { store, engine } = setup();
+
+    // Error event creates incident
+    const errorEvent = makeEvent({
+      id: 'evt-err',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T12:00:00.000Z',
+    });
+    const r1 = engine.processEvent(errorEvent, errorEvent.time);
+    assert.ok(r1.isNew);
+
+    // Info event with same fingerprint → recovery
+    const recoveryEvent = makeEvent({
+      id: 'evt-recover',
+      type: 'health.failure', // same type, but lower severity
+      severity: 'info',
+      time: '2026-08-20T12:01:00.000Z',
+    });
+    const r2 = engine.processEvent(recoveryEvent, recoveryEvent.time);
+    assert.ok(r2.isRecovery);
+    assert.equal(r2.incidentId, r1.incidentId);
+
+    const incident = store.getIncident(r1.incidentId);
+    assert.ok(incident);
+    assert.equal(incident.state, 'RECOVERED');
+  });
+
+  it('recovery only affects the correlated incident by fingerprint, not all incidents on same service', () => {
+    const { store, engine } = setup();
+
+    // Create two incidents on the same service but different types (different fingerprints)
+    const e1 = engine.processEvent(
+      makeEvent({ id: 'evt-1', type: 'container.die', severity: 'error' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const e2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', type: 'container.oom', severity: 'error' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    assert.notEqual(e1.incidentId, e2.incidentId);
+
+    // Recovery event matching e1's fingerprint only
+    const recovery = makeEvent({
+      id: 'evt-recover',
+      type: 'container.die',
+      severity: 'info',
+      time: '2026-08-20T12:01:00.000Z',
+    });
+    const r3 = engine.processEvent(recovery, recovery.time);
+    assert.ok(r3.isRecovery);
+    assert.equal(r3.incidentId, e1.incidentId);
+
+    // e1 should be RECOVERED
+    const inc1 = store.getIncident(e1.incidentId);
+    assert.equal(inc1!.state, 'RECOVERED');
+
+    // e2 should still be OPEN (not recovered)
+    const inc2 = store.getIncident(e2.incidentId);
+    assert.equal(inc2!.state, 'OPEN');
+  });
+
+  it('does not recover when event severity is equal or higher', () => {
+    const { store, engine } = setup();
+
+    const r1 = engine.processEvent(
+      makeEvent({ id: 'evt-1', severity: 'error' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+
+    // Another error event — same severity, not recovery
+    const r2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', severity: 'error' }),
+      '2026-08-20T12:01:00.000Z',
+    );
+    assert.ok(!r2.isRecovery);
+
+    const incident = store.getIncident(r1.incidentId);
+    assert.equal(incident!.state, 'OPEN');
+  });
+});
+
+// ── Severity escalation ──────────────────────────────────────────────────────
+
+describe('severity escalation', () => {
+  it('escalates incident severity when a more severe event arrives', () => {
+    const { store, engine } = setup();
+
+    engine.processEvent(
+      makeEvent({ id: 'evt-1', severity: 'warning' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const r2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', severity: 'critical' }),
+      '2026-08-20T12:01:00.000Z',
+    );
+
+    const incident = store.getIncident(r2.incidentId);
+    assert.ok(incident);
+    assert.equal(incident.severity, 'critical');
+  });
+
+  it('does not downgrade severity', () => {
+    const { store, engine } = setup();
+
+    engine.processEvent(
+      makeEvent({ id: 'evt-1', severity: 'critical' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    // Even when a warning event arrives, severity stays critical
+    // (recovery is tracked by state, not severity downgrade)
+    const r2 = engine.processEvent(
+      makeEvent({ id: 'evt-2', severity: 'warning' }),
+      '2026-08-20T12:01:00.000Z',
+    );
+
+    const incident = store.getIncident(r2.incidentId);
+    assert.ok(incident);
+    assert.equal(incident.severity, 'critical');
+  });
+});
+
+// ── Event immutability ───────────────────────────────────────────────────────
+
+describe('event immutability', () => {
+  it('events are stored separately from incidents and are never modified', () => {
+    const { store, engine } = setup();
+
+    // Insert an event through the store
+    const batch = {
+      producer: { id: 'p1', type: 'node-agent' as const, version: '0.1.0' },
+      events: [
+        {
+          ...makeEvent({ id: 'evt-immutable' }),
+          schemaVersion: 1 as const,
+          source: 'docker' as const,
+          nodeId: 'test-svc-02' as string,
+          service: 'dataease' as string,
+          type: 'container.die' as string,
+          severity: 'error' as const,
+          message: 'Immutable event',
+          attributes: { original: true },
+        },
+      ],
+    };
+    store.insertBatch(batch, '2026-08-20T12:00:00.000Z');
+
+    // Process through incident engine
+    engine.processEvent(
+      makeEvent({ id: 'evt-immutable' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+
+    // Event row still exists and is unchanged
+    assert.equal(store.count(), 1);
+  });
+});

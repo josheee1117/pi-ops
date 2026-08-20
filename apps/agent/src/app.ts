@@ -1,13 +1,17 @@
 import { Hono } from 'hono';
 import type { AgentConfig } from './config.js';
 import type { EventStore } from './store.js';
+import type { IncidentEngine } from './incident.js';
 import { validateEventBatch } from '@pi-ops/protocol';
 
-export function createApp(config: AgentConfig, store: EventStore): Hono {
+export function createApp(
+  config: AgentConfig,
+  store: EventStore,
+  incidentEngine: IncidentEngine,
+): Hono {
   const app = new Hono();
 
-  // Logger is configured to not log the Authorization header value.
-  // We use a custom logger that redacts the token.
+  // Logger — token value is never printed.
   app.use('*', async (c, next) => {
     const start = Date.now();
     const method = c.req.method;
@@ -15,7 +19,6 @@ export function createApp(config: AgentConfig, store: EventStore): Hono {
     await next();
     const duration = Date.now() - start;
     const status = c.res.status;
-    // Token value is never printed.
     console.log(`[agent] ${method} ${path} → ${status} (${duration}ms)`);
   });
 
@@ -63,9 +66,15 @@ export function createApp(config: AgentConfig, store: EventStore): Hono {
 
     const batch = validation.value;
 
-    // Persist (idempotent via INSERT OR IGNORE)
+    // Persist events (idempotent via INSERT OR IGNORE)
     const receiveTime = new Date().toISOString();
-    const inserted = store.insertBatch(batch, receiveTime);
+    store.insertBatch(batch, receiveTime);
+
+    // Process each event through the incident engine
+    // Use the event's own time for the incident timeline, not receiveTime.
+    for (const event of batch.events) {
+      incidentEngine.processEvent(event, event.time);
+    }
 
     return c.json({
       accepted: batch.events.length,
