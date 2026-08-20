@@ -94,12 +94,14 @@ export function createApp(
     // evidence jobs in one transaction. The request is accepted only after the
     // complete synchronous state transition commits.
     const receiveTime = new Date().toISOString();
-    let createdIncident = false;
+    let createdIncidents = 0;
     try {
-      store.processBatch(batch, receiveTime, (event) => {
-        const incidentResult = incidentEngine.processEvent(event, event.time);
-        if (incidentResult.isNew) createdIncident = true;
-      });
+      const result = store.processBatch(
+        batch,
+        receiveTime,
+        (event) => incidentEngine.processEvent(event, event.time),
+      );
+      createdIncidents = result.createdIncidents;
     } catch (error) {
       if (error instanceof DuplicateEventConflictError) {
         return c.json({
@@ -113,7 +115,7 @@ export function createApp(
     }
 
     // Node Agent I/O stays asynchronous and never blocks event ingestion.
-    if (createdIncident) evidenceWorker?.wake();
+    if (createdIncidents > 0) evidenceWorker?.wake();
 
     return c.json({
       accepted: batch.events.length,

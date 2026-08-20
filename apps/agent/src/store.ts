@@ -15,6 +15,7 @@ export class DuplicateEventConflictError extends Error {
 export interface ProcessBatchResult {
   inserted: number;
   processed: number;
+  createdIncidents: number;
 }
 
 export interface StoredEvent {
@@ -342,7 +343,7 @@ export interface EventStore {
   processBatch(
     batch: EventBatch,
     receiveTime: string,
-    processEvent: (event: OpsEvent) => void,
+    processEvent: (event: OpsEvent) => { isNew: boolean },
   ): ProcessBatchResult;
 
   /** Total event count. */
@@ -672,10 +673,11 @@ export function createEventStore(dbPath: string): EventStore {
   const processBatchTransaction = db.transaction((
     batch: EventBatch,
     receiveTime: string,
-    processEvent: (event: OpsEvent) => void,
+    processEvent: (event: OpsEvent) => { isNew: boolean },
   ): ProcessBatchResult => {
     let inserted = 0;
     let processed = 0;
+    let createdIncidents = 0;
     const pending = new Map<string, OpsEvent>();
 
     // Validate the complete batch before invoking Incident processing. A single
@@ -689,7 +691,8 @@ export function createEventStore(dbPath: string): EventStore {
 
     for (const event of pending.values()) {
       if (getEventProcessedAtStmt.get(event.id)) continue;
-      processEvent(event);
+      const result = processEvent(event);
+      if (result.isNew) createdIncidents++;
       const marked = markEventProcessedStmt.run({
         id: event.id,
         processed_at: receiveTime,
@@ -699,7 +702,7 @@ export function createEventStore(dbPath: string): EventStore {
       }
       processed++;
     }
-    return { inserted, processed };
+    return { inserted, processed, createdIncidents };
   });
 
   const replayPendingEventsTransaction = db.transaction((
@@ -750,7 +753,7 @@ export function createEventStore(dbPath: string): EventStore {
     processBatch(
       batch: EventBatch,
       receiveTime: string,
-      processEvent: (event: OpsEvent) => void,
+      processEvent: (event: OpsEvent) => { isNew: boolean },
     ): ProcessBatchResult {
       return processBatchTransaction(batch, receiveTime, processEvent);
     },

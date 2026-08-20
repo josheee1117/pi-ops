@@ -176,7 +176,14 @@ describe('POST /v1/events', () => {
         throw new Error('simulated Incident processing failure');
       },
     };
-    const app = createApp(config, store, failingEngine);
+    let wakes = 0;
+    const worker: EvidenceJobWorker = {
+      start() {},
+      async stop() {},
+      wake() { wakes++; },
+      async runOnce() {},
+    };
+    const app = createApp(config, store, failingEngine, worker);
 
     const res = await app.request('/v1/events', {
       method: 'POST',
@@ -188,10 +195,11 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 0);
     assert.equal(store.incidentCount(), 0);
     assert.equal(store.listPendingEvidenceJobs(10).length, 0);
+    assert.equal(wakes, 0);
 
     // The same Event remains retryable because the failed transaction left no
     // immutable Event row or Incident side effects behind.
-    const recoveredApp = createApp(config, store, realEngine);
+    const recoveredApp = createApp(config, store, realEngine, worker);
     const retry = await recoveredApp.request('/v1/events', {
       method: 'POST',
       headers: authHeaders(),
@@ -201,6 +209,7 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 1);
     assert.equal(store.incidentCount(), 1);
     assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    assert.equal(wakes, 1);
     store.close();
   });
 
@@ -731,9 +740,11 @@ describe('persistence', () => {
       events: [first, second],
     };
 
-    store1.processBatch(batch, '2026-08-20T12:10:00.000Z', (event) => {
-      engine.processEvent(event, event.time);
-    });
+    store1.processBatch(
+      batch,
+      '2026-08-20T12:10:00.000Z',
+      (event) => engine.processEvent(event, event.time),
+    );
     assert.equal(store1.incidentCount(), 1);
     store1.close();
 
