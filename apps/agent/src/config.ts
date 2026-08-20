@@ -40,6 +40,21 @@ function requireEnv(key: string): string {
   return value;
 }
 
+function integerEnv(
+  key: string,
+  fallback: number,
+  options: { min?: number; max?: number } = {},
+): number {
+  const raw = process.env[key];
+  const value = raw === undefined ? fallback : Number(raw);
+  const min = options.min ?? 1;
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${key} must be an integer between ${min} and ${max}`);
+  }
+  return value;
+}
+
 function parseNodeAgents(): Map<string, NodeAgentEndpoint> {
   const raw = process.env['PI_OPS_NODE_AGENTS'];
   if (!raw) return new Map();
@@ -77,9 +92,26 @@ function parseNodeAgents(): Map<string, NodeAgentEndpoint> {
     if (endpoints.has(nodeId)) {
       throw new Error(`Duplicate node-agent config for nodeId: ${nodeId}`);
     }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error(`Invalid node-agent URL for nodeId: ${nodeId}`);
+    }
+    if (
+      !['http:', 'https:'].includes(parsedUrl.protocol)
+      || parsedUrl.username
+      || parsedUrl.password
+      || parsedUrl.search
+      || parsedUrl.hash
+    ) {
+      throw new Error(`Invalid node-agent URL for nodeId: ${nodeId}`);
+    }
+
     endpoints.set(nodeId, {
       nodeId,
-      url: url.replace(/\/$/, ''),
+      url: parsedUrl.toString().replace(/\/$/, ''),
       token,
     });
   }
@@ -88,27 +120,36 @@ function parseNodeAgents(): Map<string, NodeAgentEndpoint> {
 
 export function loadConfig(): AgentConfig {
   return {
-    port: parseInt(process.env['PI_OPS_AGENT_PORT'] ?? '8080', 10),
+    port: integerEnv('PI_OPS_AGENT_PORT', 8080, { max: 65_535 }),
     ingestToken: requireEnv('PI_OPS_INGEST_TOKEN'),
     sqlitePath: requireEnv('PI_OPS_SQLITE_PATH'),
     nodeId: process.env['PI_OPS_NODE_ID'] ?? 'default',
-    maxBodySize: parseInt(process.env['PI_OPS_MAX_BODY_SIZE'] ?? String(1024 * 1024), 10),
-    aggregationWindowMs: parseInt(
-      process.env['PI_OPS_AGGREGATION_WINDOW_MS'] ?? String(5 * 60 * 1000),
-      10,
-    ),
+    maxBodySize: integerEnv('PI_OPS_MAX_BODY_SIZE', 1024 * 1024, {
+      max: 1024 * 1024 * 1024,
+    }),
+    aggregationWindowMs: integerEnv('PI_OPS_AGGREGATION_WINDOW_MS', 5 * 60 * 1000, {
+      max: 30 * 24 * 60 * 60 * 1000,
+    }),
     nodeAgents: parseNodeAgents(),
-    evidenceTimeoutMs: parseInt(process.env['PI_OPS_EVIDENCE_TIMEOUT_MS'] ?? '5000', 10),
-    evidenceMaxResponseBytes: parseInt(
-      process.env['PI_OPS_EVIDENCE_MAX_RESPONSE_BYTES'] ?? String(1024 * 1024),
-      10,
+    evidenceTimeoutMs: integerEnv('PI_OPS_EVIDENCE_TIMEOUT_MS', 5000, {
+      max: 10 * 60 * 1000,
+    }),
+    evidenceMaxResponseBytes: integerEnv(
+      'PI_OPS_EVIDENCE_MAX_RESPONSE_BYTES',
+      1024 * 1024,
+      { max: 100 * 1024 * 1024 },
     ),
-    evidenceLogsMaxLines: parseInt(process.env['PI_OPS_EVIDENCE_LOGS_MAX_LINES'] ?? '200', 10),
-    evidenceJobPollIntervalMs: parseInt(
-      process.env['PI_OPS_EVIDENCE_JOB_POLL_INTERVAL_MS'] ?? '1000',
-      10,
-    ),
-    evidenceJobMaxAttempts: parseInt(process.env['PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS'] ?? '3', 10),
-    evidenceJobBatchSize: parseInt(process.env['PI_OPS_EVIDENCE_JOB_BATCH_SIZE'] ?? '10', 10),
+    evidenceLogsMaxLines: integerEnv('PI_OPS_EVIDENCE_LOGS_MAX_LINES', 200, {
+      max: 100_000,
+    }),
+    evidenceJobPollIntervalMs: integerEnv('PI_OPS_EVIDENCE_JOB_POLL_INTERVAL_MS', 1000, {
+      max: 60 * 60 * 1000,
+    }),
+    evidenceJobMaxAttempts: integerEnv('PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS', 3, {
+      max: 100,
+    }),
+    evidenceJobBatchSize: integerEnv('PI_OPS_EVIDENCE_JOB_BATCH_SIZE', 10, {
+      max: 1000,
+    }),
   };
 }

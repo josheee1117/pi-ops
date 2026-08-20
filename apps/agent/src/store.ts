@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 
@@ -433,13 +434,8 @@ export interface EventStore {
 
 // ── Factory ─────────────────────────────────────────────────────────────────
 
-let idCounter = 0;
-
 function generateId(prefix: string): string {
-  idCounter++;
-  const ts = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${ts}-${rand}-${idCounter}`;
+  return `${prefix}-${randomUUID()}`;
 }
 
 export function createEventStore(dbPath: string): EventStore {
