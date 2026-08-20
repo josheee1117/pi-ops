@@ -3,20 +3,29 @@ import { loadConfig } from './config.js';
 import { createApp } from './app.js';
 import { createEventSender } from './events/sender.js';
 import { createDockerWatcher } from './events/watcher.js';
+import { createMemoryDetector } from './detectors/memory.js';
+import { createDiskDetector } from './detectors/disk.js';
+import { createHealthDetector } from './detectors/health.js';
 
 const config = loadConfig();
 const app = createApp(config);
 
-// Start event sender (background flush loop)
 const sender = createEventSender(config);
 sender.start();
 
-// Start Docker event watcher (if agent URL is configured)
+const memoryDetector = createMemoryDetector(config, sender);
+const diskDetector = createDiskDetector(config, sender);
+const healthDetector = createHealthDetector(config, sender);
+
+memoryDetector.start();
+diskDetector.start();
+healthDetector.start();
+
 if (config.ingestToken) {
   const watcher = createDockerWatcher(config, sender);
   watcher.start().catch((err) => {
     console.warn(`[pi-ops-node-agent] Docker event watcher failed to start: ${err instanceof Error ? err.message : String(err)}`);
-    console.warn('[pi-ops-node-agent] continuing without Docker event source');
+    console.warn('[pi-ops-node-agent] continuing without Docker event source (OOM still available if Docker reconnects)');
   });
 } else {
   console.log('[pi-ops-node-agent] Docker event source disabled (PI_OPS_INGEST_TOKEN not set)');
@@ -32,15 +41,14 @@ serve({
 
 console.log(`[pi-ops-node-agent] listening on :${config.port}`);
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('[pi-ops-node-agent] SIGTERM received, shutting down...');
+async function shutdown(signal: string): Promise<void> {
+  console.log(`[pi-ops-node-agent] ${signal} received, shutting down...`);
+  memoryDetector.stop();
+  diskDetector.stop();
+  healthDetector.stop();
   await sender.stop();
   process.exit(0);
-});
+}
 
-process.on('SIGINT', async () => {
-  console.log('[pi-ops-node-agent] SIGINT received, shutting down...');
-  await sender.stop();
-  process.exit(0);
-});
+process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.on('SIGINT', () => { void shutdown('SIGINT'); });

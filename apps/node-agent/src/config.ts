@@ -1,5 +1,12 @@
 /** Configuration loaded from environment variables. */
 
+export interface HealthTarget {
+  name: string;
+  url: string;
+  method?: string;
+  intervalMs?: number;
+}
+
 export interface NodeAgentConfig {
   port: number;
   nodeToken: string;
@@ -29,6 +36,23 @@ export interface NodeAgentConfig {
   eventMaxRetries: number;
   /** Flush interval when queue is not full (ms). */
   eventFlushIntervalMs: number;
+  // ── Detectors ─────────────────────────────────────────────────────────────
+  /** Polling interval for detectors (ms). */
+  detectorPollIntervalMs: number;
+  /** Memory usage threshold (0-1). Default 0.9 = 90%. */
+  memoryPressureThreshold: number;
+  /** Consecutive samples above threshold to trigger. */
+  memoryPressureDuration: number;
+  /** Disk usage threshold (0-1). Default 0.9 = 90%. */
+  diskPressureThreshold: number;
+  /** Path to check for disk pressure. */
+  diskPressurePath: string;
+  /** Consecutive samples above threshold to trigger. */
+  diskPressureDuration: number;
+  /** Configured HTTP health targets. */
+  healthTargets: HealthTarget[];
+  /** Consecutive failed probes before emitting a health.failure event. */
+  healthFailureDuration: number;
 }
 
 function requireEnv(key: string): string {
@@ -37,6 +61,17 @@ function requireEnv(key: string): string {
     throw new Error(`Missing required environment variable: ${key}`);
   }
   return value;
+}
+
+function parseHealthTargets(): HealthTarget[] {
+  const raw = process.env['PI_OPS_HEALTH_TARGETS'] ?? '';
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as HealthTarget[];
+  } catch {
+    console.warn('[node-agent] failed to parse PI_OPS_HEALTH_TARGETS, ignoring');
+    return [];
+  }
 }
 
 export function loadConfig(): NodeAgentConfig {
@@ -65,5 +100,14 @@ export function loadConfig(): NodeAgentConfig {
     eventSendTimeoutMs: parseInt(process.env['PI_OPS_EVENT_SEND_TIMEOUT_MS'] ?? '5000', 10),
     eventMaxRetries: parseInt(process.env['PI_OPS_EVENT_MAX_RETRIES'] ?? '3', 10),
     eventFlushIntervalMs: parseInt(process.env['PI_OPS_EVENT_FLUSH_INTERVAL_MS'] ?? '1000', 10),
+    // Detectors
+    detectorPollIntervalMs: parseInt(process.env['PI_OPS_DETECTOR_POLL_INTERVAL_MS'] ?? '10000', 10),
+    memoryPressureThreshold: parseFloat(process.env['PI_OPS_MEMORY_PRESSURE_THRESHOLD'] ?? '0.9'),
+    memoryPressureDuration: parseInt(process.env['PI_OPS_MEMORY_PRESSURE_DURATION'] ?? '3', 10),
+    diskPressureThreshold: parseFloat(process.env['PI_OPS_DISK_PRESSURE_THRESHOLD'] ?? '0.9'),
+    diskPressurePath: process.env['PI_OPS_DISK_PRESSURE_PATH'] ?? '/',
+    diskPressureDuration: parseInt(process.env['PI_OPS_DISK_PRESSURE_DURATION'] ?? '3', 10),
+    healthTargets: parseHealthTargets(),
+    healthFailureDuration: parseInt(process.env['PI_OPS_HEALTH_FAILURE_DURATION'] ?? '2', 10),
   };
 }

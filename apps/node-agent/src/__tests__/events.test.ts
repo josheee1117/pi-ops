@@ -1,32 +1,22 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { createEventSender, type EventSender } from '../events/sender.js';
+import { createEventSender } from '../events/sender.js';
 import { dockerEventToOpsEvent, createContainerStateTracker } from '../events/docker-events.js';
-import type { NodeAgentConfig } from '../config.js';
 import type { OpsEvent } from '@pi-ops/protocol';
+import { makeNodeAgentConfig } from './test-config.js';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeConfig(overrides: Partial<NodeAgentConfig> = {}): NodeAgentConfig {
-  return {
-    port: 0,
-    nodeToken: 'test-token',
+function makeConfig(overrides: Parameters<typeof makeNodeAgentConfig>[0] = {}) {
+  return makeNodeAgentConfig({
     nodeId: 'test-node-01',
     allowedContainers: new Set(),
-    dockerSocketPath: '/var/run/docker.sock',
-    logsMaxLines: 200,
-    logsMaxBytes: 1024 * 1024,
-    probeMaxTimeoutMs: 30000,
-    maxResponseBytes: 1024 * 1024,
     agentUrl: 'http://localhost:18080',
-    ingestToken: 'test-token',
     eventQueueSize: 10,
     eventSendTimeoutMs: 2000,
     eventMaxRetries: 1,
     eventFlushIntervalMs: 100,
     ...overrides,
-  };
+  });
 }
 
 function makeEvent(overrides: Partial<OpsEvent> = {}): OpsEvent {

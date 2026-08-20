@@ -1,30 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../app.js';
-import type { NodeAgentConfig } from '../config.js';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeConfig(overrides: Partial<NodeAgentConfig> = {}): NodeAgentConfig {
-  return {
-    port: 0,
-    nodeToken: 'test-token',
-    nodeId: 'test-node',
-    allowedContainers: new Set(['dataease']),
-    dockerSocketPath: '/var/run/docker.sock',
-    logsMaxLines: 200,
-    logsMaxBytes: 1024 * 1024,
-    probeMaxTimeoutMs: 30000,
-    maxResponseBytes: 1024 * 1024,
-    agentUrl: 'http://localhost:8080',
-    ingestToken: 'test-token',
-    eventQueueSize: 1000,
-    eventSendTimeoutMs: 5000,
-    eventMaxRetries: 3,
-    eventFlushIntervalMs: 1000,
-    ...overrides,
-  };
-}
+import { makeNodeAgentConfig as makeConfig } from './test-config.js';
 
 function authHeaders(): Record<string, string> {
   return { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };

@@ -1,29 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateQueryRequest, ALLOWED_QUERY_TYPES } from '../evidence/types.js';
-import type { NodeAgentConfig } from '../config.js';
+import { makeNodeAgentConfig } from './test-config.js';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeConfig(overrides: Partial<NodeAgentConfig> = {}): NodeAgentConfig {
-  return {
-    port: 0,
-    nodeToken: 'test-token',
-    nodeId: 'test-node',
+function makeConfig(overrides: Parameters<typeof makeNodeAgentConfig>[0] = {}) {
+  return makeNodeAgentConfig({
     allowedContainers: new Set(['dataease', 'nginx']),
-    dockerSocketPath: '/var/run/docker.sock',
-    logsMaxLines: 200,
-    logsMaxBytes: 1024 * 1024,
-    probeMaxTimeoutMs: 30000,
-    maxResponseBytes: 1024 * 1024,
-    agentUrl: 'http://localhost:8080',
-    ingestToken: 'test-token',
-    eventQueueSize: 1000,
-    eventSendTimeoutMs: 5000,
-    eventMaxRetries: 3,
-    eventFlushIntervalMs: 1000,
     ...overrides,
-  };
+  });
 }
 
 // ── Query type validation ────────────────────────────────────────────────────
