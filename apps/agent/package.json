@@ -6,13 +6,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "lint": "echo 'lint not configured yet'"
   },
   "dependencies": {
-    "@pi-ops/protocol": "workspace:*"
+    "@hono/node-server": "^2.1.1",
+    "@pi-ops/protocol": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "hono": "^4.13.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.2"
   }
 }

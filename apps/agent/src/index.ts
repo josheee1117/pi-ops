@@ -1,13 +1,17 @@
-// Central pi-ops-agent entrypoint.
-// Milestone 1: verify protocol import works.
-import { CURRENT_SCHEMA_VERSION, MAX_BATCH_SIZE } from '@pi-ops/protocol';
+import { serve } from '@hono/node-server';
+import { loadConfig } from './config.js';
+import { createEventStore } from './store.js';
+import { createApp } from './app.js';
 
-export function getProtocolVersion(): number {
-  return CURRENT_SCHEMA_VERSION;
-}
+const config = loadConfig();
+const store = createEventStore(config.sqlitePath);
+const app = createApp(config, store);
 
-export function getBatchSizeLimit(): number {
-  return MAX_BATCH_SIZE;
-}
+console.log(`[pi-ops-agent] starting on :${config.port}, db=${config.sqlitePath}`);
 
-console.log(`[pi-ops-agent] protocol v${CURRENT_SCHEMA_VERSION}, max batch ${MAX_BATCH_SIZE}`);
+serve({
+  fetch: app.fetch,
+  port: config.port,
+});
+
+console.log(`[pi-ops-agent] listening on :${config.port}`);
