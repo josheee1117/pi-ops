@@ -472,27 +472,19 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
     db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
 
-    // Recompute every linkable Incident fingerprint using the current central
-    // collision-safe encoding. This migrates colon-joined and producer-trusted
-    // fingerprints written by earlier versions.
-    const legacyIncidents = db.prepare(`
-      SELECT incidents.id, incidents.node_id, incidents.service, incidents.type,
-        (
-          SELECT events.source
-          FROM incident_events
-          JOIN events ON events.id = incident_events.event_id
-          WHERE incident_events.incident_id = incidents.id
-          ORDER BY julianday(events.event_time), events.id
-          LIMIT 1
-        ) AS source
-      FROM incidents;
-    `).all() as Array<{
-      id: string;
-      node_id: string;
-      service: string;
-      type: string;
-      source: string | null;
-    }>;
+    // Recompute linkable Incident fingerprints using every immutable Event.
+    // A legacy producer fingerprint could have merged unrelated identities;
+    // fail closed rather than silently cementing that corruption.
+    const legacyIncidents = db.prepare(
+      'SELECT id, state FROM incidents',
+    ).all() as Array<{ id: string; state: IncidentState }>;
+    const linkedIdentities = db.prepare(`
+      SELECT events.source, events.node_id, events.service, events.type
+      FROM incident_events
+      JOIN events ON events.id = incident_events.event_id
+      WHERE incident_events.incident_id = ?
+      ORDER BY julianday(events.event_time), events.id;
+    `);
     const updateFingerprint = db.prepare(
       'UPDATE incidents SET fingerprint = ? WHERE id = ?',
     );
@@ -502,13 +494,30 @@ export function createEventStore(dbPath: string): EventStore {
       'host.disk_recovered': 'host.disk_pressure',
     };
     for (const incident of legacyIncidents) {
-      if (!incident.source) continue;
-      updateFingerprint.run(JSON.stringify([
-        incident.source,
-        incident.node_id,
-        incident.service,
-        recoveryTypes[incident.type] ?? incident.type,
-      ]), incident.id);
+      const rows = linkedIdentities.all(incident.id) as Array<{
+        source: string;
+        node_id: string;
+        service: string;
+        type: string;
+      }>;
+      const identities = new Set(rows.map((event) => JSON.stringify([
+        event.source,
+        event.node_id,
+        event.service,
+        recoveryTypes[event.type] ?? event.type,
+      ])));
+      if (identities.size > 1) {
+        throw new Error(
+          `Incident ${incident.id} links Events with multiple central identities`,
+        );
+      }
+      if (identities.size === 0) {
+        if (['OPEN', 'INVESTIGATING', 'NOTIFIED'].includes(incident.state)) {
+          throw new Error(`Active Incident ${incident.id} has no linked immutable Event`);
+        }
+        continue;
+      }
+      updateFingerprint.run([...identities][0], incident.id);
     }
 
     // Preserve markers from the short-lived transitional schema if present.
@@ -541,7 +550,12 @@ export function createEventStore(dbPath: string): EventStore {
         ON incidents (fingerprint, state, first_seen, last_seen);
     `);
   });
-  migrateSchema();
+  try {
+    migrateSchema();
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 
   const insertStmt = db.prepare(INSERT_EVENT_SQL);
   const countStmt = db.prepare(COUNT_EVENTS_SQL);

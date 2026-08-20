@@ -89,8 +89,22 @@ describe('durable evidence jobs', () => {
     const dbPath = join(directory, 'agent.sqlite');
     const store1 = createEventStore(dbPath);
     const engine = createIncidentEngine(store1, { aggregationWindowMs: 300_000 });
-    const result = engine.processEvent(makeEvent(), makeEvent().time);
-    assert.ok(result.incidentId);
+    const event = makeEvent();
+    let incidentId: string | null = null;
+    store1.processBatch(
+      {
+        producer: { id: 'node-agent-01', type: 'node-agent', version: '0.1.0' },
+        events: [event],
+      },
+      '2026-08-20T12:00:01.000Z',
+      (persisted) => {
+        const result = engine.processEvent(persisted, persisted.time);
+        incidentId = result.incidentId;
+        return result;
+      },
+    );
+    assert.ok(incidentId);
+    const result = { incidentId };
     const jobId = `job-${result.incidentId}`;
     assert.equal(store1.markEvidenceJobRunning(jobId), true);
     assert.equal(store1.getEvidenceJob(jobId)?.state, 'RUNNING');

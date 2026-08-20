@@ -821,6 +821,88 @@ describe('persistence', () => {
     rmSync(dbPath, { recursive: true, force: true });
   });
 
+  it('rolls back migration when one Incident links heterogeneous Event identities', () => {
+    const { store, dbPath } = setupFileDb();
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 5 * 60 * 1000 });
+    const producer = { id: 'p1', type: 'node-agent' as const, version: '0.1.0' };
+    const first = {
+      schemaVersion: 1 as const,
+      id: 'evt-mixed-identity-a',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'docker' as const,
+      nodeId: 'node-a',
+      service: 'service-a',
+      type: 'container.die',
+      severity: 'error' as const,
+      message: 'Identity A',
+      attributes: {},
+    };
+    const second = {
+      ...first,
+      id: 'evt-mixed-identity-b',
+      nodeId: 'node-b',
+      service: 'service-b',
+      message: 'Identity B',
+    };
+    store.processBatch(
+      { producer, events: [first, second] },
+      '2026-08-20T12:00:01.000Z',
+      (event) => engine.processEvent(event, event.time),
+    );
+    const firstIncident = store.findIncidentByEventId(first.id)?.id;
+    const secondIncident = store.findIncidentByEventId(second.id)?.id;
+    assert.ok(firstIncident);
+    assert.ok(secondIncident);
+    store.close();
+
+    const corrupt = new Database(dbPath);
+    corrupt.prepare('UPDATE incidents SET fingerprint = ? WHERE id = ?').run(
+      'legacy-shared-fingerprint',
+      firstIncident,
+    );
+    corrupt.prepare('UPDATE incident_events SET incident_id = ? WHERE event_id = ?').run(
+      firstIncident,
+      second.id,
+    );
+    corrupt.prepare('DELETE FROM evidence_jobs WHERE incident_id = ?').run(secondIncident);
+    corrupt.prepare('DELETE FROM incidents WHERE id = ?').run(secondIncident);
+    corrupt.close();
+
+    assert.throws(
+      () => createEventStore(dbPath),
+      /links Events with multiple central identities/,
+    );
+    const verifyRollback = new Database(dbPath, { readonly: true });
+    const row = verifyRollback.prepare(
+      'SELECT fingerprint FROM incidents WHERE id = ?',
+    ).get(firstIncident) as { fingerprint: string };
+    assert.equal(row.fingerprint, 'legacy-shared-fingerprint');
+    verifyRollback.close();
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
+  it('fails migration for an active Incident without an immutable Event link', () => {
+    const { store, dbPath } = setupFileDb();
+    store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'legacy-unlinked',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    store.close();
+
+    assert.throws(
+      () => createEventStore(dbPath),
+      /has no linked immutable Event/,
+    );
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
   it('migrates legacy Event rows with a deterministic event-time backfill', () => {
     const { dbPath, tmpDir } = setupLegacyEventsDb([{
       id: 'evt-legacy',
