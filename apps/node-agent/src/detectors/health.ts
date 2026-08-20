@@ -79,6 +79,7 @@ export function createHealthDetector(
         message: `Health check failed for ${target.name}` +
           (result.status !== undefined ? ` (HTTP ${result.status})` : result.error ? ` (${result.error})` : ''),
         attributes: {
+          detector: 'http.health',
           target: target.name,
           url: target.url,
           method,
@@ -102,6 +103,7 @@ export function createHealthDetector(
         message: `Health check recovered for ${target.name}` +
           (result.status !== undefined ? ` (HTTP ${result.status})` : ''),
         attributes: {
+          detector: 'http.health',
           target: target.name,
           url: target.url,
           method,

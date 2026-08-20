@@ -395,6 +395,48 @@ describe('Docker log evidence', () => {
     }
   });
 
+  it('keeps OOM-safe inspect fields and excludes Env and mount secrets', async () => {
+    const jsonFetcher: DockerJsonFetcher = async () => ({
+      Id: 'container-id',
+      Name: '/dataease',
+      RestartCount: 4,
+      State: {
+        Status: 'exited',
+        Running: false,
+        StartedAt: '2026-08-20T12:00:00.000Z',
+        OOMKilled: true,
+        ExitCode: 137,
+        Health: { Status: 'unhealthy', Log: [{ Output: 'token=secret' }] },
+      },
+      HostConfig: { Memory: 536_870_912, Binds: ['/secret:/run/secret'] },
+      Config: { Image: 'dataease:latest', Env: ['TOKEN=secret'] },
+      Mounts: [{ Source: '/host/secret', Destination: '/run/secret' }],
+    });
+    const provider = createDockerEvidenceProvider(jsonFetcher);
+
+    const result = await provider.query({
+      type: 'docker.inspect',
+      incidentId: 'inc-oom',
+      container: 'dataease',
+    }, makeConfig());
+    const data = result.data as Record<string, unknown>;
+    const state = data['State'] as Record<string, unknown>;
+    const health = state['Health'] as Record<string, unknown>;
+    const hostConfig = data['HostConfig'] as Record<string, unknown>;
+    const imageConfig = data['Config'] as Record<string, unknown>;
+
+    assert.equal(state['OOMKilled'], true);
+    assert.equal(state['ExitCode'], 137);
+    assert.equal(data['RestartCount'], 4);
+    assert.equal(health['Status'], 'unhealthy');
+    assert.equal(hostConfig['Memory'], 536_870_912);
+    assert.equal(imageConfig['Image'], 'dataease:latest');
+    assert.equal('Env' in imageConfig, false);
+    assert.equal('Mounts' in data, false);
+    assert.equal('Binds' in hostConfig, false);
+    assert.doesNotMatch(JSON.stringify(data), /TOKEN|secret/);
+  });
+
   it('applies bounded tail, bytes, and since options at the Docker provider', async () => {
     let capturedOptions: DockerLogOptions | undefined;
     let capturedRawLimit: number | undefined;

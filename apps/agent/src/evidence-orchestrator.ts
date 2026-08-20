@@ -12,6 +12,8 @@ export interface EvidenceCollectionSummary {
   requested: number;
   succeeded: number;
   failed: number;
+  retryableFailures: number;
+  terminalFailures: number;
 }
 
 export interface EvidenceOrchestrator {
@@ -23,6 +25,15 @@ export interface EvidenceOrchestrator {
 }
 
 export type FetchLike = typeof fetch;
+
+class ResponseTooLargeError extends Error {}
+
+class PersistenceFailure extends Error {
+  constructor(readonly original: unknown) {
+    super(original instanceof Error ? original.message : String(original));
+    this.name = 'PersistenceFailure';
+  }
+}
 
 function stringAttribute(event: OpsEvent, key: string): string | undefined {
   const value = event.attributes[key];
@@ -69,8 +80,10 @@ export function planEvidenceQueries(
 
     case 'health.failure': {
       const queries: EvidenceQueryRequest[] = [];
+      const isConfiguredHttpDetector = triggeringEvent.source === 'health'
+        && stringAttribute(triggeringEvent, 'detector') === 'http.health';
       const url = stringAttribute(triggeringEvent, 'url');
-      if (url) {
+      if (isConfiguredHttpDetector && url) {
         queries.push({
           type: 'http.probe',
           incidentId: incident.id,
@@ -118,8 +131,8 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<st
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(`Node-agent response exceeds ${maxBytes} bytes`);
+      await reader.cancel().catch(() => {});
+      throw new ResponseTooLargeError(`Node-agent response exceeds ${maxBytes} bytes`);
     }
     chunks.push(value);
   }
@@ -129,6 +142,23 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<st
 
 function redactSecret(message: string, secret: string): string {
   return secret ? message.split(secret).join('[REDACTED]') : message;
+}
+
+type CollectionOutcome = 'succeeded' | 'retryable-failure' | 'terminal-failure';
+
+class CollectionFailure extends Error {
+  constructor(message: string, readonly retryable: boolean) {
+    super(message);
+    this.name = 'CollectionFailure';
+  }
+}
+
+function retryableFailure(message: string): CollectionFailure {
+  return new CollectionFailure(message, true);
+}
+
+function terminalFailure(message: string): CollectionFailure {
+  return new CollectionFailure(message, false);
 }
 
 function failureEvidence(
@@ -157,84 +187,133 @@ export function createEvidenceOrchestrator(
     incident: IncidentRow,
     query: EvidenceQueryRequest,
     evidenceId: string,
-  ): Promise<boolean> {
+  ): Promise<CollectionOutcome> {
     if (!endpoint) {
       const evidence = failureEvidence(incident, query, evidenceId);
       store.insertEvidence({
         ...evidence,
         status: 'failed',
         error: `No node-agent configured for node ${incident.node_id}`,
+        failureClass: 'terminal',
       });
-      return false;
+      return 'terminal-failure';
     }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), config.evidenceTimeoutMs);
 
     try {
-      const response = await fetchImpl(`${endpoint.url}/v1/evidence/query`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${endpoint.token}`,
-        },
-        body: JSON.stringify(query),
-        signal: controller.signal,
-      });
-
-      const declaredLength = Number(response.headers.get('content-length') ?? '0');
-      if (declaredLength > config.evidenceMaxResponseBytes) {
-        throw new Error(
-          `Node-agent response exceeds ${config.evidenceMaxResponseBytes} bytes`,
-        );
+      let response: Response;
+      try {
+        response = await fetchImpl(`${endpoint.url}/v1/evidence/query`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${endpoint.token}`,
+          },
+          body: JSON.stringify(query),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        const message = controller.signal.aborted
+          ? `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`
+          : `Node-agent connection failed: ${error instanceof Error ? error.message : String(error)}`;
+        throw retryableFailure(message);
       }
 
-      const text = await readBoundedBody(
-        response,
-        config.evidenceMaxResponseBytes,
-      );
+      if (response.status === 429 || response.status >= 500) {
+        await response.body?.cancel().catch(() => {});
+        throw retryableFailure(`Node-agent returned HTTP ${response.status}`);
+      }
+      const declaredHeader = response.headers.get('content-length');
+      if (declaredHeader !== null) {
+        const declaredLength = Number(declaredHeader);
+        if (!Number.isSafeInteger(declaredLength) || declaredLength < 0) {
+          await response.body?.cancel().catch(() => {});
+          throw terminalFailure('Node-agent returned invalid Content-Length');
+        }
+        if (declaredLength > config.evidenceMaxResponseBytes) {
+          await response.body?.cancel().catch(() => {});
+          throw terminalFailure(
+            `Node-agent response exceeds ${config.evidenceMaxResponseBytes} bytes`,
+          );
+        }
+      }
+
+      let text: string;
+      try {
+        text = await readBoundedBody(response, config.evidenceMaxResponseBytes);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!response.ok) {
+          throw terminalFailure(
+            `Node-agent returned HTTP ${response.status}; response stream failed: ${message}`,
+          );
+        }
+        if (controller.signal.aborted) {
+          throw retryableFailure(
+            `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`,
+          );
+        }
+        if (error instanceof ResponseTooLargeError) throw terminalFailure(message);
+        throw retryableFailure(`Node-agent response stream failed: ${message}`);
+      }
       if (!response.ok) {
-        throw new Error(`Node-agent returned HTTP ${response.status}: ${text.slice(0, 200)}`);
+        throw terminalFailure(
+          `Node-agent returned HTTP ${response.status}: ${text.slice(0, 200)}`,
+        );
       }
 
       let body: unknown;
       try {
         body = JSON.parse(text);
       } catch {
-        throw new Error('Node-agent returned invalid JSON');
+        throw terminalFailure('Node-agent returned invalid JSON');
       }
 
       const validation = validateEvidence(body);
       if (!validation.success) {
-        throw new Error(`Invalid Evidence response: ${validation.message}`);
+        throw terminalFailure(`Invalid Evidence response: ${validation.message}`);
       }
 
       const evidence = validation.value;
       if (evidence.incidentId !== incident.id) {
-        throw new Error('Evidence incidentId does not match the requested Incident');
+        throw terminalFailure('Evidence incidentId does not match the requested Incident');
       }
       if (evidence.nodeId !== incident.node_id) {
-        throw new Error('Evidence nodeId does not match the Incident node');
+        throw terminalFailure('Evidence nodeId does not match the Incident node');
       }
       if (evidence.kind !== query.type) {
-        throw new Error('Evidence kind does not match the requested query type');
+        throw terminalFailure('Evidence kind does not match the requested query type');
       }
       if (evidence.source !== querySource(query.type)) {
-        throw new Error('Evidence source does not match the requested query type');
+        throw terminalFailure('Evidence source does not match the requested query type');
       }
 
+      try {
+        store.insertEvidence({
+          ...evidence,
+          id: evidenceId,
+          status: 'succeeded',
+        });
+      } catch (error) {
+        throw new PersistenceFailure(error);
+      }
+      return 'succeeded';
+    } catch (error) {
+      if (error instanceof PersistenceFailure) throw error.original;
+      const failure = error instanceof CollectionFailure
+        ? error
+        : terminalFailure(error instanceof Error ? error.message : String(error));
+      const message = redactSecret(failure.message, endpoint.token);
+      const evidence = failureEvidence(incident, query, evidenceId);
       store.insertEvidence({
         ...evidence,
-        ...(evidenceId ? { id: evidenceId } : {}),
-        status: 'succeeded',
+        status: 'failed',
+        error: message,
+        failureClass: failure.retryable ? 'retryable' : 'terminal',
       });
-      return true;
-    } catch (err) {
-      const rawMessage = err instanceof Error ? err.message : String(err);
-      const message = redactSecret(rawMessage, endpoint.token);
-      const evidence = failureEvidence(incident, query, evidenceId);
-      store.insertEvidence({ ...evidence, status: 'failed', error: message });
-      return false;
+      return failure.retryable ? 'retryable-failure' : 'terminal-failure';
     } finally {
       clearTimeout(timeoutId);
     }
@@ -252,44 +331,73 @@ export function createEvidenceOrchestrator(
         config.evidenceLogsMaxLines,
       );
       const evidenceBaseId = collectionId ?? `incident-${incident.id}`;
+      const existingEvidence = new Map(
+        store.listEvidence(incident.id).map((item) => [item.id, item]),
+      );
       let planningFailures = 0;
+      const expectsHttpProbe = incident.type === 'health.failure'
+        && triggeringEvent.source === 'health'
+        && stringAttribute(triggeringEvent, 'detector') === 'http.health';
       if (
-        incident.type === 'health.failure' &&
+        expectsHttpProbe &&
         !queries.some((query) => query.type === 'http.probe')
       ) {
         const query: EvidenceQueryRequest = {
           type: 'http.probe',
           incidentId: incident.id,
         };
-        const evidence = failureEvidence(
-          incident,
-          query,
-          `${evidenceBaseId}-evidence-http.probe`,
-        );
-        store.insertEvidence({
-          ...evidence,
-          status: 'failed',
-          error: 'Cannot plan http.probe: triggering event has no URL',
-        });
+        const evidenceId = `${evidenceBaseId}-evidence-http.probe`;
+        if (!existingEvidence.has(evidenceId)) {
+          const evidence = failureEvidence(incident, query, evidenceId);
+          store.insertEvidence({
+            ...evidence,
+            status: 'failed',
+            error: 'Cannot plan http.probe: triggering event has no URL',
+            failureClass: 'terminal',
+          });
+        }
         planningFailures++;
       }
 
       const endpoint = config.nodeAgents.get(incident.node_id);
-      const results = await Promise.all(
-        queries.map((query) => collectOne(
-          endpoint,
-          incident,
-          query,
-          `${evidenceBaseId}-evidence-${query.type}`,
-        )),
+      const settled = await Promise.allSettled(
+        queries.map((query) => {
+          const evidenceId = `${evidenceBaseId}-evidence-${query.type}`;
+          const existing = existingEvidence.get(evidenceId);
+          if (existing?.status === 'succeeded') return Promise.resolve('succeeded' as const);
+          if (existing?.failureClass === 'terminal') {
+            return Promise.resolve('terminal-failure' as const);
+          }
+          return collectOne(endpoint, incident, query, evidenceId);
+        }),
       );
-      const succeeded = results.filter(Boolean).length;
+      const results: CollectionOutcome[] = [];
+      let hasRejection = false;
+      let firstRejection: unknown;
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        } else if (!hasRejection) {
+          hasRejection = true;
+          firstRejection = result.reason;
+        }
+      }
+      if (hasRejection) throw firstRejection;
+      const succeeded = results.filter((result) => result === 'succeeded').length;
+      const retryableFailures = results.filter(
+        (result) => result === 'retryable-failure',
+      ).length;
+      const terminalFailures = results.filter(
+        (result) => result === 'terminal-failure',
+      ).length + planningFailures;
       const requested = queries.length + planningFailures;
       return {
         incidentId: incident.id,
         requested,
         succeeded,
-        failed: requested - succeeded,
+        failed: retryableFailures + terminalFailures,
+        retryableFailures,
+        terminalFailures,
       };
     },
   };

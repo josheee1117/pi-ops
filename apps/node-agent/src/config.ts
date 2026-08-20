@@ -71,6 +71,38 @@ function requireEnv(key: string): string {
   return value;
 }
 
+function integerEnv(
+  key: string,
+  fallback: number,
+  options: { min?: number; max?: number } = {},
+): number {
+  const raw = process.env[key];
+  const text = raw ?? String(fallback);
+  const min = options.min ?? 1;
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  if (!/^(0|[1-9]\d*)$/.test(text)) {
+    throw new Error(`${key} must be a strict integer between ${min} and ${max}`);
+  }
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${key} must be a strict integer between ${min} and ${max}`);
+  }
+  return value;
+}
+
+function thresholdEnv(key: string, fallback: number): number {
+  const raw = process.env[key];
+  const text = raw ?? String(fallback);
+  if (!/^(0|[1-9]\d*)(\.\d+)?$/.test(text)) {
+    throw new Error(`${key} must be a finite number greater than 0 and at most 1`);
+  }
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new Error(`${key} must be a finite number greater than 0 and at most 1`);
+  }
+  return value;
+}
+
 function parseHealthTargets(): HealthTarget[] {
   const raw = process.env['PI_OPS_HEALTH_TARGETS'] ?? '';
   if (!raw) return [];
@@ -110,8 +142,14 @@ function parseHealthTargets(): HealthTarget[] {
     if (typeof method !== 'string' || !['GET', 'HEAD'].includes(method.toUpperCase())) {
       throw new Error(`Health target method must be GET or HEAD: ${name}`);
     }
-    if (intervalMs !== undefined && (typeof intervalMs !== 'number' || intervalMs <= 0)) {
-      throw new Error(`Health target intervalMs must be positive: ${name}`);
+    if (
+      intervalMs !== undefined &&
+      (typeof intervalMs !== 'number' ||
+        !Number.isSafeInteger(intervalMs) ||
+        intervalMs <= 0 ||
+        intervalMs > 60 * 60 * 1000)
+    ) {
+      throw new Error(`Health target intervalMs must be a bounded positive integer: ${name}`);
     }
     if (container !== undefined && (typeof container !== 'string' || !container)) {
       throw new Error(`Health target container must be a non-empty string: ${name}`);
@@ -143,33 +181,55 @@ export function loadConfig(): NodeAgentConfig {
   );
 
   return {
-    port: parseInt(process.env['PI_OPS_NODE_PORT'] ?? '8081', 10),
+    port: integerEnv('PI_OPS_NODE_PORT', 8081, { max: 65_535 }),
     nodeToken: requireEnv('PI_OPS_NODE_TOKEN'),
     nodeId: process.env['PI_OPS_NODE_ID'] ?? 'default',
     allowedContainers,
     dockerSocketPath: process.env['PI_OPS_DOCKER_SOCKET'] ?? '/var/run/docker.sock',
     allowedDiskPaths,
-    logsMaxLines: parseInt(process.env['PI_OPS_LOGS_MAX_LINES'] ?? '200', 10),
-    logsMaxBytes: parseInt(process.env['PI_OPS_LOGS_MAX_BYTES'] ?? String(1024 * 1024), 10),
-    dockerQueryTimeoutMs: parseInt(process.env['PI_OPS_DOCKER_QUERY_TIMEOUT_MS'] ?? '5000', 10),
-    probeMaxTimeoutMs: parseInt(process.env['PI_OPS_PROBE_MAX_TIMEOUT_MS'] ?? '30000', 10),
-    maxResponseBytes: parseInt(process.env['PI_OPS_MAX_RESPONSE_BYTES'] ?? String(1024 * 1024), 10),
-    maxRequestBytes: parseInt(process.env['PI_OPS_NODE_MAX_REQUEST_BYTES'] ?? String(64 * 1024), 10),
+    logsMaxLines: integerEnv('PI_OPS_LOGS_MAX_LINES', 200, { max: 100_000 }),
+    logsMaxBytes: integerEnv('PI_OPS_LOGS_MAX_BYTES', 1024 * 1024, {
+      max: 100 * 1024 * 1024,
+    }),
+    dockerQueryTimeoutMs: integerEnv('PI_OPS_DOCKER_QUERY_TIMEOUT_MS', 5000, {
+      max: 10 * 60 * 1000,
+    }),
+    probeMaxTimeoutMs: integerEnv('PI_OPS_PROBE_MAX_TIMEOUT_MS', 30_000, {
+      max: 10 * 60 * 1000,
+    }),
+    maxResponseBytes: integerEnv('PI_OPS_MAX_RESPONSE_BYTES', 1024 * 1024, {
+      max: 100 * 1024 * 1024,
+    }),
+    maxRequestBytes: integerEnv('PI_OPS_NODE_MAX_REQUEST_BYTES', 64 * 1024, {
+      max: 10 * 1024 * 1024,
+    }),
     // Event source
     agentUrl: process.env['PI_OPS_AGENT_URL'] ?? 'http://localhost:8080',
     ingestToken: process.env['PI_OPS_INGEST_TOKEN'] ?? '',
-    eventQueueSize: parseInt(process.env['PI_OPS_EVENT_QUEUE_SIZE'] ?? '1000', 10),
-    eventSendTimeoutMs: parseInt(process.env['PI_OPS_EVENT_SEND_TIMEOUT_MS'] ?? '5000', 10),
-    eventMaxRetries: parseInt(process.env['PI_OPS_EVENT_MAX_RETRIES'] ?? '3', 10),
-    eventFlushIntervalMs: parseInt(process.env['PI_OPS_EVENT_FLUSH_INTERVAL_MS'] ?? '1000', 10),
+    eventQueueSize: integerEnv('PI_OPS_EVENT_QUEUE_SIZE', 1000, { max: 1_000_000 }),
+    eventSendTimeoutMs: integerEnv('PI_OPS_EVENT_SEND_TIMEOUT_MS', 5000, {
+      max: 10 * 60 * 1000,
+    }),
+    eventMaxRetries: integerEnv('PI_OPS_EVENT_MAX_RETRIES', 3, { min: 0, max: 100 }),
+    eventFlushIntervalMs: integerEnv('PI_OPS_EVENT_FLUSH_INTERVAL_MS', 1000, {
+      max: 60 * 60 * 1000,
+    }),
     // Detectors
-    detectorPollIntervalMs: parseInt(process.env['PI_OPS_DETECTOR_POLL_INTERVAL_MS'] ?? '10000', 10),
-    memoryPressureThreshold: parseFloat(process.env['PI_OPS_MEMORY_PRESSURE_THRESHOLD'] ?? '0.9'),
-    memoryPressureDuration: parseInt(process.env['PI_OPS_MEMORY_PRESSURE_DURATION'] ?? '3', 10),
-    diskPressureThreshold: parseFloat(process.env['PI_OPS_DISK_PRESSURE_THRESHOLD'] ?? '0.9'),
+    detectorPollIntervalMs: integerEnv('PI_OPS_DETECTOR_POLL_INTERVAL_MS', 10_000, {
+      max: 60 * 60 * 1000,
+    }),
+    memoryPressureThreshold: thresholdEnv('PI_OPS_MEMORY_PRESSURE_THRESHOLD', 0.9),
+    memoryPressureDuration: integerEnv('PI_OPS_MEMORY_PRESSURE_DURATION', 3, {
+      max: 10_000,
+    }),
+    diskPressureThreshold: thresholdEnv('PI_OPS_DISK_PRESSURE_THRESHOLD', 0.9),
     diskPressurePath,
-    diskPressureDuration: parseInt(process.env['PI_OPS_DISK_PRESSURE_DURATION'] ?? '3', 10),
+    diskPressureDuration: integerEnv('PI_OPS_DISK_PRESSURE_DURATION', 3, {
+      max: 10_000,
+    }),
     healthTargets: parseHealthTargets(),
-    healthFailureDuration: parseInt(process.env['PI_OPS_HEALTH_FAILURE_DURATION'] ?? '2', 10),
+    healthFailureDuration: integerEnv('PI_OPS_HEALTH_FAILURE_DURATION', 2, {
+      max: 10_000,
+    }),
   };
 }

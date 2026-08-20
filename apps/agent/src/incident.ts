@@ -74,6 +74,37 @@ export function createIncidentEngine(
   store: EventStore,
   config: IncidentConfig,
 ): IncidentEngine {
+  function applyRecovery(incidentId: string, recovery: OpsEvent): boolean {
+    const incident = store.getIncident(incidentId);
+    if (!incident) return false;
+    const linked = store.linkEventToIncident(incident.id, recovery.id);
+    if (!linked && store.findIncidentByEventId(recovery.id)?.id !== incident.id) return false;
+    store.updateIncident(incident.id, {
+      first_seen: incident.first_seen,
+      last_seen: laterTimestamp(incident.last_seen, recovery.time),
+      event_count: incident.event_count + (linked ? 1 : 0),
+      severity: incident.severity,
+      state: 'RECOVERED',
+    });
+    store.removePendingRecovery(recovery.id);
+    store.markEventProcessed(recovery.id, recovery.time);
+    return true;
+  }
+
+  function reconcilePendingRecoveries(fingerprint: string): void {
+    while (true) {
+      const matches = store.listPendingRecoveries(fingerprint).map((recovery) => ({
+        recovery,
+        incident: store.findRecoveryIncident(fingerprint, recovery.time),
+      }));
+      let progress = false;
+      for (const { recovery, incident } of matches) {
+        if (incident && applyRecovery(incident.id, recovery)) progress = true;
+      }
+      if (!progress) return;
+    }
+  }
+
   return {
     processEvent(event: OpsEvent, timestamp: string): IncidentResult {
       // Transport retry guard: an immutable Event can belong to only one
@@ -96,21 +127,14 @@ export function createIncidentEngine(
         : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs);
 
       if (existing && isExplicitRecovery) {
-        const linked = store.linkEventToIncident(existing.id, event.id);
-        const eventCount = existing.event_count + (linked ? 1 : 0);
-        store.updateIncident(existing.id, {
-          first_seen: existing.first_seen,
-          last_seen: laterTimestamp(existing.last_seen, timestamp),
-          event_count: eventCount,
-          severity: existing.severity,
-          state: 'RECOVERED',
-        });
+        reconcilePendingRecoveries(fingerprint);
+        applyRecovery(existing.id, event);
         return {
           ignored: false,
           incidentId: existing.id,
           isNew: false,
           isRecovery: true,
-          eventCount,
+          eventCount: store.getIncident(existing.id)?.event_count ?? existing.event_count,
         };
       }
 
@@ -129,18 +153,20 @@ export function createIncidentEngine(
           state: existing.state,
         });
 
+        reconcilePendingRecoveries(fingerprint);
         return {
           ignored: false,
           incidentId: existing.id,
           isNew: false,
           isRecovery: false,
-          eventCount,
+          eventCount: store.getIncident(existing.id)?.event_count ?? eventCount,
         };
       }
 
-      // A recovery without a matching active Incident is an observation, not a
-      // new failure Incident.
+      // Persist unmatched recovery for deterministic reconciliation when the
+      // causally earlier failure arrives later through transport.
       if (isExplicitRecovery) {
+        store.addPendingRecovery(event, fingerprint);
         return {
           ignored: true,
           incidentId: null,
@@ -162,13 +188,14 @@ export function createIncidentEngine(
         event_count: 1,
         severity: event.severity,
       }, event);
+      reconcilePendingRecoveries(fingerprint);
 
       return {
         ignored: false,
         incidentId: newIncident.id,
         isNew: true,
         isRecovery: false,
-        eventCount: 1,
+        eventCount: store.getIncident(newIncident.id)?.event_count ?? 1,
       };
     },
   };

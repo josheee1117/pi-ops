@@ -258,6 +258,33 @@ describe('POST /v1/events', () => {
     assert.equal(store.listPendingEvidenceJobs(10).length, 1);
   });
 
+  it('rejects duplicate Event when producer id or type changes', async () => {
+    for (const producer of [
+      { id: 'forwarder-02', type: 'node-agent', version: '0.1.0' },
+      { id: 'node-agent-01', type: 'application', version: '0.1.0' },
+    ]) {
+      const { app, store } = setupInMemory();
+      assert.equal((await app.request('/v1/events', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(makeValidBatch(1)),
+      })).status, 200);
+      const retry = makeValidBatch(1);
+      retry.producer = producer;
+
+      const response = await app.request('/v1/events', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(retry),
+      });
+
+      assert.equal(response.status, 409);
+      assert.equal(store.count(), 1);
+      assert.equal(store.incidentCount(), 1);
+      store.close();
+    }
+  });
+
   it('does not invoke Incident processing again for a duplicate Event', async () => {
     const config = makeTestConfig(':memory:');
     const store = createEventStore(':memory:');
@@ -375,7 +402,7 @@ describe('POST /v1/events', () => {
     store.close();
   });
 
-  it('does not let a retried unmatched recovery affect a later Incident', async () => {
+  it('reconciles unmatched recovery before failure and keeps retry idempotent', async () => {
     const config = makeTestConfig(':memory:');
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, {
@@ -410,14 +437,12 @@ describe('POST /v1/events', () => {
     assert.equal((await post(failure)).status, 200);
     assert.equal((await post(recovery)).status, 200);
 
-    const incident = store.findActiveIncident(
-      JSON.stringify(['health', 'test-svc-02', 'dataease', 'health.failure']),
-      '2026-08-20T12:00:00.000Z',
-      config.aggregationWindowMs,
-    );
+    const incident = store.findIncidentByEventId('evt-later-failure');
     assert.ok(incident);
-    assert.equal(incident.state, 'OPEN');
-    assert.equal(incident.event_count, 1);
+    assert.equal(incident.state, 'RECOVERED');
+    assert.equal(incident.event_count, 2);
+    assert.equal(store.findIncidentByEventId('evt-unmatched-recovery')?.id, incident.id);
+    assert.equal(store.pendingRecoveryCount(), 0);
     assert.equal(store.count(), 2);
     store.close();
   });
@@ -713,6 +738,65 @@ describe('persistence', () => {
     rmSync(dbPath, { recursive: true, force: true });
   });
 
+  it('reconciles pending recovery after database restart', async () => {
+    const { app: app1, store: store1, dbPath } = setupFileDb();
+    const producer = { id: 'node-agent-01', type: 'node-agent', version: '0.1.0' };
+    const recovery = {
+      ...makeValidEvent('evt-persisted-recovery'),
+      time: '2026-08-20T12:05:00.000Z',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      message: 'Recovered before failure arrival',
+    };
+    assert.equal((await app1.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ producer, events: [recovery] }),
+    })).status, 200);
+    assert.equal(store1.pendingRecoveryCount(), 1);
+    assert.ok(store1.getEventProcessedAt('evt-persisted-recovery'));
+    store1.close();
+
+    // Simulate an M7 database: recovery was marked processed before the
+    // pending-recovery table existed.
+    const legacy = new Database(dbPath);
+    legacy.prepare('DELETE FROM pending_recoveries WHERE event_id = ?').run(
+      'evt-persisted-recovery',
+    );
+    legacy.close();
+
+    const config = makeTestConfig(dbPath);
+    const store2 = createEventStore(dbPath);
+    const engine2 = createIncidentEngine(store2, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app2 = createApp(config, store2, engine2);
+    const failure = {
+      ...makeValidEvent('evt-persisted-failure'),
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      message: 'Failure arrived after recovery transport',
+    };
+    assert.equal((await app2.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ producer, events: [failure] }),
+    })).status, 200);
+
+    const incident = store2.findIncidentByEventId('evt-persisted-failure');
+    assert.ok(incident);
+    assert.equal(incident.state, 'RECOVERED');
+    assert.equal(incident.event_count, 2);
+    assert.equal(store2.findIncidentByEventId('evt-persisted-recovery')?.id, incident.id);
+    assert.equal(store2.pendingRecoveryCount(), 0);
+    assert.equal(store2.listPendingEvidenceJobs(10).length, 1);
+    store2.close();
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
   it('preserves each canonical event time when events aggregate into one Incident', () => {
     const { store: store1, dbPath } = setupFileDb();
     const engine = createIncidentEngine(store1, { aggregationWindowMs: 5 * 60 * 1000 });
@@ -963,8 +1047,10 @@ describe('persistence', () => {
       '2026-08-20T12:30:00.000Z',
       1,
     ), 1);
-    assert.equal(store.findIncidentByEventId('evt-legacy-failure')?.state, 'OPEN');
-    assert.equal(store.getEventProcessedAt('evt-legacy-recovery'), undefined);
+    assert.equal(store.findIncidentByEventId('evt-legacy-failure')?.state, 'RECOVERED');
+    assert.equal(store.findIncidentByEventId('evt-legacy-recovery')?.id,
+      store.findIncidentByEventId('evt-legacy-failure')?.id);
+    assert.ok(store.getEventProcessedAt('evt-legacy-recovery'));
     store.close();
 
     // Simulate a process restart between committed replay batches.
@@ -977,7 +1063,7 @@ describe('persistence', () => {
       '2026-08-20T12:31:00.000Z',
       1,
     );
-    assert.equal(replayBatch(), 1);
+    assert.equal(replayBatch(), 0);
     assert.equal(replayBatch(), 0);
     assert.equal(resumedStore.incidentCount(), 1);
     const incident = resumedStore.findIncidentByEventId('evt-legacy-failure');
@@ -1062,6 +1148,53 @@ describe('persistence', () => {
     assert.ok(store.getEventProcessedAt('evt-legacy-early-recovery'));
     assert.ok(store.getEventProcessedAt('evt-legacy-later-failure'));
     assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    store.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('migrates legacy Evidence rows without a failure_class column', () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'pi-ops-legacy-evidence-'));
+    const dbPath = join(tmpDir, 'legacy.db');
+    const db = new Database(dbPath);
+    db.exec(`
+      CREATE TABLE evidence (
+        id TEXT PRIMARY KEY,
+        incident_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        collected_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        error TEXT
+      );
+    `);
+    db.prepare(`
+      INSERT INTO evidence (
+        id, incident_id, node_id, source, kind, collected_at, status, data_json, error
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'evd-legacy',
+      'inc-legacy',
+      'test-svc-02',
+      'docker',
+      'docker.inspect',
+      '2026-08-20T12:01:00.000Z',
+      'failed',
+      'null',
+      'legacy failure',
+    );
+    db.close();
+
+    const store = createEventStore(dbPath);
+    const legacy = store.listEvidence('inc-legacy');
+    assert.equal(legacy.length, 1);
+    assert.equal(legacy[0]?.failureClass, undefined);
+    store.insertEvidence({
+      ...legacy[0]!,
+      failureClass: 'retryable',
+    });
+    assert.equal(store.listEvidence('inc-legacy')[0]?.failureClass, 'retryable');
     store.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });

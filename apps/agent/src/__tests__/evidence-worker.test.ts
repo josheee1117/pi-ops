@@ -5,12 +5,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { AgentConfig } from '../config.js';
-import type { EvidenceOrchestrator } from '../evidence-orchestrator.js';
+import {
+  createEvidenceOrchestrator,
+  type EvidenceOrchestrator,
+  type FetchLike,
+} from '../evidence-orchestrator.js';
 import { createEvidenceJobWorker } from '../evidence-worker.js';
 import { createIncidentEngine } from '../incident.js';
 import { createEventStore } from '../store.js';
 
-function makeConfig(sqlitePath = ':memory:'): AgentConfig {
+function makeConfig(
+  sqlitePath = ':memory:',
+  overrides: Partial<AgentConfig> = {},
+): AgentConfig {
   return {
     port: 0,
     ingestToken: 'ingest-token',
@@ -26,6 +33,7 @@ function makeConfig(sqlitePath = ':memory:'): AgentConfig {
     evidenceJobMaxAttempts: 3,
     evidenceJobBatchSize: 10,
     eventReplayBatchSize: 100,
+    ...overrides,
   };
 }
 
@@ -71,7 +79,14 @@ describe('durable evidence jobs', () => {
       async collectForIncident(incident, _event, id) {
         calls++;
         collectionId = id;
-        return { incidentId: incident.id, requested: 2, succeeded: 2, failed: 0 };
+        return {
+          incidentId: incident.id,
+          requested: 2,
+          succeeded: 2,
+          failed: 0,
+          retryableFailures: 0,
+          terminalFailures: 0,
+        };
       },
     };
     const worker = createEvidenceJobWorker(makeConfig(), store, orchestrator);
@@ -81,6 +96,243 @@ describe('durable evidence jobs', () => {
     assert.equal(collectionId, `job-${result.incidentId}`);
     assert.equal(store.getEvidenceJob(`job-${result.incidentId}`)?.state, 'COMPLETED');
     await worker.stop();
+    store.close();
+  });
+
+  it('retries HTTP 500 collection and completes without duplicate Evidence', async () => {
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
+    const incident = engine.processEvent(makeEvent(), makeEvent().time);
+    assert.ok(incident.incidentId);
+    let calls = 0;
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      if (calls <= 2) return new Response('temporary failure', { status: 500 });
+      const query = JSON.parse(String(init?.body)) as { type: string; incidentId: string };
+      return new Response(JSON.stringify({
+        id: `node-${calls}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: 'docker',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:01:00.000Z',
+        data: { ok: true },
+      }), { status: 200 });
+    }) as FetchLike;
+    const config = makeConfig(':memory:', {
+      nodeAgents: new Map([[
+        'test-svc-02',
+        { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'token' },
+      ]]),
+    });
+    const worker = createEvidenceJobWorker(
+      config,
+      store,
+      createEvidenceOrchestrator(config, store, fetchImpl),
+    );
+    const jobId = `job-${incident.incidentId}`;
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'PENDING');
+    assert.equal(store.listEvidence(incident.incidentId).length, 2);
+    assert.ok(store.listEvidence(incident.incidentId).every((item) => item.status === 'failed'));
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
+    assert.equal(store.getEvidenceJob(jobId)?.attempts, 2);
+    assert.equal(store.listEvidence(incident.incidentId).length, 2);
+    assert.ok(store.listEvidence(incident.incidentId).every((item) => item.status === 'succeeded'));
+    assert.equal(calls, 4);
+    store.close();
+  });
+
+  it('retries timeout collection and completes on the second attempt', async () => {
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
+    const incident = engine.processEvent(makeEvent(), makeEvent().time);
+    assert.ok(incident.incidentId);
+    let calls = 0;
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      if (calls <= 2) {
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      }
+      const query = JSON.parse(String(init?.body)) as { type: string; incidentId: string };
+      return new Response(JSON.stringify({
+        id: `node-${calls}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: 'docker',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:01:00.000Z',
+        data: { ok: true },
+      }), { status: 200 });
+    }) as FetchLike;
+    const config = makeConfig(':memory:', {
+      evidenceTimeoutMs: 5,
+      nodeAgents: new Map([[
+        'test-svc-02',
+        { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'token' },
+      ]]),
+    });
+    const worker = createEvidenceJobWorker(
+      config,
+      store,
+      createEvidenceOrchestrator(config, store, fetchImpl),
+    );
+    const jobId = `job-${incident.incidentId}`;
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'PENDING');
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
+    assert.equal(store.listEvidence(incident.incidentId).length, 2);
+    assert.ok(store.listEvidence(incident.incidentId).every((item) => item.status === 'succeeded'));
+    store.close();
+  });
+
+  it('does not retry terminal HTTP 4xx collection failure', async () => {
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
+    const incident = engine.processEvent(makeEvent(), makeEvent().time);
+    assert.ok(incident.incidentId);
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      return new Response('not allowed', { status: 403 });
+    }) as FetchLike;
+    const config = makeConfig(':memory:', {
+      nodeAgents: new Map([[
+        'test-svc-02',
+        { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'token' },
+      ]]),
+    });
+    const worker = createEvidenceJobWorker(
+      config,
+      store,
+      createEvidenceOrchestrator(config, store, fetchImpl),
+    );
+    const jobId = `job-${incident.incidentId}`;
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
+    assert.equal(store.getEvidenceJob(jobId)?.attempts, 1);
+    await worker.runOnce();
+    assert.equal(calls, 2);
+    assert.equal(store.listEvidence(incident.incidentId).length, 2);
+    assert.ok(store.listEvidence(incident.incidentId).every((item) => item.status === 'failed'));
+    store.close();
+  });
+
+  it('retries only retryable queries after a mixed terminal/retryable attempt', async () => {
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
+    const incident = engine.processEvent(makeEvent(), makeEvent().time);
+    assert.ok(incident.incidentId);
+    let calls = 0;
+    let logsCalls = 0;
+    const seenTypes: string[] = [];
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      const query = JSON.parse(String(init?.body)) as { type: string; incidentId: string };
+      seenTypes.push(query.type);
+      if (query.type === 'docker.inspect') {
+        return new Response('terminal', { status: 403 });
+      }
+      logsCalls++;
+      if (logsCalls === 1) return new Response('retry', { status: 500 });
+      return new Response(JSON.stringify({
+        id: `node-${calls}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: 'docker',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:01:00.000Z',
+        data: { ok: true },
+      }), { status: 200 });
+    }) as FetchLike;
+    const config = makeConfig(':memory:', {
+      nodeAgents: new Map([[
+        'test-svc-02',
+        { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'token' },
+      ]]),
+    });
+    const worker = createEvidenceJobWorker(
+      config,
+      store,
+      createEvidenceOrchestrator(config, store, fetchImpl),
+    );
+    const jobId = `job-${incident.incidentId}`;
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'PENDING');
+    await worker.runOnce();
+
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
+    assert.equal(calls, 3);
+    assert.deepEqual(seenTypes, ['docker.inspect', 'docker.logs', 'docker.logs']);
+    const evidence = store.listEvidence(incident.incidentId);
+    assert.equal(evidence.length, 2);
+    assert.equal(evidence.find((item) => item.kind === 'docker.inspect')?.failureClass, 'terminal');
+    assert.equal(evidence.find((item) => item.kind === 'docker.logs')?.status, 'succeeded');
+    store.close();
+  });
+
+  it('retries only the query whose successful Evidence failed to persist', async () => {
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
+    const incident = engine.processEvent(makeEvent(), makeEvent().time);
+    assert.ok(incident.incidentId);
+    const config = makeConfig(':memory:', {
+      nodeAgents: new Map([[
+        'test-svc-02',
+        { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'token' },
+      ]]),
+    });
+    const callsByType = new Map<string, number>();
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const query = JSON.parse(String(init?.body)) as { type: string; incidentId: string };
+      callsByType.set(query.type, (callsByType.get(query.type) ?? 0) + 1);
+      return new Response(JSON.stringify({
+        id: `node-${query.type}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: 'docker',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:01:00.000Z',
+        data: { ok: true },
+      }), { status: 200 });
+    }) as FetchLike;
+    const originalInsertEvidence = store.insertEvidence;
+    let failLogsInsert = true;
+    store.insertEvidence = (evidence) => {
+      if (failLogsInsert && evidence.kind === 'docker.logs') {
+        failLogsInsert = false;
+        throw new Error('sqlite write failed');
+      }
+      originalInsertEvidence(evidence);
+    };
+    const worker = createEvidenceJobWorker(
+      config,
+      store,
+      createEvidenceOrchestrator(config, store, fetchImpl),
+    );
+    const jobId = `job-${incident.incidentId}`;
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'PENDING');
+    assert.equal(store.getEvidenceJob(jobId)?.attempts, 1);
+    assert.match(store.getEvidenceJob(jobId)?.lastError ?? '', /sqlite write failed/);
+    assert.equal(store.listEvidence(incident.incidentId).length, 1);
+
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
+    assert.equal(callsByType.get('docker.inspect'), 1);
+    assert.equal(callsByType.get('docker.logs'), 2);
+    assert.equal(store.listEvidence(incident.incidentId).length, 2);
+    store.insertEvidence = originalInsertEvidence;
     store.close();
   });
 
@@ -115,7 +367,14 @@ describe('durable evidence jobs', () => {
     const orchestrator: EvidenceOrchestrator = {
       async collectForIncident(incident) {
         calls++;
-        return { incidentId: incident.id, requested: 0, succeeded: 0, failed: 0 };
+        return {
+          incidentId: incident.id,
+          requested: 0,
+          succeeded: 0,
+          failed: 0,
+          retryableFailures: 0,
+          terminalFailures: 0,
+        };
       },
     };
     const worker = createEvidenceJobWorker(makeConfig(dbPath), store2, orchestrator);

@@ -5,8 +5,17 @@ import type { EvidenceQueryRequest, EvidenceQueryResult } from './types.js';
 export interface DockerInspectResult {
   Id?: string;
   Name?: string;
-  State?: { Status?: string; Running?: boolean; StartedAt?: string };
+  RestartCount?: number;
+  State?: {
+    Status?: string;
+    Running?: boolean;
+    StartedAt?: string;
+    OOMKilled?: boolean;
+    ExitCode?: number;
+    Health?: { Status?: string };
+  };
   Config?: { Image?: string };
+  HostConfig?: { Memory?: number };
 }
 
 export interface DockerStatsResult {
@@ -245,10 +254,18 @@ export function createDockerEvidenceProvider(
               Status: inspect.State?.Status,
               Running: inspect.State?.Running,
               StartedAt: inspect.State?.StartedAt,
+              OOMKilled: inspect.State?.OOMKilled,
+              ExitCode: inspect.State?.ExitCode,
+              Health: {
+                Status: inspect.State?.Health?.Status,
+              },
+            },
+            RestartCount: inspect.RestartCount,
+            HostConfig: {
+              Memory: inspect.HostConfig?.Memory,
             },
             Config: {
               Image: inspect.Config?.Image,
-              Env: undefined, // never expose env vars
             },
           };
           break;

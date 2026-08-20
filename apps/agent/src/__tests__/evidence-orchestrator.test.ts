@@ -125,6 +125,7 @@ describe('planEvidenceQueries', () => {
       severity: 'error',
       service: 'dataease-health',
       attributes: {
+        detector: 'http.health',
         url: 'http://dataease:8100/health',
         method: 'GET',
         containerName: 'dataease',
@@ -134,6 +135,20 @@ describe('planEvidenceQueries', () => {
     assert.deepEqual(
       queries.map((query) => query.type),
       ['http.probe', 'docker.inspect', 'docker.logs'],
+    );
+  });
+
+  it('maps Docker health failure to container evidence without HTTP probe', () => {
+    const incident = makeIncident({ type: 'health.failure' });
+    const event = makeEvent({
+      source: 'docker',
+      type: 'health.failure',
+      severity: 'error',
+      attributes: { containerName: 'dataease', dockerAction: 'health_status' },
+    });
+    assert.deepEqual(
+      planEvidenceQueries(incident, event, 200).map((query) => query.type),
+      ['docker.inspect', 'docker.logs'],
     );
   });
 
@@ -173,6 +188,8 @@ describe('evidence orchestration', () => {
       requested: 4,
       succeeded: 4,
       failed: 0,
+      retryableFailures: 0,
+      terminalFailures: 0,
     });
     const evidence = store.listEvidence(incident.id);
     assert.equal(evidence.length, 4);
@@ -460,11 +477,74 @@ describe('evidence orchestration', () => {
     ).collectForIncident(incident, makeEvent({ type: 'container.die' }));
 
     assert.equal(summary.failed, 2);
+    assert.equal(summary.retryableFailures, 0);
+    assert.equal(summary.terminalFailures, 2);
     assert.ok(
       store.listEvidence(incident.id).every((item) =>
-        item.error?.includes('exceeds 32 bytes'),
+        item.failureClass === 'terminal' && item.error?.includes('exceeds 32 bytes'),
       ),
     );
+    store.close();
+  });
+
+  it('classifies a response stream failure after headers as retryable', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-stream-reset',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const resetFetch = (async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{'));
+        controller.error(new Error('connection reset'));
+      },
+    }), { status: 200 })) as FetchLike;
+
+    const summary = await createEvidenceOrchestrator(makeConfig(), store, resetFetch)
+      .collectForIncident(incident, makeEvent({ type: 'container.die' }));
+
+    assert.equal(summary.failed, 2);
+    assert.equal(summary.retryableFailures, 2);
+    assert.equal(summary.terminalFailures, 0);
+    assert.ok(
+      store.listEvidence(incident.id).every((item) =>
+        item.failureClass === 'retryable' && item.error?.includes('response stream failed'),
+      ),
+    );
+    store.close();
+  });
+
+  it('propagates Evidence persistence failures', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-persistence',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const originalInsertEvidence = store.insertEvidence;
+    store.insertEvidence = () => {
+      throw new Error('sqlite write failed');
+    };
+
+    await assert.rejects(
+      createEvidenceOrchestrator(makeConfig(), store, successfulNodeFetch())
+        .collectForIncident(incident, makeEvent({ type: 'container.die' })),
+      /sqlite write failed/,
+    );
+    store.insertEvidence = originalInsertEvidence;
     store.close();
   });
 
@@ -492,7 +572,7 @@ describe('evidence orchestration', () => {
         service: 'dataease-health',
         type: 'health.failure',
         severity: 'error',
-        attributes: {},
+        attributes: { detector: 'http.health' },
       }),
     );
 
@@ -501,6 +581,34 @@ describe('evidence orchestration', () => {
     const evidence = store.listEvidence(incident.id);
     assert.equal(evidence[0]?.kind, 'http.probe');
     assert.match(evidence[0]?.error ?? '', /no URL/);
+    store.close();
+  });
+
+  it('does not create missing-URL evidence for Docker health failure', async () => {
+    const store = createEventStore(':memory:');
+    const { id: _id, ...incidentInput } = makeIncident({
+      type: 'health.failure',
+      fingerprint: 'docker-health',
+    });
+    const incident = store.createIncident(incidentInput);
+    const summary = await createEvidenceOrchestrator(
+      makeConfig(),
+      store,
+      successfulNodeFetch(),
+    ).collectForIncident(incident, makeEvent({
+      source: 'docker',
+      type: 'health.failure',
+      severity: 'error',
+      attributes: { containerName: 'dataease', dockerAction: 'health_status' },
+    }));
+
+    assert.equal(summary.requested, 2);
+    assert.equal(summary.failed, 0);
+    assert.equal(summary.retryableFailures, 0);
+    assert.deepEqual(
+      store.listEvidence(incident.id).map((item) => item.kind).sort(),
+      ['docker.inspect', 'docker.logs'],
+    );
     store.close();
   });
 
@@ -584,7 +692,8 @@ describe('evidence orchestration', () => {
     ).collectForIncident(incident, makeEvent({ type: 'container.die' }));
 
     assert.equal(summary.failed, 2);
-    assert.ok(store.listEvidence(incident.id).every((item) => item.error?.includes('aborted')));
+    assert.equal(summary.retryableFailures, 2);
+    assert.ok(store.listEvidence(incident.id).every((item) => item.error?.includes('timed out')));
     store.close();
   });
 

@@ -25,12 +25,22 @@ export function createEvidenceJobWorker(
       try {
         const incident = store.getIncident(job.incidentId);
         if (!incident) throw new Error(`Incident ${job.incidentId} no longer exists`);
-        await orchestrator.collectForIncident(
+        const summary = await orchestrator.collectForIncident(
           incident,
           job.triggeringEvent,
           job.id,
         );
-        store.markEvidenceJobCompleted(job.id);
+        if (summary.retryableFailures > 0) {
+          const current = store.getEvidenceJob(job.id);
+          const failed = (current?.attempts ?? job.attempts + 1) >= config.evidenceJobMaxAttempts;
+          store.markEvidenceJobRetry(
+            job.id,
+            `${summary.retryableFailures} retryable evidence collection failure(s)`,
+            failed,
+          );
+        } else {
+          store.markEvidenceJobCompleted(job.id);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const current = store.getEvidenceJob(job.id);

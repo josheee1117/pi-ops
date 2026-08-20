@@ -57,10 +57,12 @@ export interface IncidentRow {
 // ── Evidence types ───────────────────────────────────────────────────────────
 
 export type EvidenceStatus = 'succeeded' | 'failed';
+export type EvidenceFailureClass = 'retryable' | 'terminal';
 
 export interface EvidenceRecord extends Evidence {
   status: EvidenceStatus;
   error?: string;
+  failureClass?: EvidenceFailureClass;
 }
 
 export interface EvidenceRow {
@@ -73,6 +75,7 @@ export interface EvidenceRow {
   status: EvidenceStatus;
   data_json: string;
   error: string | null;
+  failure_class: EvidenceFailureClass | null;
 }
 
 // ── Evidence job types ───────────────────────────────────────────────────────
@@ -158,7 +161,8 @@ CREATE TABLE IF NOT EXISTS evidence (
   collected_at TEXT NOT NULL,
   status TEXT NOT NULL,
   data_json TEXT NOT NULL,
-  error TEXT
+  error TEXT,
+  failure_class TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_evidence_incident_id ON evidence (incident_id);
 `;
@@ -224,8 +228,37 @@ LIMIT @limit;
 `;
 
 const MARK_EVENT_PROCESSED_SQL = `
-INSERT INTO event_processing (event_id, incident_processed_at)
+INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
 VALUES (@id, @processed_at);
+`;
+
+const CREATE_PENDING_RECOVERIES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS pending_recoveries (
+  event_id TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  event_time TEXT NOT NULL,
+  event_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pending_recoveries_fingerprint_time
+  ON pending_recoveries (fingerprint, event_time, event_id);
+`;
+
+const INSERT_PENDING_RECOVERY_SQL = `
+INSERT OR IGNORE INTO pending_recoveries (
+  event_id, fingerprint, event_time, event_json
+) VALUES (
+  @event_id, @fingerprint, @event_time, @event_json
+);
+`;
+
+const LIST_PENDING_RECOVERIES_SQL = `
+SELECT event_json FROM pending_recoveries
+WHERE fingerprint = @fingerprint
+ORDER BY julianday(event_time), event_id;
+`;
+
+const DELETE_PENDING_RECOVERY_SQL = `
+DELETE FROM pending_recoveries WHERE event_id = ?;
 `;
 
 const LIST_INCIDENTS_BY_FINGERPRINT_SQL = `
@@ -275,9 +308,11 @@ const COUNT_INCIDENTS_SQL = `SELECT COUNT(*) as count FROM incidents`;
 
 const INSERT_EVIDENCE_SQL = `
 INSERT INTO evidence (
-  id, incident_id, node_id, source, kind, collected_at, status, data_json, error
+  id, incident_id, node_id, source, kind, collected_at,
+  status, data_json, error, failure_class
 ) VALUES (
-  @id, @incident_id, @node_id, @source, @kind, @collected_at, @status, @data_json, @error
+  @id, @incident_id, @node_id, @source, @kind, @collected_at,
+  @status, @data_json, @error, @failure_class
 )
 ON CONFLICT(id) DO UPDATE SET
   incident_id = excluded.incident_id,
@@ -287,7 +322,8 @@ ON CONFLICT(id) DO UPDATE SET
   collected_at = excluded.collected_at,
   status = excluded.status,
   data_json = excluded.data_json,
-  error = excluded.error;
+  error = excluded.error,
+  failure_class = excluded.failure_class;
 `;
 
 const LIST_EVIDENCE_SQL = `
@@ -355,6 +391,9 @@ export interface EventStore {
   /** Read the separate Incident-processing completion marker. */
   getEventProcessedAt(id: string): string | undefined;
 
+  /** Mark an Event processed when reconciliation applies it indirectly. */
+  markEventProcessed(id: string, processedAt: string): void;
+
   /** Atomically replay all durable Events still pending Incident processing. */
   replayPendingEvents(
     processEvent: (event: OpsEvent) => void,
@@ -363,6 +402,18 @@ export interface EventStore {
   ): number;
 
   // ── Incident operations ──────────────────────────────────────────────────
+
+  /** Persist an unmatched recovery for deterministic later reconciliation. */
+  addPendingRecovery(event: OpsEvent, fingerprint: string): void;
+
+  /** List pending recoveries for one central fingerprint in event-time order. */
+  listPendingRecoveries(fingerprint: string): OpsEvent[];
+
+  /** Remove one recovery after it is linked to an Incident. */
+  removePendingRecovery(eventId: string): void;
+
+  /** Total unmatched recovery count. */
+  pendingRecoveryCount(): number;
 
   /** Find the nearest active Incident inside the event-time aggregation window. */
   findActiveIncident(
@@ -471,6 +522,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INCIDENTS_TABLE_SQL);
     db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
     db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
+    db.exec(CREATE_PENDING_RECOVERIES_TABLE_SQL);
 
     // Recompute linkable Incident fingerprints using every immutable Event.
     // A legacy producer fingerprint could have merged unrelated identities;
@@ -542,7 +594,43 @@ export function createEventStore(dbPath: string): EventStore {
       );
     `);
 
+    // Upgrade M7 databases where an unmatched recovery was already marked as
+    // processed but had no durable reconciliation record.
+    const unmatchedRecoveries = db.prepare(`
+      ${GET_EVENT_SQL.replace('WHERE id = ?;', '')}
+      WHERE type IN (
+        'health.recovered',
+        'host.memory_recovered',
+        'host.disk_recovered'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM incident_events
+        WHERE incident_events.event_id = events.id
+      );
+    `).all() as StoredEvent[];
+    const insertPendingRecovery = db.prepare(INSERT_PENDING_RECOVERY_SQL);
+    for (const stored of unmatchedRecoveries) {
+      const event = mapStoredEvent(stored);
+      insertPendingRecovery.run({
+        event_id: event.id,
+        fingerprint: JSON.stringify([
+          event.source,
+          event.nodeId,
+          event.service,
+          recoveryTypes[event.type] ?? event.type,
+        ]),
+        event_time: event.time,
+        event_json: JSON.stringify(event),
+      });
+    }
+
     db.exec(CREATE_EVIDENCE_TABLE_SQL);
+    const evidenceColumns = new Set(
+      (db.pragma('table_info(evidence)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!evidenceColumns.has('failure_class')) {
+      db.exec('ALTER TABLE evidence ADD COLUMN failure_class TEXT');
+    }
     db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_events_event_time ON events (event_time, id);
@@ -563,6 +651,10 @@ export function createEventStore(dbPath: string): EventStore {
   const getEventProcessedAtStmt = db.prepare(GET_EVENT_PROCESSED_AT_SQL);
   const listUnprocessedEventsStmt = db.prepare(LIST_UNPROCESSED_EVENTS_SQL);
   const markEventProcessedStmt = db.prepare(MARK_EVENT_PROCESSED_SQL);
+  const insertPendingRecoveryStmt = db.prepare(INSERT_PENDING_RECOVERY_SQL);
+  const listPendingRecoveriesStmt = db.prepare(LIST_PENDING_RECOVERIES_SQL);
+  const deletePendingRecoveryStmt = db.prepare(DELETE_PENDING_RECOVERY_SQL);
+  const countPendingRecoveriesStmt = db.prepare('SELECT COUNT(*) AS count FROM pending_recoveries');
   const listIncidentsByFingerprintStmt = db.prepare(LIST_INCIDENTS_BY_FINGERPRINT_SQL);
   const listActiveIncidentsStmt = db.prepare(LIST_ACTIVE_INCIDENTS_SQL);
   const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
@@ -626,9 +718,15 @@ export function createEventStore(dbPath: string): EventStore {
     };
   }
 
-  function storedEventMatches(event: OpsEvent, stored: StoredEvent): boolean {
+  function storedEventMatches(
+    batch: EventBatch,
+    event: OpsEvent,
+    stored: StoredEvent,
+  ): boolean {
     return stored.schema_version === event.schemaVersion
       && stored.event_time === event.time
+      && stored.producer_id === batch.producer.id
+      && stored.producer_type === batch.producer.type
       && stored.source === event.source
       && stored.node_id === event.nodeId
       && stored.service === event.service
@@ -669,7 +767,7 @@ export function createEventStore(dbPath: string): EventStore {
     if (result.changes === 1) return { inserted: true };
 
     const stored = getEventStmt.get(event.id) as StoredEvent | undefined;
-    if (!stored || !storedEventMatches(event, stored)) {
+    if (!stored || !storedEventMatches(batch, event, stored)) {
       throw new DuplicateEventConflictError(event.id);
     }
     return { inserted: false, stored };
@@ -711,7 +809,7 @@ export function createEventStore(dbPath: string): EventStore {
         id: event.id,
         processed_at: receiveTime,
       });
-      if (marked.changes !== 1) {
+      if (marked.changes !== 1 && !getEventProcessedAtStmt.get(event.id)) {
         throw new Error(`Event ${event.id} could not be marked as Incident-processed`);
       }
       processed++;
@@ -729,7 +827,7 @@ export function createEventStore(dbPath: string): EventStore {
       const event = mapStoredEvent(stored);
       processEvent(event);
       const marked = markEventProcessedStmt.run({ id: event.id, processed_at: processedAt });
-      if (marked.changes !== 1) {
+      if (marked.changes !== 1 && !getEventProcessedAtStmt.get(event.id)) {
         throw new Error(`Event ${event.id} could not be marked as Incident-processed`);
       }
     }
@@ -788,6 +886,10 @@ export function createEventStore(dbPath: string): EventStore {
       return row?.incident_processed_at;
     },
 
+    markEventProcessed(id: string, processedAt: string): void {
+      markEventProcessedStmt.run({ id, processed_at: processedAt });
+    },
+
     replayPendingEvents(
       processEvent: (event: OpsEvent) => void,
       processedAt: string,
@@ -797,6 +899,31 @@ export function createEventStore(dbPath: string): EventStore {
     },
 
     // ── Incidents ─────────────────────────────────────────────────────────
+
+    addPendingRecovery(event: OpsEvent, fingerprint: string): void {
+      insertPendingRecoveryStmt.run({
+        event_id: event.id,
+        fingerprint,
+        event_time: event.time,
+        event_json: JSON.stringify(event),
+      });
+    },
+
+    listPendingRecoveries(fingerprint: string): OpsEvent[] {
+      const rows = listPendingRecoveriesStmt.all({ fingerprint }) as Array<{
+        event_json: string;
+      }>;
+      return rows.map((row) => JSON.parse(row.event_json) as OpsEvent);
+    },
+
+    removePendingRecovery(eventId: string): void {
+      deletePendingRecoveryStmt.run(eventId);
+    },
+
+    pendingRecoveryCount(): number {
+      const row = countPendingRecoveriesStmt.get() as { count: number };
+      return row.count;
+    },
 
     findActiveIncident(
       fingerprint: string,
@@ -942,6 +1069,7 @@ export function createEventStore(dbPath: string): EventStore {
         status: evidence.status,
         data_json: JSON.stringify(evidence.data ?? null),
         error: evidence.error ?? null,
+        failure_class: evidence.failureClass ?? null,
       });
     },
 
@@ -957,6 +1085,7 @@ export function createEventStore(dbPath: string): EventStore {
         data: JSON.parse(row.data_json) as unknown,
         status: row.status,
         ...(row.error ? { error: row.error } : {}),
+        ...(row.failure_class ? { failureClass: row.failure_class } : {}),
       }));
     },
 

@@ -619,9 +619,131 @@ describe('recovery', () => {
     assert.equal(recovery.ignored, true);
     assert.equal(store.getIncident(first.incidentId!)?.state, 'OPEN');
     assert.equal(store.getIncident(second.incidentId!)?.state, 'OPEN');
+    assert.equal(store.pendingRecoveryCount(), 1);
   });
 
-  it('ignores an explicit recovery that has no correlated active Incident', () => {
+  it('reconciles recovery-before-failure into the same Incident', () => {
+    const { store, engine } = setup();
+    const recoveryEvent = makeEvent({
+      id: 'evt-recovery-first',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:05:00.000Z',
+    });
+    const pending = engine.processEvent(recoveryEvent, recoveryEvent.time);
+    assert.equal(pending.ignored, true);
+    assert.equal(store.pendingRecoveryCount(), 1);
+
+    const failureEvent = makeEvent({
+      id: 'evt-failure-later-arrival',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T12:00:00.000Z',
+    });
+    const failure = engine.processEvent(failureEvent, failureEvent.time);
+
+    assert.ok(failure.incidentId);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.getIncident(failure.incidentId)?.state, 'RECOVERED');
+    assert.equal(store.getIncident(failure.incidentId)?.event_count, 2);
+    assert.equal(store.findIncidentByEventId(recoveryEvent.id)?.id, failure.incidentId);
+    assert.equal(store.pendingRecoveryCount(), 0);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+  });
+
+  it('reconciles multiple pending recoveries into one Incident without double-linking', () => {
+    const { store, engine } = setup();
+    const firstRecovery = makeEvent({
+      id: 'evt-recovery-first-a',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:05:00.000Z',
+    });
+    const secondRecovery = makeEvent({
+      id: 'evt-recovery-first-b',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:06:00.000Z',
+    });
+    engine.processEvent(firstRecovery, firstRecovery.time);
+    engine.processEvent(secondRecovery, secondRecovery.time);
+    assert.equal(store.pendingRecoveryCount(), 2);
+
+    const failureEvent = makeEvent({
+      id: 'evt-failure-after-two-recoveries',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T12:00:00.000Z',
+    });
+    const failure = engine.processEvent(failureEvent, failureEvent.time);
+
+    assert.ok(failure.incidentId);
+    assert.equal(store.getIncident(failure.incidentId)?.state, 'RECOVERED');
+    assert.equal(store.getIncident(failure.incidentId)?.event_count, 3);
+    assert.equal(store.findIncidentByEventId(firstRecovery.id)?.id, failure.incidentId);
+    assert.equal(store.findIncidentByEventId(secondRecovery.id)?.id, failure.incidentId);
+    assert.equal(store.pendingRecoveryCount(), 0);
+  });
+
+  it('retries ambiguous pending recovery after another episode is recovered', () => {
+    const { store, engine } = setup();
+    const firstFailure = makeEvent({
+      id: 'evt-fixed-point-first-failure',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T12:00:00.000Z',
+    });
+    const secondFailure = makeEvent({
+      id: 'evt-fixed-point-second-failure',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T13:00:00.000Z',
+    });
+    const first = engine.processEvent(firstFailure, firstFailure.time);
+    const second = engine.processEvent(secondFailure, secondFailure.time);
+    assert.notEqual(first.incidentId, second.incidentId);
+
+    const firstRecovery = makeEvent({
+      id: 'evt-fixed-point-first-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:30:00.000Z',
+    });
+    const ambiguousRecovery = makeEvent({
+      id: 'evt-fixed-point-ambiguous-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T13:30:00.000Z',
+    });
+    const fingerprint = computeFingerprint(firstRecovery);
+    store.addPendingRecovery(firstRecovery, fingerprint);
+    store.addPendingRecovery(ambiguousRecovery, fingerprint);
+
+    engine.processEvent(makeEvent({
+      id: 'evt-fixed-point-trigger',
+      source: 'health',
+      type: 'health.failure',
+      severity: 'error',
+      time: '2026-08-20T13:01:00.000Z',
+    }), '2026-08-20T13:01:00.000Z');
+
+    assert.equal(store.getIncident(first.incidentId!)?.state, 'RECOVERED');
+    assert.equal(store.getIncident(second.incidentId!)?.state, 'RECOVERED');
+    assert.equal(store.findIncidentByEventId(firstRecovery.id)?.id, first.incidentId);
+    assert.equal(store.findIncidentByEventId(ambiguousRecovery.id)?.id, second.incidentId);
+    assert.equal(store.pendingRecoveryCount(), 0);
+  });
+
+  it('keeps an explicit recovery pending when no active Incident exists', () => {
     const { store, engine } = setup();
     const recovery = makeEvent({
       id: 'evt-unmatched-recovery',
@@ -633,6 +755,7 @@ describe('recovery', () => {
     assert.equal(result.ignored, true);
     assert.equal(result.incidentId, null);
     assert.equal(store.incidentCount(), 0);
+    assert.equal(store.pendingRecoveryCount(), 1);
   });
 
   it('ignores a delayed recovery for an episode that is already recovered', () => {

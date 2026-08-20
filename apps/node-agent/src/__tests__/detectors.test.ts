@@ -117,6 +117,7 @@ describe('health detector', () => {
     assert.equal(sender.events[0]!.severity, 'error');
     assert.equal(sender.events[0]!.service, 'dataease');
     assert.equal(sender.events[0]!.attributes.containerName, 'dataease');
+    assert.equal(sender.events[0]!.attributes.detector, 'http.health');
 
     // Flood of failures — still one event
     for (let i = 0; i < 10; i++) {
