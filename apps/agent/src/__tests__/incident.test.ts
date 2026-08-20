@@ -578,6 +578,43 @@ describe('recovery', () => {
     assert.equal(store.getIncident(opened.incidentId!)?.event_count, 3);
   });
 
+  it('ignores recovery when multiple active episodes are eligible', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({
+        id: 'evt-ambiguous-first',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({
+        id: 'evt-ambiguous-second',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T13:00:00.000Z',
+      }),
+      '2026-08-20T13:00:00.000Z',
+    );
+
+    const recovery = engine.processEvent(
+      makeEvent({
+        id: 'evt-ambiguous-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T14:00:00.000Z',
+      }),
+      '2026-08-20T14:00:00.000Z',
+    );
+
+    assert.equal(recovery.ignored, true);
+    assert.equal(store.getIncident(first.incidentId!)?.state, 'OPEN');
+    assert.equal(store.getIncident(second.incidentId!)?.state, 'OPEN');
+  });
+
   it('ignores an explicit recovery that has no correlated active Incident', () => {
     const { store, engine } = setup();
     const recovery = makeEvent({
@@ -751,6 +788,34 @@ describe('terminal Incident event-time correlation', () => {
     assert.notEqual(next.incidentId, failure.incidentId);
     assert.equal(store.incidentCount(), 2);
     assert.equal(store.listPendingEvidenceJobs(10).length, 2);
+  });
+
+  it('does not mutate a CLOSED Incident for a delayed historical Event', () => {
+    const { store, engine } = setup();
+    const opened = engine.processEvent(
+      makeEvent({ id: 'evt-closed-original', time: '2026-08-20T12:00:00.000Z' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const incident = store.getIncident(opened.incidentId!);
+    assert.ok(incident);
+    store.updateIncident(incident.id, {
+      first_seen: incident.first_seen,
+      last_seen: '2026-08-20T12:10:00.000Z',
+      event_count: incident.event_count,
+      severity: incident.severity,
+      state: 'CLOSED',
+    });
+
+    const delayed = engine.processEvent(
+      makeEvent({ id: 'evt-closed-delayed', time: '2026-08-20T12:05:00.000Z' }),
+      '2026-08-20T12:05:00.000Z',
+    );
+
+    assert.equal(delayed.isNew, true);
+    assert.notEqual(delayed.incidentId, opened.incidentId);
+    assert.equal(store.getIncident(opened.incidentId!)?.state, 'CLOSED');
+    assert.equal(store.getIncident(opened.incidentId!)?.event_count, 1);
+    assert.equal(store.incidentCount(), 2);
   });
 
   it('routes a delayed failure to the correct terminal window', () => {

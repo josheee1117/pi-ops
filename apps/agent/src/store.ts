@@ -448,50 +448,60 @@ export function createEventStore(dbPath: string): EventStore {
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
 
-  db.exec(CREATE_EVENTS_TABLE_SQL);
+  const migrateSchema = db.transaction(() => {
+    db.exec(CREATE_EVENTS_TABLE_SQL);
 
-  // Migrate databases created before canonical event timestamps and protocol
-  // versions were persisted. receive_time is the only durable timestamp
-  // available for legacy rows, so it is the deterministic backfill.
-  const eventColumns = new Set(
-    (db.pragma('table_info(events)') as Array<{ name: string }>).map(({ name }) => name),
-  );
-  if (!eventColumns.has('schema_version')) {
-    db.exec('ALTER TABLE events ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1');
-  }
-  if (!eventColumns.has('event_time')) {
-    db.exec("ALTER TABLE events ADD COLUMN event_time TEXT NOT NULL DEFAULT ''");
-  }
-  db.exec("UPDATE events SET event_time = receive_time WHERE event_time IS NULL OR event_time = ''");
+    // Migrate databases created before canonical event timestamps and protocol
+    // versions were persisted. receive_time is the only durable timestamp
+    // available for legacy rows, so it is the deterministic backfill.
+    const eventColumns = new Set(
+      (db.pragma('table_info(events)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!eventColumns.has('schema_version')) {
+      db.exec('ALTER TABLE events ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!eventColumns.has('event_time')) {
+      db.exec("ALTER TABLE events ADD COLUMN event_time TEXT NOT NULL DEFAULT ''");
+    }
+    db.exec(
+      "UPDATE events SET event_time = receive_time WHERE event_time IS NULL OR event_time = ''",
+    );
 
-  db.exec(CREATE_INCIDENTS_TABLE_SQL);
-  db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
-  db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
+    db.exec(CREATE_INCIDENTS_TABLE_SQL);
+    db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
+    db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
 
-  // Preserve markers from the short-lived transitional schema if present.
-  if (eventColumns.has('incident_processed_at')) {
+    // Preserve markers from the short-lived transitional schema if present.
+    if (eventColumns.has('incident_processed_at')) {
+      db.exec(`
+        INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
+        SELECT id, incident_processed_at FROM events
+        WHERE incident_processed_at IS NOT NULL;
+      `);
+    }
+
+    // Rows already linked to an Incident were processed by older versions.
+    // Every other unlinked legacy Event, including recoveries, is replayed once
+    // in canonical event-time order during startup.
     db.exec(`
       INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
-      SELECT id, incident_processed_at FROM events
-      WHERE incident_processed_at IS NOT NULL;
+      SELECT events.id, events.receive_time
+      FROM events
+      WHERE EXISTS (
+        SELECT 1 FROM incident_events
+        WHERE incident_events.event_id = events.id
+      );
     `);
-  }
 
-  // Rows already linked to an Incident were processed by older versions.
-  // Every other unlinked legacy Event, including recoveries, is replayed once
-  // in canonical event-time order during startup.
-  db.exec(`
-    INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
-    SELECT events.id, events.receive_time
-    FROM events
-    WHERE EXISTS (
-      SELECT 1 FROM incident_events
-      WHERE incident_events.event_id = events.id
-    );
-  `);
-
-  db.exec(CREATE_EVIDENCE_TABLE_SQL);
-  db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
+    db.exec(CREATE_EVIDENCE_TABLE_SQL);
+    db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_events_event_time ON events (event_time, id);
+      CREATE INDEX IF NOT EXISTS idx_incidents_fingerprint_state
+        ON incidents (fingerprint, state, first_seen, last_seen);
+    `);
+  });
+  migrateSchema();
 
   const insertStmt = db.prepare(INSERT_EVENT_SQL);
   const countStmt = db.prepare(COUNT_EVENTS_SQL);
@@ -768,17 +778,16 @@ export function createEventStore(dbPath: string): EventStore {
     findRecoveryIncident(fingerprint: string, timestamp: string): IncidentRow | undefined {
       const recoveryTime = new Date(timestamp).getTime();
       const rows = listActiveIncidentsStmt.all({ fingerprint }) as IncidentRow[];
-      return rows
-        .filter((incident) => {
-          const firstSeen = new Date(incident.first_seen).getTime();
-          const lastSeen = new Date(incident.last_seen).getTime();
-          return firstSeen <= recoveryTime && lastSeen <= recoveryTime;
-        })
-        .sort((a, b) =>
-          new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime()
-          || new Date(b.first_seen).getTime() - new Date(a.first_seen).getTime()
-          || a.id.localeCompare(b.id),
-        )[0];
+      const candidates = rows.filter((incident) => {
+        const firstSeen = new Date(incident.first_seen).getTime();
+        const lastSeen = new Date(incident.last_seen).getTime();
+        return firstSeen <= recoveryTime && lastSeen <= recoveryTime;
+      });
+
+      // Event time cannot distinguish multiple still-active episodes with the
+      // same central fingerprint. Fail closed instead of recovering the wrong
+      // Incident; a later explicit/manual correlation can resolve ambiguity.
+      return candidates.length === 1 ? candidates[0] : undefined;
     },
 
     findIncidentForEvent(
@@ -801,8 +810,9 @@ export function createEventStore(dbPath: string): EventStore {
           || incident.state === 'INVESTIGATING'
           || incident.state === 'NOTIFIED';
 
-        // A terminal Incident may absorb only a genuinely historical Event
-        // that happened before its recovery/closure boundary.
+        // CLOSED is administratively terminal and is never mutated. RECOVERED
+        // may absorb only a genuinely historical Event at or before recovery.
+        if (incident.state === 'CLOSED') continue;
         if (!active && eventTime > lastSeen) continue;
 
         const distance = eventTime < firstSeen

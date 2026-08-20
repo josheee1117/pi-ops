@@ -746,27 +746,37 @@ describe('persistence', () => {
     const store = createEventStore(dbPath);
     const engine = createIncidentEngine(store, { aggregationWindowMs: 5 * 60 * 1000 });
 
-    const replayBatch = () => store.replayPendingEvents(
+    assert.equal(store.replayPendingEvents(
       (event) => engine.processEvent(event, event.time),
       '2026-08-20T12:30:00.000Z',
       1,
-    );
-
-    assert.equal(replayBatch(), 1);
+    ), 1);
     assert.equal(store.findIncidentByEventId('evt-legacy-failure')?.state, 'OPEN');
     assert.equal(store.getEventProcessedAt('evt-legacy-recovery'), undefined);
+    store.close();
+
+    // Simulate a process restart between committed replay batches.
+    const resumedStore = createEventStore(dbPath);
+    const resumedEngine = createIncidentEngine(resumedStore, {
+      aggregationWindowMs: 5 * 60 * 1000,
+    });
+    const replayBatch = () => resumedStore.replayPendingEvents(
+      (event) => resumedEngine.processEvent(event, event.time),
+      '2026-08-20T12:31:00.000Z',
+      1,
+    );
     assert.equal(replayBatch(), 1);
     assert.equal(replayBatch(), 0);
-    assert.equal(store.incidentCount(), 1);
-    const incident = store.findIncidentByEventId('evt-legacy-failure');
+    assert.equal(resumedStore.incidentCount(), 1);
+    const incident = resumedStore.findIncidentByEventId('evt-legacy-failure');
     assert.ok(incident);
     assert.equal(incident.state, 'RECOVERED');
     assert.equal(incident.event_count, 2);
-    assert.equal(store.findIncidentByEventId('evt-legacy-recovery')?.id, incident.id);
-    assert.ok(store.getEventProcessedAt('evt-legacy-failure'));
-    assert.ok(store.getEventProcessedAt('evt-legacy-recovery'));
-    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
-    store.close();
+    assert.equal(resumedStore.findIncidentByEventId('evt-legacy-recovery')?.id, incident.id);
+    assert.ok(resumedStore.getEventProcessedAt('evt-legacy-failure'));
+    assert.ok(resumedStore.getEventProcessedAt('evt-legacy-recovery'));
+    assert.equal(resumedStore.listPendingEvidenceJobs(10).length, 1);
+    resumedStore.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
