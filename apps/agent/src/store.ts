@@ -225,6 +225,10 @@ INSERT INTO event_processing (event_id, incident_processed_at)
 VALUES (@id, @processed_at);
 `;
 
+const LIST_INCIDENTS_BY_FINGERPRINT_SQL = `
+SELECT * FROM incidents WHERE fingerprint = @fingerprint;
+`;
+
 const LIST_ACTIVE_INCIDENTS_SQL = `
 SELECT * FROM incidents
 WHERE fingerprint = @fingerprint
@@ -366,6 +370,13 @@ export interface EventStore {
   /** Find the latest active Incident whose observed interval precedes recovery. */
   findRecoveryIncident(fingerprint: string, timestamp: string): IncidentRow | undefined;
 
+  /** Find the nearest active or historically terminal Incident for an Event. */
+  findIncidentForEvent(
+    fingerprint: string,
+    timestamp: string,
+    aggregationWindowMs: number,
+  ): IncidentRow | undefined;
+
   /** Find the Incident already linked to an immutable Event fact. */
   findIncidentByEventId(eventId: string): IncidentRow | undefined;
 
@@ -469,9 +480,8 @@ export function createEventStore(dbPath: string): EventStore {
   }
 
   // Rows already linked to an Incident were processed by older versions.
-  // Explicit recoveries are also terminally processed even when unmatched.
-  // Other unlinked legacy Events remain pending and are replayed once when
-  // their producer retries them through processBatch().
+  // Every other unlinked legacy Event, including recoveries, is replayed once
+  // in canonical event-time order during startup.
   db.exec(`
     INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
     SELECT events.id, events.receive_time
@@ -479,11 +489,6 @@ export function createEventStore(dbPath: string): EventStore {
     WHERE EXISTS (
       SELECT 1 FROM incident_events
       WHERE incident_events.event_id = events.id
-    )
-    OR events.type IN (
-      'health.recovered',
-      'host.memory_recovered',
-      'host.disk_recovered'
     );
   `);
 
@@ -496,6 +501,7 @@ export function createEventStore(dbPath: string): EventStore {
   const getEventProcessedAtStmt = db.prepare(GET_EVENT_PROCESSED_AT_SQL);
   const listUnprocessedEventsStmt = db.prepare(LIST_UNPROCESSED_EVENTS_SQL);
   const markEventProcessedStmt = db.prepare(MARK_EVENT_PROCESSED_SQL);
+  const listIncidentsByFingerprintStmt = db.prepare(LIST_INCIDENTS_BY_FINGERPRINT_SQL);
   const listActiveIncidentsStmt = db.prepare(LIST_ACTIVE_INCIDENTS_SQL);
   const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
   const insertIncidentStmt = db.prepare(INSERT_INCIDENT_SQL);
@@ -773,6 +779,47 @@ export function createEventStore(dbPath: string): EventStore {
           || new Date(b.first_seen).getTime() - new Date(a.first_seen).getTime()
           || a.id.localeCompare(b.id),
         )[0];
+    },
+
+    findIncidentForEvent(
+      fingerprint: string,
+      timestamp: string,
+      aggregationWindowMs: number,
+    ): IncidentRow | undefined {
+      const eventTime = new Date(timestamp).getTime();
+      const rows = listIncidentsByFingerprintStmt.all({ fingerprint }) as IncidentRow[];
+      const candidates: Array<{
+        incident: IncidentRow;
+        distance: number;
+        firstSeen: number;
+      }> = [];
+
+      for (const incident of rows) {
+        const firstSeen = new Date(incident.first_seen).getTime();
+        const lastSeen = new Date(incident.last_seen).getTime();
+        const active = incident.state === 'OPEN'
+          || incident.state === 'INVESTIGATING'
+          || incident.state === 'NOTIFIED';
+
+        // A terminal Incident may absorb only a genuinely historical Event
+        // that happened before its recovery/closure boundary.
+        if (!active && eventTime > lastSeen) continue;
+
+        const distance = eventTime < firstSeen
+          ? firstSeen - eventTime
+          : eventTime > lastSeen
+            ? eventTime - lastSeen
+            : 0;
+        if (distance <= aggregationWindowMs) {
+          candidates.push({ incident, distance, firstSeen });
+        }
+      }
+
+      return candidates.sort((a, b) =>
+        a.distance - b.distance
+        || b.firstSeen - a.firstSeen
+        || a.incident.id.localeCompare(b.incident.id),
+      )[0]?.incident;
     },
 
     findIncidentByEventId(eventId: string): IncidentRow | undefined {

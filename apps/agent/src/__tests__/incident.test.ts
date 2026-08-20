@@ -672,6 +672,146 @@ describe('recovery', () => {
   });
 });
 
+// ── Delayed Events for terminal Incidents ────────────────────────────────────
+
+describe('terminal Incident event-time correlation', () => {
+  it('links a delayed failure to its recovered historical Incident', () => {
+    const { store, engine } = setup();
+    const failure = engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:10:00.000Z',
+      }),
+      '2026-08-20T12:10:00.000Z',
+    );
+
+    const delayed = engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-delayed',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:05:00.000Z',
+      }),
+      '2026-08-20T12:05:00.000Z',
+    );
+
+    assert.equal(delayed.incidentId, failure.incidentId);
+    assert.equal(delayed.isNew, false);
+    assert.equal(store.getIncident(failure.incidentId!)?.state, 'RECOVERED');
+    assert.equal(store.getIncident(failure.incidentId!)?.event_count, 3);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+  });
+
+  it('creates a new Incident for a failure after the recovery boundary', () => {
+    const { store, engine } = setup();
+    const failure = engine.processEvent(
+      makeEvent({
+        id: 'evt-boundary-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-boundary-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:10:00.000Z',
+      }),
+      '2026-08-20T12:10:00.000Z',
+    );
+
+    const next = engine.processEvent(
+      makeEvent({
+        id: 'evt-after-recovery',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:11:00.000Z',
+      }),
+      '2026-08-20T12:11:00.000Z',
+    );
+
+    assert.equal(next.isNew, true);
+    assert.notEqual(next.incidentId, failure.incidentId);
+    assert.equal(store.incidentCount(), 2);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 2);
+  });
+
+  it('routes a delayed failure to the correct terminal window', () => {
+    const { store, engine } = setup();
+    const firstWindow = engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-window-1',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-recovery-1',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:10:00.000Z',
+      }),
+      '2026-08-20T12:10:00.000Z',
+    );
+    const secondWindow = engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-window-2',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T13:00:00.000Z',
+      }),
+      '2026-08-20T13:00:00.000Z',
+    );
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-recovery-2',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T13:10:00.000Z',
+      }),
+      '2026-08-20T13:10:00.000Z',
+    );
+
+    const delayed = engine.processEvent(
+      makeEvent({
+        id: 'evt-terminal-window-delayed',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:05:00.000Z',
+      }),
+      '2026-08-20T12:05:00.000Z',
+    );
+
+    assert.equal(delayed.incidentId, firstWindow.incidentId);
+    assert.notEqual(delayed.incidentId, secondWindow.incidentId);
+    assert.equal(store.getIncident(firstWindow.incidentId!)?.event_count, 3);
+    assert.equal(store.getIncident(secondWindow.incidentId!)?.event_count, 2);
+    assert.equal(store.incidentCount(), 2);
+  });
+});
+
 // ── Incident state participation ─────────────────────────────────────────────
 
 describe('incident state participation', () => {

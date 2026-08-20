@@ -93,7 +93,7 @@ export function createIncidentEngine(
       const isExplicitRecovery = RECOVERY_TYPE_MAP[event.type] !== undefined;
       const existing = isExplicitRecovery
         ? store.findRecoveryIncident(fingerprint, timestamp)
-        : store.findActiveIncident(fingerprint, timestamp, config.aggregationWindowMs);
+        : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs);
 
       if (existing && isExplicitRecovery) {
         const linked = store.linkEventToIncident(existing.id, event.id);

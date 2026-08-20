@@ -80,6 +80,58 @@ function setupFileDb(): { app: Hono; store: EventStore; dbPath: string } {
   return { app, store, dbPath };
 }
 
+interface LegacyEventInput {
+  id: string;
+  receiveTime: string;
+  type: string;
+  severity: string;
+  message: string;
+}
+
+function setupLegacyEventsDb(events: LegacyEventInput[]): { dbPath: string; tmpDir: string } {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'pi-ops-legacy-events-'));
+  const dbPath = join(tmpDir, 'legacy.db');
+  const db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE events (
+      id TEXT PRIMARY KEY,
+      receive_time TEXT NOT NULL,
+      producer_id TEXT NOT NULL,
+      producer_type TEXT NOT NULL,
+      producer_version TEXT NOT NULL,
+      source TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      service TEXT NOT NULL,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      fingerprint TEXT,
+      trace_id TEXT,
+      message TEXT NOT NULL,
+      attributes TEXT NOT NULL DEFAULT '{}'
+    );
+  `);
+  const insert = db.prepare(`
+    INSERT INTO events (
+      id, receive_time, producer_id, producer_type, producer_version,
+      source, node_id, service, type, severity, message, attributes
+    ) VALUES (
+      @id, @receive_time, 'legacy-agent', 'node-agent', '0.0.1',
+      'health', 'test-svc-02', 'dataease', @type, @severity, @message, '{}'
+    );
+  `);
+  for (const event of events) {
+    insert.run({
+      id: event.id,
+      receive_time: event.receiveTime,
+      type: event.type,
+      severity: event.severity,
+      message: event.message,
+    });
+  }
+  db.close();
+  return { dbPath, tmpDir };
+}
+
 // ── POST /v1/events ─────────────────────────────────────────────────────────
 
 describe('POST /v1/events', () => {
@@ -639,35 +691,13 @@ describe('persistence', () => {
   });
 
   it('migrates legacy Event rows with a deterministic event-time backfill', () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), 'pi-ops-legacy-test-'));
-    const dbPath = join(tmpDir, 'legacy.db');
-    const legacy = new Database(dbPath);
-    legacy.exec(`
-      CREATE TABLE events (
-        id TEXT PRIMARY KEY,
-        receive_time TEXT NOT NULL,
-        producer_id TEXT NOT NULL,
-        producer_type TEXT NOT NULL,
-        producer_version TEXT NOT NULL,
-        source TEXT NOT NULL,
-        node_id TEXT NOT NULL,
-        service TEXT NOT NULL,
-        type TEXT NOT NULL,
-        severity TEXT NOT NULL,
-        fingerprint TEXT,
-        trace_id TEXT,
-        message TEXT NOT NULL,
-        attributes TEXT NOT NULL DEFAULT '{}'
-      );
-      INSERT INTO events (
-        id, receive_time, producer_id, producer_type, producer_version,
-        source, node_id, service, type, severity, message, attributes
-      ) VALUES (
-        'evt-legacy', '2026-08-20T11:59:00.000Z', 'legacy-agent', 'node-agent', '0.0.1',
-        'docker', 'test-svc-02', 'dataease', 'container.die', 'error', 'Legacy event', '{}'
-      );
-    `);
-    legacy.close();
+    const { dbPath, tmpDir } = setupLegacyEventsDb([{
+      id: 'evt-legacy',
+      receiveTime: '2026-08-20T11:59:00.000Z',
+      type: 'health.failure',
+      severity: 'error',
+      message: 'Legacy event',
+    }]);
 
     const migrated = createEventStore(dbPath);
     const event = migrated.getEvent('evt-legacy');
@@ -691,6 +721,84 @@ describe('persistence', () => {
     assert.deepEqual(migrated.getEvent('evt-legacy'), event);
     migrated.close();
 
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('replays a legacy failure then recovery into one recovered Incident', () => {
+    const { dbPath, tmpDir } = setupLegacyEventsDb([
+      {
+        id: 'evt-legacy-failure',
+        receiveTime: '2026-08-20T12:00:00.000Z',
+        type: 'health.failure',
+        severity: 'error',
+        message: 'Legacy health failure',
+      },
+      {
+        id: 'evt-legacy-recovery',
+        receiveTime: '2026-08-20T12:10:00.000Z',
+        type: 'health.recovered',
+        severity: 'info',
+        message: 'Legacy health recovery',
+      },
+    ]);
+    const store = createEventStore(dbPath);
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 5 * 60 * 1000 });
+
+    const replayed = store.replayPendingEvents(
+      (event) => engine.processEvent(event, event.time),
+      '2026-08-20T12:30:00.000Z',
+    );
+
+    assert.equal(replayed, 2);
+    assert.equal(store.incidentCount(), 1);
+    const incident = store.findIncidentByEventId('evt-legacy-failure');
+    assert.ok(incident);
+    assert.equal(incident.state, 'RECOVERED');
+    assert.equal(incident.event_count, 2);
+    assert.equal(store.findIncidentByEventId('evt-legacy-recovery')?.id, incident.id);
+    assert.ok(store.getEventProcessedAt('evt-legacy-failure'));
+    assert.ok(store.getEventProcessedAt('evt-legacy-recovery'));
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    store.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('replays a legacy recovery before failure without closing the later Incident', () => {
+    const { dbPath, tmpDir } = setupLegacyEventsDb([
+      {
+        id: 'evt-legacy-early-recovery',
+        receiveTime: '2026-08-20T12:00:00.000Z',
+        type: 'health.recovered',
+        severity: 'info',
+        message: 'Early legacy recovery',
+      },
+      {
+        id: 'evt-legacy-later-failure',
+        receiveTime: '2026-08-20T12:10:00.000Z',
+        type: 'health.failure',
+        severity: 'error',
+        message: 'Later legacy failure',
+      },
+    ]);
+    const store = createEventStore(dbPath);
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 5 * 60 * 1000 });
+
+    const replayed = store.replayPendingEvents(
+      (event) => engine.processEvent(event, event.time),
+      '2026-08-20T12:30:00.000Z',
+    );
+
+    assert.equal(replayed, 2);
+    assert.equal(store.incidentCount(), 1);
+    const incident = store.findIncidentByEventId('evt-legacy-later-failure');
+    assert.ok(incident);
+    assert.equal(incident.state, 'OPEN');
+    assert.equal(incident.event_count, 1);
+    assert.equal(store.findIncidentByEventId('evt-legacy-early-recovery'), undefined);
+    assert.ok(store.getEventProcessedAt('evt-legacy-early-recovery'));
+    assert.ok(store.getEventProcessedAt('evt-legacy-later-failure'));
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    store.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
