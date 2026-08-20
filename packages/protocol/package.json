@@ -8,10 +8,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "lint": "echo 'lint not configured yet'"
   },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
   "devDependencies": {
+    "tsx": "^4.23.12",
     "typescript": "^5.9.2"
   }
 }
