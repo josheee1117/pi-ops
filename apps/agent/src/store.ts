@@ -209,6 +209,17 @@ const GET_EVENT_PROCESSED_AT_SQL = `
 SELECT incident_processed_at FROM event_processing WHERE event_id = ?;
 `;
 
+const LIST_UNPROCESSED_EVENTS_SQL = `
+SELECT events.id, events.schema_version, events.event_time, events.receive_time,
+       events.producer_id, events.producer_type, events.producer_version,
+       events.source, events.node_id, events.service, events.type, events.severity,
+       events.fingerprint, events.trace_id, events.message, events.attributes
+FROM events
+LEFT JOIN event_processing ON event_processing.event_id = events.id
+WHERE event_processing.event_id IS NULL
+ORDER BY events.event_time, events.id;
+`;
+
 const MARK_EVENT_PROCESSED_SQL = `
 INSERT INTO event_processing (event_id, incident_processed_at)
 VALUES (@id, @processed_at);
@@ -336,6 +347,12 @@ export interface EventStore {
 
   /** Read the separate Incident-processing completion marker. */
   getEventProcessedAt(id: string): string | undefined;
+
+  /** Atomically replay all durable Events still pending Incident processing. */
+  replayPendingEvents(
+    processEvent: (event: OpsEvent) => void,
+    processedAt: string,
+  ): number;
 
   // ── Incident operations ──────────────────────────────────────────────────
 
@@ -477,6 +494,7 @@ export function createEventStore(dbPath: string): EventStore {
   const countStmt = db.prepare(COUNT_EVENTS_SQL);
   const getEventStmt = db.prepare(GET_EVENT_SQL);
   const getEventProcessedAtStmt = db.prepare(GET_EVENT_PROCESSED_AT_SQL);
+  const listUnprocessedEventsStmt = db.prepare(LIST_UNPROCESSED_EVENTS_SQL);
   const markEventProcessedStmt = db.prepare(MARK_EVENT_PROCESSED_SQL);
   const listActiveIncidentsStmt = db.prepare(LIST_ACTIVE_INCIDENTS_SQL);
   const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
@@ -521,6 +539,23 @@ export function createEventStore(dbPath: string): EventStore {
       event_count: incident.event_count,
       severity: incident.severity,
     });
+  }
+
+  function mapStoredEvent(stored: StoredEvent): OpsEvent {
+    return {
+      schemaVersion: stored.schema_version as 1,
+      id: stored.id,
+      time: stored.event_time,
+      source: stored.source as OpsEvent['source'],
+      nodeId: stored.node_id,
+      service: stored.service,
+      type: stored.type,
+      severity: stored.severity as OpsEvent['severity'],
+      ...(stored.fingerprint !== null ? { fingerprint: stored.fingerprint } : {}),
+      ...(stored.trace_id !== null ? { traceId: stored.trace_id } : {}),
+      message: stored.message,
+      attributes: JSON.parse(stored.attributes) as Record<string, unknown>,
+    };
   }
 
   function storedEventMatches(
@@ -621,6 +656,22 @@ export function createEventStore(dbPath: string): EventStore {
     return { inserted, processed };
   });
 
+  const replayPendingEventsTransaction = db.transaction((
+    processEvent: (event: OpsEvent) => void,
+    processedAt: string,
+  ): number => {
+    const pending = listUnprocessedEventsStmt.all() as StoredEvent[];
+    for (const stored of pending) {
+      const event = mapStoredEvent(stored);
+      processEvent(event);
+      const marked = markEventProcessedStmt.run({ id: event.id, processed_at: processedAt });
+      if (marked.changes !== 1) {
+        throw new Error(`Event ${event.id} could not be marked as Incident-processed`);
+      }
+    }
+    return pending.length;
+  });
+
   const createIncidentFromEventTransaction = db.transaction((
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
@@ -671,6 +722,13 @@ export function createEventStore(dbPath: string): EventStore {
         | { incident_processed_at: string }
         | undefined;
       return row?.incident_processed_at;
+    },
+
+    replayPendingEvents(
+      processEvent: (event: OpsEvent) => void,
+      processedAt: string,
+    ): number {
+      return replayPendingEventsTransaction(processEvent, processedAt);
     },
 
     // ── Incidents ─────────────────────────────────────────────────────────

@@ -677,31 +677,16 @@ describe('persistence', () => {
     assert.equal(event.event_time, '2026-08-20T11:59:00.000Z');
     assert.equal(migrated.getEventProcessedAt('evt-legacy'), undefined);
 
-    const replayBatch = {
-      producer: { id: 'legacy-agent', type: 'node-agent' as const, version: '0.0.1' },
-      events: [{
-        schemaVersion: 1 as const,
-        id: 'evt-legacy',
-        time: '2026-08-20T11:59:00.000Z',
-        source: 'docker' as const,
-        nodeId: 'test-svc-02',
-        service: 'dataease',
-        type: 'container.die',
-        severity: 'error' as const,
-        message: 'Legacy event',
-        attributes: {},
-      }],
-    };
     const engine = createIncidentEngine(migrated, { aggregationWindowMs: 5 * 60 * 1000 });
-    const replay = () => migrated.processBatch(
-      replayBatch,
-      '2026-08-20T12:30:00.000Z',
+    const replay = () => migrated.replayPendingEvents(
       (replayed) => engine.processEvent(replayed, replayed.time),
+      '2026-08-20T12:30:00.000Z',
     );
 
-    assert.deepEqual(replay(), { inserted: 0, processed: 1 });
-    assert.deepEqual(replay(), { inserted: 0, processed: 0 });
+    assert.equal(replay(), 1);
+    assert.equal(replay(), 0);
     assert.equal(migrated.incidentCount(), 1);
+    assert.equal(migrated.listPendingEvidenceJobs(10).length, 1);
     assert.equal(migrated.getEventProcessedAt('evt-legacy'), '2026-08-20T12:30:00.000Z');
     assert.deepEqual(migrated.getEvent('evt-legacy'), event);
     migrated.close();
