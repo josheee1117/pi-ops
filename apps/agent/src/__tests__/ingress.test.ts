@@ -109,6 +109,33 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 5);
   });
 
+  it('rolls back Event, Incident, link, and job when Incident processing fails', async () => {
+    const config = makeTestConfig(':memory:');
+    const store = createEventStore(':memory:');
+    const realEngine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const failingEngine: IncidentEngine = {
+      processEvent(event, timestamp) {
+        realEngine.processEvent(event, timestamp);
+        throw new Error('simulated Incident processing failure');
+      },
+    };
+    const app = createApp(config, store, failingEngine);
+
+    const res = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    });
+
+    assert.equal(res.status, 500);
+    assert.equal(store.count(), 0);
+    assert.equal(store.incidentCount(), 0);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 0);
+    store.close();
+  });
+
   it('idempotent: duplicate event id is silently accepted', async () => {
     const { app, store } = setupInMemory();
     // First insert
@@ -206,8 +233,10 @@ describe('POST /v1/events', () => {
     assert.equal(res.status, 200);
     await worker.runOnce();
 
-    const incident = store.findOpenIncident(
+    const incident = store.findActiveIncident(
       'docker:test-svc-02:dataease:container.die',
+      '2026-08-20T12:00:00.000Z',
+      config.aggregationWindowMs,
     );
     assert.ok(incident);
     assert.equal(store.listEvidence(incident.id).length, 2);

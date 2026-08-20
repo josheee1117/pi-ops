@@ -1,5 +1,5 @@
 import type { OpsEvent } from '@pi-ops/protocol';
-import type { EventStore, IncidentState } from './store.js';
+import type { EventStore } from './store.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,14 +90,16 @@ export function createIncidentEngine(
       }
 
       const fingerprint = computeFingerprint(event);
-      const existing = store.findOpenIncident(fingerprint);
       const isExplicitRecovery = RECOVERY_TYPE_MAP[event.type] !== undefined;
+      const existing = isExplicitRecovery
+        ? store.findRecoveryIncident(fingerprint, timestamp)
+        : store.findActiveIncident(fingerprint, timestamp, config.aggregationWindowMs);
 
       if (existing && isExplicitRecovery) {
         const linked = store.linkEventToIncident(existing.id, event.id);
         const eventCount = existing.event_count + (linked ? 1 : 0);
         store.updateIncident(existing.id, {
-          first_seen: earlierTimestamp(existing.first_seen, timestamp),
+          first_seen: existing.first_seen,
           last_seen: laterTimestamp(existing.last_seen, timestamp),
           event_count: eventCount,
           severity: existing.severity,
@@ -113,66 +115,30 @@ export function createIncidentEngine(
       }
 
       if (existing) {
-        // Check if within aggregation window
-        const lastSeenMs = new Date(existing.last_seen).getTime();
-        const eventTimeMs = new Date(timestamp).getTime();
-        const withinWindow = Math.abs(eventTimeMs - lastSeenMs) <= config.aggregationWindowMs;
+        let eventCount = existing.event_count;
 
-        let incidentId: string;
-        let isNew: boolean;
-        let eventCount: number;
+        // UNIQUE(event_id) prevents transport retries from double-counting.
+        const linked = store.linkEventToIncident(existing.id, event.id);
+        if (linked) eventCount++;
 
-        if (withinWindow) {
-          // Aggregate into existing incident
-          incidentId = existing.id;
-          isNew = false;
-          eventCount = existing.event_count;
-
-          // Try to link event to incident (UNIQUE on event_id prevents double-counting)
-          const linked = store.linkEventToIncident(incidentId, event.id);
-          if (linked) {
-            eventCount = existing.event_count + 1;
-          }
-
-          store.updateIncident(incidentId, {
-            first_seen: earlierTimestamp(existing.first_seen, timestamp),
-            last_seen: laterTimestamp(existing.last_seen, timestamp),
-            event_count: eventCount,
-            severity: maxSeverity(existing.severity, event.severity),
-            state: existing.state,
-          });
-        } else {
-          // Outside window: create new incident
-          const newIncident = store.createIncidentFromEvent({
-            service: event.service,
-            node_id: event.nodeId,
-            type: event.type,
-            state: 'OPEN',
-            fingerprint,
-            first_seen: timestamp,
-            last_seen: timestamp,
-            event_count: 1,
-            severity: event.severity,
-          }, event);
-          return {
-            ignored: false,
-            incidentId: newIncident.id,
-            isNew: true,
-            isRecovery: false,
-            eventCount: 1,
-          };
-        }
+        store.updateIncident(existing.id, {
+          first_seen: earlierTimestamp(existing.first_seen, timestamp),
+          last_seen: laterTimestamp(existing.last_seen, timestamp),
+          event_count: eventCount,
+          severity: maxSeverity(existing.severity, event.severity),
+          state: existing.state,
+        });
 
         return {
           ignored: false,
-          incidentId,
+          incidentId: existing.id,
           isNew: false,
           isRecovery: false,
           eventCount,
         };
       }
 
-      // A recovery without a matching OPEN Incident is an observation, not a
+      // A recovery without a matching active Incident is an observation, not a
       // new failure Incident.
       if (isExplicitRecovery) {
         return {

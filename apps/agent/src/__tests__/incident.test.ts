@@ -267,6 +267,30 @@ describe('aggregation window boundary', () => {
     assert.notEqual(r2.incidentId, r1.incidentId);
     assert.equal(store.incidentCount(), 2);
   });
+
+  it('routes a delayed event to the nearest prior active window', () => {
+    const { store, engine } = setup();
+    const firstWindow = engine.processEvent(
+      makeEvent({ id: 'evt-window-1', time: '2026-08-20T12:00:00.000Z' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const secondWindow = engine.processEvent(
+      makeEvent({ id: 'evt-window-2', time: '2026-08-20T13:00:00.000Z' }),
+      '2026-08-20T13:00:00.000Z',
+    );
+
+    const delayed = engine.processEvent(
+      makeEvent({ id: 'evt-delayed', time: '2026-08-20T12:02:00.000Z' }),
+      '2026-08-20T12:02:00.000Z',
+    );
+
+    assert.equal(delayed.incidentId, firstWindow.incidentId);
+    assert.notEqual(delayed.incidentId, secondWindow.incidentId);
+    assert.equal(delayed.isNew, false);
+    assert.equal(store.incidentCount(), 2);
+    assert.equal(store.getIncident(firstWindow.incidentId!)?.event_count, 2);
+    assert.equal(store.getIncident(secondWindow.incidentId!)?.event_count, 1);
+  });
 });
 
 // ── Different fingerprints → different incidents ─────────────────────────────
@@ -408,7 +432,44 @@ describe('recovery', () => {
     assert.equal(store.incidentCount(), 1);
   });
 
-  it('ignores an explicit recovery that has no correlated OPEN Incident', () => {
+  it('does not correlate an out-of-order recovery to a future Incident window', () => {
+    const { store, engine } = setup();
+    const futureWindow = engine.processEvent(
+      makeEvent({
+        id: 'evt-future-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:10:00.000Z',
+      }),
+      '2026-08-20T12:10:00.000Z',
+    );
+    const priorWindow = engine.processEvent(
+      makeEvent({
+        id: 'evt-prior-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+
+    const recovery = engine.processEvent(
+      makeEvent({
+        id: 'evt-delayed-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:05:00.000Z',
+      }),
+      '2026-08-20T12:05:00.000Z',
+    );
+
+    assert.equal(recovery.incidentId, priorWindow.incidentId);
+    assert.equal(store.getIncident(priorWindow.incidentId!)?.state, 'RECOVERED');
+    assert.equal(store.getIncident(futureWindow.incidentId!)?.state, 'OPEN');
+  });
+
+  it('ignores an explicit recovery that has no correlated active Incident', () => {
     const { store, engine } = setup();
     const recovery = makeEvent({
       id: 'evt-unmatched-recovery',
@@ -420,6 +481,51 @@ describe('recovery', () => {
     assert.equal(result.ignored, true);
     assert.equal(result.incidentId, null);
     assert.equal(store.incidentCount(), 0);
+  });
+
+  it('ignores a delayed recovery for an episode that is already recovered', () => {
+    const { store, engine } = setup();
+    const oldFailure = makeEvent({
+      id: 'evt-old-failure',
+      source: 'health',
+      type: 'health.failure',
+      time: '2026-08-20T12:00:00.000Z',
+    });
+    const oldWindow = engine.processEvent(oldFailure, oldFailure.time);
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-old-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:05:00.000Z',
+      }),
+      '2026-08-20T12:05:00.000Z',
+    );
+    const currentWindow = engine.processEvent(
+      makeEvent({
+        id: 'evt-current-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T13:00:00.000Z',
+      }),
+      '2026-08-20T13:00:00.000Z',
+    );
+
+    const delayedRecovery = engine.processEvent(
+      makeEvent({
+        id: 'evt-duplicate-old-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:06:00.000Z',
+      }),
+      '2026-08-20T12:06:00.000Z',
+    );
+
+    assert.equal(delayedRecovery.ignored, true);
+    assert.equal(store.getIncident(oldWindow.incidentId!)?.state, 'RECOVERED');
+    assert.equal(store.getIncident(currentWindow.incidentId!)?.state, 'OPEN');
   });
 
   it('does not recover for a generic lower-severity event', () => {
@@ -455,6 +561,68 @@ describe('recovery', () => {
     const incident = store.getIncident(r1.incidentId!);
     assert.equal(incident!.state, 'OPEN');
   });
+});
+
+// ── Incident state participation ─────────────────────────────────────────────
+
+describe('incident state participation', () => {
+  for (const activeState of ['INVESTIGATING', 'NOTIFIED'] as const) {
+    it(`continues aggregating while an Incident is ${activeState}`, () => {
+      const { store, engine } = setup();
+      const opened = engine.processEvent(
+        makeEvent({ id: `evt-open-${activeState}` }),
+        '2026-08-20T12:00:00.000Z',
+      );
+      const incident = store.getIncident(opened.incidentId!);
+      assert.ok(incident);
+      store.updateIncident(incident.id, {
+        first_seen: incident.first_seen,
+        last_seen: incident.last_seen,
+        event_count: incident.event_count,
+        severity: incident.severity,
+        state: activeState,
+      });
+
+      const aggregated = engine.processEvent(
+        makeEvent({ id: `evt-next-${activeState}`, time: '2026-08-20T12:01:00.000Z' }),
+        '2026-08-20T12:01:00.000Z',
+      );
+
+      assert.equal(aggregated.incidentId, opened.incidentId);
+      assert.equal(aggregated.isNew, false);
+      assert.equal(store.getIncident(opened.incidentId!)?.state, activeState);
+      assert.equal(store.getIncident(opened.incidentId!)?.event_count, 2);
+    });
+  }
+
+  for (const terminalState of ['RECOVERED', 'CLOSED'] as const) {
+    it(`does not aggregate new failure events into a ${terminalState} Incident`, () => {
+      const { store, engine } = setup();
+      const opened = engine.processEvent(
+        makeEvent({ id: `evt-open-${terminalState}` }),
+        '2026-08-20T12:00:00.000Z',
+      );
+      const incident = store.getIncident(opened.incidentId!);
+      assert.ok(incident);
+      store.updateIncident(incident.id, {
+        first_seen: incident.first_seen,
+        last_seen: incident.last_seen,
+        event_count: incident.event_count,
+        severity: incident.severity,
+        state: terminalState,
+      });
+
+      const next = engine.processEvent(
+        makeEvent({ id: `evt-next-${terminalState}`, time: '2026-08-20T12:01:00.000Z' }),
+        '2026-08-20T12:01:00.000Z',
+      );
+
+      assert.equal(next.isNew, true);
+      assert.notEqual(next.incidentId, opened.incidentId);
+      assert.equal(store.incidentCount(), 2);
+      assert.equal(store.getIncident(opened.incidentId!)?.state, terminalState);
+    });
+  }
 });
 
 // ── Severity escalation ──────────────────────────────────────────────────────

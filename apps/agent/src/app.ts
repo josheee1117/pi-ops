@@ -90,17 +90,17 @@ export function createApp(
 
     const batch = validation.value;
 
-    // Persist events (idempotent via INSERT OR IGNORE)
+    // Persist immutable Events, Incident updates/links, and newly scheduled
+    // evidence jobs in one transaction. The request is accepted only after the
+    // complete synchronous state transition commits.
     const receiveTime = new Date().toISOString();
-    store.insertBatch(batch, receiveTime);
-
-    // Creating a new Incident atomically creates a durable evidence job.
-    // Wake the background worker without waiting for node-agent I/O.
     let createdIncident = false;
-    for (const event of batch.events) {
+    store.processBatch(batch, receiveTime, (event) => {
       const incidentResult = incidentEngine.processEvent(event, event.time);
       if (incidentResult.isNew) createdIncident = true;
-    }
+    });
+
+    // Node Agent I/O stays asynchronous and never blocks event ingestion.
     if (createdIncident) evidenceWorker?.wake();
 
     return c.json({

@@ -172,11 +172,10 @@ INSERT OR IGNORE INTO events (
 
 const COUNT_EVENTS_SQL = `SELECT COUNT(*) as count FROM events`;
 
-const FIND_OPEN_INCIDENT_SQL = `
+const LIST_ACTIVE_INCIDENTS_SQL = `
 SELECT * FROM incidents
-WHERE fingerprint = @fingerprint AND state = 'OPEN'
-ORDER BY last_seen DESC
-LIMIT 1;
+WHERE fingerprint = @fingerprint
+  AND state IN ('OPEN', 'INVESTIGATING', 'NOTIFIED');
 `;
 
 const FIND_INCIDENT_BY_EVENT_ID_SQL = `
@@ -280,13 +279,27 @@ export interface EventStore {
   /** Insert a validated batch. Returns the number of newly inserted rows. */
   insertBatch(batch: EventBatch, receiveTime: string): number;
 
+  /** Atomically persist a batch and apply synchronous Incident processing. */
+  processBatch(
+    batch: EventBatch,
+    receiveTime: string,
+    processEvent: (event: OpsEvent) => void,
+  ): number;
+
   /** Total event count. */
   count(): number;
 
   // ── Incident operations ──────────────────────────────────────────────────
 
-  /** Find the most recent OPEN incident with the given fingerprint. */
-  findOpenIncident(fingerprint: string): IncidentRow | undefined;
+  /** Find the nearest active Incident inside the event-time aggregation window. */
+  findActiveIncident(
+    fingerprint: string,
+    timestamp: string,
+    aggregationWindowMs: number,
+  ): IncidentRow | undefined;
+
+  /** Find the latest active Incident whose observed interval precedes recovery. */
+  findRecoveryIncident(fingerprint: string, timestamp: string): IncidentRow | undefined;
 
   /** Find the Incident already linked to an immutable Event fact. */
   findIncidentByEventId(eventId: string): IncidentRow | undefined;
@@ -369,7 +382,7 @@ export function createEventStore(dbPath: string): EventStore {
 
   const insertStmt = db.prepare(INSERT_EVENT_SQL);
   const countStmt = db.prepare(COUNT_EVENTS_SQL);
-  const findOpenIncidentStmt = db.prepare(FIND_OPEN_INCIDENT_SQL);
+  const listActiveIncidentsStmt = db.prepare(LIST_ACTIVE_INCIDENTS_SQL);
   const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
   const insertIncidentStmt = db.prepare(INSERT_INCIDENT_SQL);
   const updateIncidentStmt = db.prepare(UPDATE_INCIDENT_SQL);
@@ -414,6 +427,41 @@ export function createEventStore(dbPath: string): EventStore {
     });
   }
 
+  function insertEventRows(batch: EventBatch, receiveTime: string): number {
+    let inserted = 0;
+    for (const event of batch.events) {
+      const result = insertStmt.run({
+        id: event.id,
+        receive_time: receiveTime,
+        producer_id: batch.producer.id,
+        producer_type: batch.producer.type,
+        producer_version: batch.producer.version,
+        source: event.source,
+        node_id: event.nodeId,
+        service: event.service,
+        type: event.type,
+        severity: event.severity,
+        fingerprint: event.fingerprint ?? null,
+        trace_id: event.traceId ?? null,
+        message: event.message,
+        attributes: JSON.stringify(event.attributes),
+      });
+      if (result.changes > 0) inserted++;
+    }
+    return inserted;
+  }
+
+  const insertBatchTransaction = db.transaction(insertEventRows);
+  const processBatchTransaction = db.transaction((
+    batch: EventBatch,
+    receiveTime: string,
+    processEvent: (event: OpsEvent) => void,
+  ): number => {
+    const inserted = insertEventRows(batch, receiveTime);
+    for (const event of batch.events) processEvent(event);
+    return inserted;
+  });
+
   const createIncidentFromEventTransaction = db.transaction((
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
@@ -439,34 +487,15 @@ export function createEventStore(dbPath: string): EventStore {
     // ── Events ────────────────────────────────────────────────────────────
 
     insertBatch(batch: EventBatch, receiveTime: string): number {
-      let inserted = 0;
+      return insertBatchTransaction(batch, receiveTime);
+    },
 
-      const insertMany = db.transaction((events: OpsEvent[]) => {
-        for (const event of events) {
-          const result = insertStmt.run({
-            id: event.id,
-            receive_time: receiveTime,
-            producer_id: batch.producer.id,
-            producer_type: batch.producer.type,
-            producer_version: batch.producer.version,
-            source: event.source,
-            node_id: event.nodeId,
-            service: event.service,
-            type: event.type,
-            severity: event.severity,
-            fingerprint: event.fingerprint ?? null,
-            trace_id: event.traceId ?? null,
-            message: event.message,
-            attributes: JSON.stringify(event.attributes),
-          });
-          if (result.changes > 0) {
-            inserted++;
-          }
-        }
-      });
-
-      insertMany(batch.events);
-      return inserted;
+    processBatch(
+      batch: EventBatch,
+      receiveTime: string,
+      processEvent: (event: OpsEvent) => void,
+    ): number {
+      return processBatchTransaction(batch, receiveTime, processEvent);
     },
 
     count(): number {
@@ -476,8 +505,41 @@ export function createEventStore(dbPath: string): EventStore {
 
     // ── Incidents ─────────────────────────────────────────────────────────
 
-    findOpenIncident(fingerprint: string): IncidentRow | undefined {
-      return findOpenIncidentStmt.get({ fingerprint }) as IncidentRow | undefined;
+    findActiveIncident(
+      fingerprint: string,
+      timestamp: string,
+      aggregationWindowMs: number,
+    ): IncidentRow | undefined {
+      const eventTime = new Date(timestamp).getTime();
+      const rows = listActiveIncidentsStmt.all({ fingerprint }) as IncidentRow[];
+      return rows
+        .map((incident) => {
+          const firstSeen = new Date(incident.first_seen).getTime();
+          const lastSeen = new Date(incident.last_seen).getTime();
+          const distance = eventTime < firstSeen
+            ? firstSeen - eventTime
+            : eventTime > lastSeen
+              ? eventTime - lastSeen
+              : 0;
+          return { incident, distance, firstSeen };
+        })
+        .filter(({ distance }) => distance <= aggregationWindowMs)
+        .sort((a, b) =>
+          a.distance - b.distance
+          || b.firstSeen - a.firstSeen
+          || a.incident.id.localeCompare(b.incident.id),
+        )[0]?.incident;
+    },
+
+    findRecoveryIncident(fingerprint: string, timestamp: string): IncidentRow | undefined {
+      const recoveryTime = new Date(timestamp).getTime();
+      const rows = listActiveIncidentsStmt.all({ fingerprint }) as IncidentRow[];
+      return rows
+        .filter((incident) => new Date(incident.first_seen).getTime() <= recoveryTime)
+        .sort((a, b) =>
+          new Date(b.first_seen).getTime() - new Date(a.first_seen).getTime()
+          || a.id.localeCompare(b.id),
+        )[0];
     },
 
     findIncidentByEventId(eventId: string): IncidentRow | undefined {
