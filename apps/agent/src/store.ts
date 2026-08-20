@@ -471,6 +471,45 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
     db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
 
+    // Recompute every linkable Incident fingerprint using the current central
+    // collision-safe encoding. This migrates colon-joined and producer-trusted
+    // fingerprints written by earlier versions.
+    const legacyIncidents = db.prepare(`
+      SELECT incidents.id, incidents.node_id, incidents.service, incidents.type,
+        (
+          SELECT events.source
+          FROM incident_events
+          JOIN events ON events.id = incident_events.event_id
+          WHERE incident_events.incident_id = incidents.id
+          ORDER BY julianday(events.event_time), events.id
+          LIMIT 1
+        ) AS source
+      FROM incidents;
+    `).all() as Array<{
+      id: string;
+      node_id: string;
+      service: string;
+      type: string;
+      source: string | null;
+    }>;
+    const updateFingerprint = db.prepare(
+      'UPDATE incidents SET fingerprint = ? WHERE id = ?',
+    );
+    const recoveryTypes: Readonly<Record<string, string>> = {
+      'health.recovered': 'health.failure',
+      'host.memory_recovered': 'host.memory_pressure',
+      'host.disk_recovered': 'host.disk_pressure',
+    };
+    for (const incident of legacyIncidents) {
+      if (!incident.source) continue;
+      updateFingerprint.run(JSON.stringify([
+        incident.source,
+        incident.node_id,
+        incident.service,
+        recoveryTypes[incident.type] ?? incident.type,
+      ]), incident.id);
+    }
+
     // Preserve markers from the short-lived transitional schema if present.
     if (eventColumns.has('incident_processed_at')) {
       db.exec(`

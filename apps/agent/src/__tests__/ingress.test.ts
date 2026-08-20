@@ -715,6 +715,66 @@ describe('persistence', () => {
     rmSync(dbPath, { recursive: true, force: true });
   });
 
+  it('migrates legacy Incident fingerprints before new aggregation', () => {
+    const { store: store1, dbPath } = setupFileDb();
+    const engine1 = createIncidentEngine(store1, { aggregationWindowMs: 5 * 60 * 1000 });
+    const first = {
+      schemaVersion: 1 as const,
+      id: 'evt-legacy-fingerprint-1',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'docker' as const,
+      nodeId: 'test-svc-02',
+      service: 'dataease',
+      type: 'container.die',
+      severity: 'error' as const,
+      message: 'First legacy fingerprint event',
+      attributes: {},
+    };
+    const producer = { id: 'p1', type: 'node-agent' as const, version: '0.1.0' };
+    store1.processBatch(
+      { producer, events: [first] },
+      '2026-08-20T12:00:01.000Z',
+      (event) => engine1.processEvent(event, event.time),
+    );
+    const incidentId = store1.findIncidentByEventId(first.id)?.id;
+    assert.ok(incidentId);
+    store1.close();
+
+    const legacy = new Database(dbPath);
+    legacy.prepare('UPDATE incidents SET fingerprint = ? WHERE id = ?').run(
+      'docker:test-svc-02:dataease:container.die',
+      incidentId,
+    );
+    legacy.close();
+
+    const store2 = createEventStore(dbPath);
+    const expectedFingerprint = JSON.stringify([
+      'docker',
+      'test-svc-02',
+      'dataease',
+      'container.die',
+    ]);
+    assert.equal(store2.getIncident(incidentId)?.fingerprint, expectedFingerprint);
+    const engine2 = createIncidentEngine(store2, { aggregationWindowMs: 5 * 60 * 1000 });
+    const second = {
+      ...first,
+      id: 'evt-legacy-fingerprint-2',
+      time: '2026-08-20T12:01:00.000Z',
+      message: 'Second legacy fingerprint event',
+    };
+    store2.processBatch(
+      { producer, events: [second] },
+      '2026-08-20T12:01:01.000Z',
+      (event) => engine2.processEvent(event, event.time),
+    );
+
+    assert.equal(store2.incidentCount(), 1);
+    assert.equal(store2.getIncident(incidentId)?.event_count, 2);
+    assert.equal(store2.findIncidentByEventId(second.id)?.id, incidentId);
+    store2.close();
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
   it('migrates legacy Event rows with a deterministic event-time backfill', () => {
     const { dbPath, tmpDir } = setupLegacyEventsDb([{
       id: 'evt-legacy',
