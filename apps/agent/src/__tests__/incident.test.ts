@@ -469,6 +469,52 @@ describe('recovery', () => {
     assert.equal(store.getIncident(futureWindow.incidentId!)?.state, 'OPEN');
   });
 
+  it('does not let a delayed recovery close an Incident with a later failure', () => {
+    const { store, engine } = setup();
+    const opened = engine.processEvent(
+      makeEvent({
+        id: 'evt-health-1200',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-health-1204',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:04:00.000Z',
+      }),
+      '2026-08-20T12:04:00.000Z',
+    );
+    engine.processEvent(
+      makeEvent({
+        id: 'evt-health-1208',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:08:00.000Z',
+      }),
+      '2026-08-20T12:08:00.000Z',
+    );
+
+    const delayedRecovery = engine.processEvent(
+      makeEvent({
+        id: 'evt-health-recovery-1205',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        time: '2026-08-20T12:05:00.000Z',
+      }),
+      '2026-08-20T12:05:00.000Z',
+    );
+
+    assert.equal(delayedRecovery.ignored, true);
+    assert.equal(store.getIncident(opened.incidentId!)?.state, 'OPEN');
+    assert.equal(store.getIncident(opened.incidentId!)?.event_count, 3);
+  });
+
   it('ignores an explicit recovery that has no correlated active Incident', () => {
     const { store, engine } = setup();
     const recovery = makeEvent({

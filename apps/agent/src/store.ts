@@ -535,9 +535,14 @@ export function createEventStore(dbPath: string): EventStore {
       const recoveryTime = new Date(timestamp).getTime();
       const rows = listActiveIncidentsStmt.all({ fingerprint }) as IncidentRow[];
       return rows
-        .filter((incident) => new Date(incident.first_seen).getTime() <= recoveryTime)
+        .filter((incident) => {
+          const firstSeen = new Date(incident.first_seen).getTime();
+          const lastSeen = new Date(incident.last_seen).getTime();
+          return firstSeen <= recoveryTime && lastSeen <= recoveryTime;
+        })
         .sort((a, b) =>
-          new Date(b.first_seen).getTime() - new Date(a.first_seen).getTime()
+          new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime()
+          || new Date(b.first_seen).getTime() - new Date(a.first_seen).getTime()
           || a.id.localeCompare(b.id),
         )[0];
     },
