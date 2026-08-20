@@ -224,6 +224,40 @@ describe('evidence orchestration', () => {
     store.close();
   });
 
+  it('uses deterministic Evidence IDs without an explicit collection id', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-default-retry',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const orchestrator = createEvidenceOrchestrator(
+      makeConfig(),
+      store,
+      successfulNodeFetch(),
+    );
+    const event = makeEvent({ type: 'container.die', severity: 'error' });
+
+    await orchestrator.collectForIncident(incident, event);
+    await orchestrator.collectForIncident(incident, event);
+
+    assert.equal(store.listEvidence(incident.id).length, 2);
+    assert.deepEqual(
+      store.listEvidence(incident.id).map((item) => item.id).sort(),
+      [
+        `incident-${incident.id}-evidence-docker.inspect`,
+        `incident-${incident.id}-evidence-docker.logs`,
+      ],
+    );
+    store.close();
+  });
+
   it('persists a complete evidence set for a synthetic container-die incident', async () => {
     const store = createEventStore(':memory:');
     const incident = store.createIncident({

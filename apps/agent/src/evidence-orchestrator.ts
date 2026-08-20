@@ -134,10 +134,10 @@ function redactSecret(message: string, secret: string): string {
 function failureEvidence(
   incident: IncidentRow,
   query: EvidenceQueryRequest,
-  id?: string,
+  id: string,
 ): Evidence {
   return {
-    id: id ?? `evd-failed-${crypto.randomUUID()}`,
+    id,
     incidentId: incident.id,
     nodeId: incident.node_id,
     source: querySource(query.type),
@@ -156,7 +156,7 @@ export function createEvidenceOrchestrator(
     endpoint: NodeAgentEndpoint | undefined,
     incident: IncidentRow,
     query: EvidenceQueryRequest,
-    evidenceId?: string,
+    evidenceId: string,
   ): Promise<boolean> {
     if (!endpoint) {
       const evidence = failureEvidence(incident, query, evidenceId);
@@ -251,6 +251,7 @@ export function createEvidenceOrchestrator(
         triggeringEvent,
         config.evidenceLogsMaxLines,
       );
+      const evidenceBaseId = collectionId ?? `incident-${incident.id}`;
       let planningFailures = 0;
       if (
         incident.type === 'health.failure' &&
@@ -263,7 +264,7 @@ export function createEvidenceOrchestrator(
         const evidence = failureEvidence(
           incident,
           query,
-          collectionId ? `${collectionId}-evidence-http.probe` : undefined,
+          `${evidenceBaseId}-evidence-http.probe`,
         );
         store.insertEvidence({
           ...evidence,
@@ -279,9 +280,7 @@ export function createEvidenceOrchestrator(
           endpoint,
           incident,
           query,
-          collectionId
-            ? `${collectionId}-evidence-${query.type}`
-            : undefined,
+          `${evidenceBaseId}-evidence-${query.type}`,
         )),
       );
       const succeeded = results.filter(Boolean).length;

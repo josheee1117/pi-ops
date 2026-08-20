@@ -669,6 +669,41 @@ describe('persistence', () => {
     rmSync(dbPath, { recursive: true, force: true });
   });
 
+  it('rejects conflicting duplicate payload after database reopen', async () => {
+    const { app: app1, store: store1, dbPath } = setupFileDb();
+    assert.equal((await app1.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    })).status, 200);
+    store1.close();
+
+    const config = makeTestConfig(dbPath);
+    const store2 = createEventStore(dbPath);
+    const engine2 = createIncidentEngine(store2, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app2 = createApp(config, store2, engine2);
+    const conflict = makeValidBatch(1);
+    Object.assign((conflict.events as Record<string, unknown>[])[0]!, {
+      type: 'container.oom',
+      message: 'Conflicting payload after restart',
+    });
+
+    const response = await app2.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(conflict),
+    });
+
+    assert.equal(response.status, 409);
+    assert.equal(store2.count(), 1);
+    assert.equal(store2.incidentCount(), 1);
+    assert.equal(store2.listPendingEvidenceJobs(10).length, 1);
+    store2.close();
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
   it('preserves each canonical event time when events aggregate into one Incident', () => {
     const { store: store1, dbPath } = setupFileDb();
     const engine = createIncidentEngine(store1, { aggregationWindowMs: 5 * 60 * 1000 });
