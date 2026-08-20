@@ -1,11 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { validateQueryRequest, ALLOWED_QUERY_TYPES } from '../evidence/types.js';
 import {
   createDockerEvidenceProvider,
   decodeDockerLogs,
+  fetchDockerLogs,
   type DockerClientLike,
+  type DockerLogFetcher,
+  type DockerLogOptions,
 } from '../evidence/docker.js';
+import { createProbeEvidenceProvider } from '../evidence/probe.js';
 import { makeNodeAgentConfig } from './test-config.js';
 
 function makeConfig(overrides: Parameters<typeof makeNodeAgentConfig>[0] = {}) {
@@ -276,6 +284,39 @@ describe('validateQueryRequest', () => {
   });
 });
 
+// ── HTTP probe provider ──────────────────────────────────────────────────────
+
+describe('HTTP probe evidence', () => {
+  it('completes from status headers without buffering a never-ending body', async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      const interval = setInterval(() => res.write(Buffer.alloc(64 * 1024)), 10);
+      res.on('close', () => clearInterval(interval));
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const url = `http://127.0.0.1:${address.port}/health`;
+
+    try {
+      const query = createProbeEvidenceProvider().query(
+        { type: 'http.probe', incidentId: 'inc-1', url, method: 'GET', timeout: 5000 },
+        makeConfig(),
+      );
+      const result = await Promise.race([
+        query,
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(() => reject(new Error('probe buffered the response body')), 500),
+        ),
+      ]);
+      assert.equal((result.data as { status: number }).status, 200);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
 // ── Docker log provider ──────────────────────────────────────────────────────
 
 function dockerFrame(streamType: 1 | 2, payload: string): Buffer {
@@ -305,24 +346,54 @@ describe('Docker log evidence', () => {
     assert.equal(result.truncated, true);
   });
 
-  it('applies bounded tail and since options at the Docker provider', async () => {
-    let capturedOptions: Record<string, unknown> | undefined;
+  it('stops a Docker socket response at the raw byte limit', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'pi-ops-docker-logs-'));
+    const socketPath = join(directory, 'docker.sock');
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+      res.end(Buffer.alloc(1024, 'x'));
+    });
+    await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+
+    try {
+      const result = await fetchDockerLogs(
+        makeConfig({ dockerSocketPath: socketPath, dockerQueryTimeoutMs: 1000 }),
+        'dataease',
+        { maxLines: 200 },
+        64,
+      );
+      assert.equal(result.buffer.length, 64);
+      assert.equal(result.truncated, true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('applies bounded tail, bytes, and since options at the Docker provider', async () => {
+    let capturedOptions: DockerLogOptions | undefined;
+    let capturedRawLimit: number | undefined;
     const client: DockerClientLike = {
       getContainer() {
         return {
           async inspect() { return {}; },
           async stats() { return {}; },
-          async logs(options) {
-            capturedOptions = options;
-            return Buffer.concat([
-              dockerFrame(1, 'line-one\n'),
-              dockerFrame(2, 'line-two\n'),
-            ]);
-          },
         };
       },
     };
-    const provider = createDockerEvidenceProvider(() => client);
+    const logFetcher: DockerLogFetcher = async (_config, _container, options, rawLimit) => {
+      capturedOptions = options;
+      capturedRawLimit = rawLimit;
+      return {
+        buffer: Buffer.concat([
+          dockerFrame(1, 'line-one\n'),
+          dockerFrame(2, 'line-two\n'),
+        ]),
+        truncated: false,
+      };
+    };
+    const provider = createDockerEvidenceProvider(() => client, logFetcher);
+    const config = makeConfig({ logsMaxBytes: 100 });
     const before = Math.floor(Date.now() / 1000) - 120;
     const result = await provider.query({
       type: 'docker.logs',
@@ -330,14 +401,14 @@ describe('Docker log evidence', () => {
       container: 'dataease',
       since: '2m',
       maxLines: 2,
-    }, makeConfig());
+    }, config);
     const after = Math.floor(Date.now() / 1000) - 120;
 
-    assert.equal(capturedOptions?.['follow'], false);
-    assert.equal(capturedOptions?.['tail'], 2);
-    const since = capturedOptions?.['since'];
+    assert.equal(capturedOptions?.maxLines, 2);
+    const since = capturedOptions?.since;
     assert.equal(typeof since, 'number');
     assert.ok((since as number) >= before && (since as number) <= after);
+    assert.equal(capturedRawLimit, 116); // 100 payload bytes + 2 multiplex headers
     assert.deepEqual(
       (result.data as { lines: string[] }).lines,
       ['line-one', 'line-two'],

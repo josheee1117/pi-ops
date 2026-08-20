@@ -35,7 +35,7 @@ export async function defaultProbe(
       signal: controller.signal,
       redirect: 'manual',
     });
-    await res.text().catch(() => {});
+    await res.body?.cancel().catch(() => {});
     return { ok: res.status >= 200 && res.status < 400, status: res.status };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

@@ -23,6 +23,8 @@ export interface NodeAgentConfig {
   logsMaxLines: number;
   /** Maximum log bytes returned by docker.logs. */
   logsMaxBytes: number;
+  /** Timeout for Docker evidence queries in ms. */
+  dockerQueryTimeoutMs: number;
   /** Maximum HTTP probe timeout in ms. */
   probeMaxTimeoutMs: number;
   /** Maximum response payload size in bytes. */
@@ -147,6 +149,7 @@ export function loadConfig(): NodeAgentConfig {
     allowedDiskPaths,
     logsMaxLines: parseInt(process.env['PI_OPS_LOGS_MAX_LINES'] ?? '200', 10),
     logsMaxBytes: parseInt(process.env['PI_OPS_LOGS_MAX_BYTES'] ?? String(1024 * 1024), 10),
+    dockerQueryTimeoutMs: parseInt(process.env['PI_OPS_DOCKER_QUERY_TIMEOUT_MS'] ?? '5000', 10),
     probeMaxTimeoutMs: parseInt(process.env['PI_OPS_PROBE_MAX_TIMEOUT_MS'] ?? '30000', 10),
     maxResponseBytes: parseInt(process.env['PI_OPS_MAX_RESPONSE_BYTES'] ?? String(1024 * 1024), 10),
     // Event source

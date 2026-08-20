@@ -11,6 +11,7 @@ export function makeNodeAgentConfig(overrides: Partial<NodeAgentConfig> = {}): N
     allowedDiskPaths: new Set(['/', '/var']),
     logsMaxLines: 200,
     logsMaxBytes: 1024 * 1024,
+    dockerQueryTimeoutMs: 5000,
     probeMaxTimeoutMs: 30000,
     maxResponseBytes: 1024 * 1024,
     agentUrl: 'http://localhost:8080',

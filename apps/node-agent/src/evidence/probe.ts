@@ -26,8 +26,9 @@ export function createProbeEvidenceProvider(): ProbeEvidenceProvider {
           redirect: 'manual',
         });
         status = res.status;
-        // Consume body to free resources
-        await res.text().catch(() => {});
+        // Probe semantics depend only on headers/status. Cancel immediately so a
+        // large or never-ending body cannot consume memory or hold the query.
+        await res.body?.cancel().catch(() => {});
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       } finally {
