@@ -1,13 +1,16 @@
-// Per-node observer entrypoint.
-// Milestone 1: verify protocol import works.
-import { CURRENT_SCHEMA_VERSION, MAX_BATCH_SIZE } from '@pi-ops/protocol';
+import { serve } from '@hono/node-server';
+import { loadConfig } from './config.js';
+import { createApp } from './app.js';
 
-export function getProtocolVersion(): number {
-  return CURRENT_SCHEMA_VERSION;
-}
+const config = loadConfig();
+const app = createApp(config);
 
-export function getBatchSizeLimit(): number {
-  return MAX_BATCH_SIZE;
-}
+console.log(`[pi-ops-node-agent] starting on :${config.port}, node=${config.nodeId}`);
+console.log(`[pi-ops-node-agent] allowed containers: ${[...config.allowedContainers].join(', ') || '(none)'}`);
 
-console.log(`[pi-ops-node-agent] protocol v${CURRENT_SCHEMA_VERSION}, max batch ${MAX_BATCH_SIZE}`);
+serve({
+  fetch: app.fetch,
+  port: config.port,
+});
+
+console.log(`[pi-ops-node-agent] listening on :${config.port}`);
