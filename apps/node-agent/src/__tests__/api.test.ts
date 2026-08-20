@@ -16,6 +16,12 @@ function makeConfig(overrides: Partial<NodeAgentConfig> = {}): NodeAgentConfig {
     logsMaxBytes: 1024 * 1024,
     probeMaxTimeoutMs: 30000,
     maxResponseBytes: 1024 * 1024,
+    agentUrl: 'http://localhost:8080',
+    ingestToken: 'test-token',
+    eventQueueSize: 1000,
+    eventSendTimeoutMs: 5000,
+    eventMaxRetries: 3,
+    eventFlushIntervalMs: 1000,
     ...overrides,
   };
 }

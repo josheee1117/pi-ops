@@ -16,6 +16,19 @@ export interface NodeAgentConfig {
   probeMaxTimeoutMs: number;
   /** Maximum response payload size in bytes. */
   maxResponseBytes: number;
+  // ── Event source ──────────────────────────────────────────────────────────
+  /** Central agent URL for event push. */
+  agentUrl: string;
+  /** Token for authenticating to the central agent. */
+  ingestToken: string;
+  /** Maximum number of events in the outbound queue. */
+  eventQueueSize: number;
+  /** HTTP timeout for event push (ms). */
+  eventSendTimeoutMs: number;
+  /** Maximum retry attempts for failed event pushes. */
+  eventMaxRetries: number;
+  /** Flush interval when queue is not full (ms). */
+  eventFlushIntervalMs: number;
 }
 
 function requireEnv(key: string): string {
@@ -45,5 +58,12 @@ export function loadConfig(): NodeAgentConfig {
     logsMaxBytes: parseInt(process.env['PI_OPS_LOGS_MAX_BYTES'] ?? String(1024 * 1024), 10),
     probeMaxTimeoutMs: parseInt(process.env['PI_OPS_PROBE_MAX_TIMEOUT_MS'] ?? '30000', 10),
     maxResponseBytes: parseInt(process.env['PI_OPS_MAX_RESPONSE_BYTES'] ?? String(1024 * 1024), 10),
+    // Event source
+    agentUrl: process.env['PI_OPS_AGENT_URL'] ?? 'http://localhost:8080',
+    ingestToken: process.env['PI_OPS_INGEST_TOKEN'] ?? '',
+    eventQueueSize: parseInt(process.env['PI_OPS_EVENT_QUEUE_SIZE'] ?? '1000', 10),
+    eventSendTimeoutMs: parseInt(process.env['PI_OPS_EVENT_SEND_TIMEOUT_MS'] ?? '5000', 10),
+    eventMaxRetries: parseInt(process.env['PI_OPS_EVENT_MAX_RETRIES'] ?? '3', 10),
+    eventFlushIntervalMs: parseInt(process.env['PI_OPS_EVENT_FLUSH_INTERVAL_MS'] ?? '1000', 10),
   };
 }
