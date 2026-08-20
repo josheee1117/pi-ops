@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { AgentConfig } from './config.js';
-import type { EventStore } from './store.js';
+import { DuplicateEventConflictError, type EventStore } from './store.js';
 import type { IncidentEngine } from './incident.js';
 import type { EvidenceJobWorker } from './evidence-worker.js';
 import { validateEventBatch } from '@pi-ops/protocol';
@@ -95,10 +95,22 @@ export function createApp(
     // complete synchronous state transition commits.
     const receiveTime = new Date().toISOString();
     let createdIncident = false;
-    store.processBatch(batch, receiveTime, (event) => {
-      const incidentResult = incidentEngine.processEvent(event, event.time);
-      if (incidentResult.isNew) createdIncident = true;
-    });
+    try {
+      store.processBatch(batch, receiveTime, (event) => {
+        const incidentResult = incidentEngine.processEvent(event, event.time);
+        if (incidentResult.isNew) createdIncident = true;
+      });
+    } catch (error) {
+      if (error instanceof DuplicateEventConflictError) {
+        return c.json({
+          accepted: 0,
+          rejected: batch.events.length,
+          error: 'duplicate event id conflicts with immutable payload',
+          eventId: error.eventId,
+        }, 409);
+      }
+      throw error;
+    }
 
     // Node Agent I/O stays asynchronous and never blocks event ingestion.
     if (createdIncident) evidenceWorker?.wake();

@@ -95,6 +95,7 @@ describe('POST /v1/events', () => {
     assert.equal(body.accepted, 1);
     assert.equal(body.rejected, 0);
     assert.equal(store.count(), 1);
+    assert.ok(store.getEventProcessedAt('evt-0000'));
   });
 
   it('accepts a batch of multiple events', async () => {
@@ -199,7 +200,7 @@ describe('POST /v1/events', () => {
     store.close();
   });
 
-  it('does not reprocess a duplicate id with conflicting payload', async () => {
+  it('rejects a duplicate id with conflicting payload', async () => {
     const config = makeTestConfig(':memory:');
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, {
@@ -225,7 +226,9 @@ describe('POST /v1/events', () => {
     });
 
     assert.equal(first.status, 200);
-    assert.equal(retry.status, 200);
+    assert.equal(retry.status, 409);
+    const conflict = await retry.json();
+    assert.equal(conflict.eventId, 'evt-0000');
     assert.equal(store.count(), 1);
     assert.equal(store.incidentCount(), 1);
     assert.ok(store.findActiveIncident(
@@ -239,6 +242,50 @@ describe('POST /v1/events', () => {
       config.aggregationWindowMs,
     ), undefined);
     assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    store.close();
+  });
+
+  it('rolls back an entire mixed batch when one duplicate id conflicts', async () => {
+    const config = makeTestConfig(':memory:');
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, {
+      aggregationWindowMs: config.aggregationWindowMs,
+    });
+    const app = createApp(config, store, engine);
+    assert.equal((await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(makeValidBatch(1)),
+    })).status, 200);
+
+    const mixedBatch = {
+      producer: { id: 'node-agent-01', type: 'node-agent', version: '0.1.0' },
+      events: [
+        makeValidEvent('evt-new-in-conflicting-batch'),
+        {
+          ...makeValidEvent('evt-0000'),
+          type: 'container.oom',
+          message: 'Conflicting duplicate',
+        },
+      ],
+    };
+    const conflict = await app.request('/v1/events', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(mixedBatch),
+    });
+
+    assert.equal(conflict.status, 409);
+    assert.equal(store.getEvent('evt-new-in-conflicting-batch'), undefined);
+    assert.equal(store.count(), 1);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.listPendingEvidenceJobs(10).length, 1);
+    const incident = store.findActiveIncident(
+      'docker:test-svc-02:dataease:container.die',
+      '2026-08-20T12:00:00.000Z',
+      config.aggregationWindowMs,
+    );
+    assert.equal(incident?.event_count, 1);
     store.close();
   });
 
@@ -518,6 +565,8 @@ describe('persistence', () => {
           service: 'dataease',
           type: 'container.die',
           severity: 'error' as const,
+          fingerprint: 'producer-audit-fingerprint',
+          traceId: 'trace-survivor',
           message: 'Survived restart',
           attributes: { persisted: true },
         },
@@ -535,6 +584,8 @@ describe('persistence', () => {
     assert.equal(persisted.schema_version, 1);
     assert.equal(persisted.event_time, '2026-08-20T12:00:00.000Z');
     assert.equal(persisted.receive_time, '2026-08-20T12:00:05.000Z');
+    assert.equal(persisted.fingerprint, 'producer-audit-fingerprint');
+    assert.equal(persisted.trace_id, 'trace-survivor');
     assert.equal(persisted.attributes, JSON.stringify({ persisted: true }));
     store2.close();
 
@@ -624,6 +675,35 @@ describe('persistence', () => {
     assert.equal(event.schema_version, 1);
     assert.equal(event.event_time, event.receive_time);
     assert.equal(event.event_time, '2026-08-20T11:59:00.000Z');
+    assert.equal(migrated.getEventProcessedAt('evt-legacy'), undefined);
+
+    const replayBatch = {
+      producer: { id: 'legacy-agent', type: 'node-agent' as const, version: '0.0.1' },
+      events: [{
+        schemaVersion: 1 as const,
+        id: 'evt-legacy',
+        time: '2026-08-20T11:59:00.000Z',
+        source: 'docker' as const,
+        nodeId: 'test-svc-02',
+        service: 'dataease',
+        type: 'container.die',
+        severity: 'error' as const,
+        message: 'Legacy event',
+        attributes: {},
+      }],
+    };
+    const engine = createIncidentEngine(migrated, { aggregationWindowMs: 5 * 60 * 1000 });
+    const replay = () => migrated.processBatch(
+      replayBatch,
+      '2026-08-20T12:30:00.000Z',
+      (replayed) => engine.processEvent(replayed, replayed.time),
+    );
+
+    assert.deepEqual(replay(), { inserted: 0, processed: 1 });
+    assert.deepEqual(replay(), { inserted: 0, processed: 0 });
+    assert.equal(migrated.incidentCount(), 1);
+    assert.equal(migrated.getEventProcessedAt('evt-legacy'), '2026-08-20T12:30:00.000Z');
+    assert.deepEqual(migrated.getEvent('evt-legacy'), event);
     migrated.close();
 
     rmSync(tmpDir, { recursive: true, force: true });

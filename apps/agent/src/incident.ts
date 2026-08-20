@@ -46,13 +46,13 @@ const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
 // ── Fingerprint ──────────────────────────────────────────────────────────────
 
 /**
- * Compute a deterministic fingerprint from stable event dimensions.
- * Uses the event-provided fingerprint if available, otherwise derives from
- * (source, nodeId, service, type). Never includes timestamps or random data.
+ * Compute a deterministic fingerprint from centrally allowlisted stable event
+ * dimensions. Producer fingerprints remain immutable Event audit data but are
+ * never trusted for Incident identity.
  */
 export function computeFingerprint(event: OpsEvent): string {
   const canonicalType = RECOVERY_TYPE_MAP[event.type] ?? event.type;
-  return event.fingerprint ?? `${event.source}:${event.nodeId}:${event.service}:${canonicalType}`;
+  return `${event.source}:${event.nodeId}:${event.service}:${canonicalType}`;
 }
 
 function earlierTimestamp(a: string, b: string): string {

@@ -33,9 +33,9 @@ function setup() {
 // ── Fingerprint ──────────────────────────────────────────────────────────────
 
 describe('computeFingerprint', () => {
-  it('uses event-provided fingerprint when available', () => {
+  it('ignores producer-provided fingerprint for Incident identity', () => {
     const event = makeEvent({ fingerprint: 'custom-fp' });
-    assert.equal(computeFingerprint(event), 'custom-fp');
+    assert.equal(computeFingerprint(event), 'docker:test-svc-02:dataease:container.die');
   });
 
   it('derives fingerprint from stable dimensions when not provided', () => {
@@ -54,6 +54,69 @@ describe('computeFingerprint', () => {
     const failure = makeEvent({ source: 'health', type: 'health.failure' });
     const recovery = makeEvent({ source: 'health', type: 'health.recovered' });
     assert.equal(computeFingerprint(recovery), computeFingerprint(failure));
+  });
+
+  it('aggregates matching stable fields despite different supplied fingerprints', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({ id: 'evt-fp-1', fingerprint: 'producer-a' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({
+        id: 'evt-fp-2',
+        fingerprint: 'producer-b',
+        time: '2026-08-20T12:01:00.000Z',
+      }),
+      '2026-08-20T12:01:00.000Z',
+    );
+
+    assert.equal(second.incidentId, first.incidentId);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.getIncident(first.incidentId!)?.event_count, 2);
+  });
+
+  it('separates different stable fields despite the same supplied fingerprint', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({ id: 'evt-fp-1', service: 'dataease', fingerprint: 'shared' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({ id: 'evt-fp-2', service: 'ragflow', fingerprint: 'shared' }),
+      '2026-08-20T12:00:00.000Z',
+    );
+
+    assert.notEqual(second.incidentId, first.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+
+  it('correlates recovery even when producer fingerprints differ', () => {
+    const { store, engine } = setup();
+    const failure = engine.processEvent(
+      makeEvent({
+        id: 'evt-fp-failure',
+        source: 'health',
+        type: 'health.failure',
+        fingerprint: 'failure-producer-fp',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const recovery = engine.processEvent(
+      makeEvent({
+        id: 'evt-fp-recovery',
+        source: 'health',
+        type: 'health.recovered',
+        severity: 'info',
+        fingerprint: 'recovery-producer-fp',
+        time: '2026-08-20T12:01:00.000Z',
+      }),
+      '2026-08-20T12:01:00.000Z',
+    );
+
+    assert.equal(recovery.incidentId, failure.incidentId);
+    assert.equal(recovery.isRecovery, true);
+    assert.equal(store.getIncident(failure.incidentId!)?.state, 'RECOVERED');
   });
 });
 

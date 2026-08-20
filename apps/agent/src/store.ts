@@ -1,7 +1,20 @@
 import Database from 'better-sqlite3';
+import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 
 // ── Event types ──────────────────────────────────────────────────────────────
+
+export class DuplicateEventConflictError extends Error {
+  constructor(readonly eventId: string) {
+    super(`Event ${eventId} conflicts with the persisted immutable payload`);
+    this.name = 'DuplicateEventConflictError';
+  }
+}
+
+export interface ProcessBatchResult {
+  inserted: number;
+  processed: number;
+}
 
 export interface StoredEvent {
   id: string;
@@ -177,7 +190,29 @@ INSERT OR IGNORE INTO events (
 `;
 
 const COUNT_EVENTS_SQL = `SELECT COUNT(*) as count FROM events`;
-const GET_EVENT_SQL = `SELECT * FROM events WHERE id = ?`;
+const GET_EVENT_SQL = `
+SELECT id, schema_version, event_time, receive_time,
+       producer_id, producer_type, producer_version,
+       source, node_id, service, type, severity,
+       fingerprint, trace_id, message, attributes
+FROM events WHERE id = ?;
+`;
+
+const CREATE_EVENT_PROCESSING_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS event_processing (
+  event_id TEXT PRIMARY KEY,
+  incident_processed_at TEXT NOT NULL
+);
+`;
+
+const GET_EVENT_PROCESSED_AT_SQL = `
+SELECT incident_processed_at FROM event_processing WHERE event_id = ?;
+`;
+
+const MARK_EVENT_PROCESSED_SQL = `
+INSERT INTO event_processing (event_id, incident_processed_at)
+VALUES (@id, @processed_at);
+`;
 
 const LIST_ACTIVE_INCIDENTS_SQL = `
 SELECT * FROM incidents
@@ -291,13 +326,16 @@ export interface EventStore {
     batch: EventBatch,
     receiveTime: string,
     processEvent: (event: OpsEvent) => void,
-  ): number;
+  ): ProcessBatchResult;
 
   /** Total event count. */
   count(): number;
 
   /** Read one immutable Event exactly as persisted. */
   getEvent(id: string): StoredEvent | undefined;
+
+  /** Read the separate Incident-processing completion marker. */
+  getEventProcessedAt(id: string): string | undefined;
 
   // ── Incident operations ──────────────────────────────────────────────────
 
@@ -402,12 +440,44 @@ export function createEventStore(dbPath: string): EventStore {
 
   db.exec(CREATE_INCIDENTS_TABLE_SQL);
   db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
+  db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
+
+  // Preserve markers from the short-lived transitional schema if present.
+  if (eventColumns.has('incident_processed_at')) {
+    db.exec(`
+      INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
+      SELECT id, incident_processed_at FROM events
+      WHERE incident_processed_at IS NOT NULL;
+    `);
+  }
+
+  // Rows already linked to an Incident were processed by older versions.
+  // Explicit recoveries are also terminally processed even when unmatched.
+  // Other unlinked legacy Events remain pending and are replayed once when
+  // their producer retries them through processBatch().
+  db.exec(`
+    INSERT OR IGNORE INTO event_processing (event_id, incident_processed_at)
+    SELECT events.id, events.receive_time
+    FROM events
+    WHERE EXISTS (
+      SELECT 1 FROM incident_events
+      WHERE incident_events.event_id = events.id
+    )
+    OR events.type IN (
+      'health.recovered',
+      'host.memory_recovered',
+      'host.disk_recovered'
+    );
+  `);
+
   db.exec(CREATE_EVIDENCE_TABLE_SQL);
   db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
 
   const insertStmt = db.prepare(INSERT_EVENT_SQL);
   const countStmt = db.prepare(COUNT_EVENTS_SQL);
   const getEventStmt = db.prepare(GET_EVENT_SQL);
+  const getEventProcessedAtStmt = db.prepare(GET_EVENT_PROCESSED_AT_SQL);
+  const markEventProcessedStmt = db.prepare(MARK_EVENT_PROCESSED_SQL);
   const listActiveIncidentsStmt = db.prepare(LIST_ACTIVE_INCIDENTS_SQL);
   const findIncidentByEventIdStmt = db.prepare(FIND_INCIDENT_BY_EVENT_ID_SQL);
   const insertIncidentStmt = db.prepare(INSERT_INCIDENT_SQL);
@@ -453,11 +523,35 @@ export function createEventStore(dbPath: string): EventStore {
     });
   }
 
-  function insertEventRow(
+  function storedEventMatches(
+    batch: EventBatch,
+    event: OpsEvent,
+    stored: StoredEvent,
+  ): boolean {
+    return stored.schema_version === event.schemaVersion
+      && stored.event_time === event.time
+      && stored.producer_id === batch.producer.id
+      && stored.producer_type === batch.producer.type
+      && stored.producer_version === batch.producer.version
+      && stored.source === event.source
+      && stored.node_id === event.nodeId
+      && stored.service === event.service
+      && stored.type === event.type
+      && stored.severity === event.severity
+      && stored.fingerprint === (event.fingerprint ?? null)
+      && stored.trace_id === (event.traceId ?? null)
+      && stored.message === event.message
+      && isDeepStrictEqual(
+        JSON.parse(stored.attributes),
+        JSON.parse(JSON.stringify(event.attributes)),
+      );
+  }
+
+  function insertOrValidateEventRow(
     batch: EventBatch,
     event: OpsEvent,
     receiveTime: string,
-  ): boolean {
+  ): { inserted: boolean; stored?: StoredEvent } {
     const result = insertStmt.run({
       id: event.id,
       schema_version: event.schemaVersion,
@@ -476,13 +570,19 @@ export function createEventStore(dbPath: string): EventStore {
       message: event.message,
       attributes: JSON.stringify(event.attributes),
     });
-    return result.changes === 1;
+    if (result.changes === 1) return { inserted: true };
+
+    const stored = getEventStmt.get(event.id) as StoredEvent | undefined;
+    if (!stored || !storedEventMatches(batch, event, stored)) {
+      throw new DuplicateEventConflictError(event.id);
+    }
+    return { inserted: false, stored };
   }
 
   function insertEventRows(batch: EventBatch, receiveTime: string): number {
     let inserted = 0;
     for (const event of batch.events) {
-      if (insertEventRow(batch, event, receiveTime)) inserted++;
+      if (insertOrValidateEventRow(batch, event, receiveTime).inserted) inserted++;
     }
     return inserted;
   }
@@ -492,14 +592,33 @@ export function createEventStore(dbPath: string): EventStore {
     batch: EventBatch,
     receiveTime: string,
     processEvent: (event: OpsEvent) => void,
-  ): number => {
+  ): ProcessBatchResult => {
     let inserted = 0;
+    let processed = 0;
+    const pending = new Map<string, OpsEvent>();
+
+    // Validate the complete batch before invoking Incident processing. A single
+    // conflicting immutable id rejects the transaction without partial state
+    // transitions or callback side effects.
     for (const event of batch.events) {
-      if (!insertEventRow(batch, event, receiveTime)) continue;
-      inserted++;
-      processEvent(event);
+      const persisted = insertOrValidateEventRow(batch, event, receiveTime);
+      if (persisted.inserted) inserted++;
+      if (!pending.has(event.id)) pending.set(event.id, event);
     }
-    return inserted;
+
+    for (const event of pending.values()) {
+      if (getEventProcessedAtStmt.get(event.id)) continue;
+      processEvent(event);
+      const marked = markEventProcessedStmt.run({
+        id: event.id,
+        processed_at: receiveTime,
+      });
+      if (marked.changes !== 1) {
+        throw new Error(`Event ${event.id} could not be marked as Incident-processed`);
+      }
+      processed++;
+    }
+    return { inserted, processed };
   });
 
   const createIncidentFromEventTransaction = db.transaction((
@@ -534,7 +653,7 @@ export function createEventStore(dbPath: string): EventStore {
       batch: EventBatch,
       receiveTime: string,
       processEvent: (event: OpsEvent) => void,
-    ): number {
+    ): ProcessBatchResult {
       return processBatchTransaction(batch, receiveTime, processEvent);
     },
 
@@ -545,6 +664,13 @@ export function createEventStore(dbPath: string): EventStore {
 
     getEvent(id: string): StoredEvent | undefined {
       return getEventStmt.get(id) as StoredEvent | undefined;
+    },
+
+    getEventProcessedAt(id: string): string | undefined {
+      const row = getEventProcessedAtStmt.get(id) as
+        | { incident_processed_at: string }
+        | undefined;
+      return row?.incident_processed_at;
     },
 
     // ── Incidents ─────────────────────────────────────────────────────────
