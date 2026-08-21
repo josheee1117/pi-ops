@@ -29,6 +29,9 @@ export interface ReasoningResult {
   truncated?: boolean;
   missingCapability?: string[];
   usedMemoryEntryIds?: string[];
+  strategy?: string;
+  strategyVersion?: string;
+  investigationPlanId?: string;
 }
 
 export interface Reasoner {

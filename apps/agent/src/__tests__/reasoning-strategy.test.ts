@@ -43,6 +43,10 @@ describe('ReasoningStrategy', () => {
     assert.equal(strategyNameFor('delegated_analysis'), 'delegated_analysis');
   });
 
+  it('fails closed for an unknown strategy', () => {
+    assert.throws(() => strategyNameFor('mystery-agent'), /unknown reasoning strategy/);
+  });
+
   it('keeps FakeReasoner output unchanged through the deterministic strategy', async () => {
     const reasoner = createFakeReasoner();
     const input = { incident: incident(), evidence: evidence(), reasoner };

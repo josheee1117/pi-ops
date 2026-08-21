@@ -4,6 +4,7 @@ import { buildIncidentContext } from './incident-context.js';
 import type { MemoryRetriever } from './memory-retriever.js';
 import type { ReasonerRegistry, ReasoningResult } from './reasoner.js';
 import {
+  buildInvestigationPlan,
   createDefaultReasoningStrategies,
   strategyNameFor,
   type ReasoningStrategyRegistry,
@@ -62,8 +63,6 @@ export function createReasoningJobWorker(
     try {
       const incident = store.getIncident(job.incidentId);
       if (!incident) throw new Error(`Incident ${job.incidentId} no longer exists`);
-      const reasoner = registry.get(job.reasonerType);
-      if (!reasoner) throw new Error(`unknown reasoner type ${job.reasonerType}`);
       const strategyName = strategyNameFor(job.reasonerType);
       const strategy = strategies.get(strategyName);
       if (!strategy) throw new Error(`unknown reasoning strategy ${strategyName}`);
@@ -75,6 +74,12 @@ export function createReasoningJobWorker(
         stats.lastDurationMs = Date.now() - started;
         return;
       }
+      if (strategy.name === 'delegated_analysis') {
+        store.insertInvestigationPlan(buildInvestigationPlan(job.id, incident, strategy.name));
+        throw new Error('delegated_analysis is owned by Pi Runtime and is not implemented in Pi-Ops');
+      }
+      const reasoner = registry.get(job.reasonerType);
+      if (!reasoner) throw new Error(`unknown reasoner type ${job.reasonerType}`);
       const usedMemoryEntryIds = retrieveMemoryIds(retriever, incident, evidence, config);
       const decision = await withTimeout(
         () => strategy.execute({ incident, evidence, reasoner }),
@@ -90,6 +95,8 @@ export function createReasoningJobWorker(
         reasonerVersion: reasoner.version,
         evidenceIds: evidence.map((item) => item.id),
         evidenceSnapshotHash: hashEvidenceSnapshot(evidence),
+        strategy: strategy.name,
+        strategyVersion: strategy.version,
         ...(usedMemoryEntryIds.length > 0 ? { usedMemoryEntryIds } : {}),
       };
       store.insertReasoningResult(result);

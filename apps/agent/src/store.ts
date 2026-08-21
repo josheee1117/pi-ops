@@ -6,6 +6,7 @@ import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
 import type { MemoryEntry } from './memory-governance.js';
+import type { InvestigationPlan } from './reasoning-strategy.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -292,6 +293,18 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   approved_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_memory_entries_status ON memory_entries (status, created_at, id);
+`;
+
+const CREATE_INVESTIGATION_PLANS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_plans (
+  id TEXT PRIMARY KEY,
+  reasoning_job_id TEXT NOT NULL,
+  strategy TEXT NOT NULL,
+  objectives_json TEXT NOT NULL,
+  requested_capabilities_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_investigation_plans_job ON investigation_plans (reasoning_job_id, created_at, id);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -687,6 +700,9 @@ export interface EventStore {
   getMemoryEntryByCandidateId(candidateId: string): MemoryEntry | undefined;
   listActiveMemoryEntries(): MemoryEntry[];
   updateMemoryEntryStatus(id: string, status: MemoryEntry['status']): void;
+  insertInvestigationPlan(plan: InvestigationPlan): void;
+  getInvestigationPlan(id: string): InvestigationPlan | undefined;
+  listInvestigationPlansByJob(reasoningJobId: string): InvestigationPlan[];
 
   /** Close the database connection. */
   close(): void;
@@ -742,6 +758,26 @@ function mapMemoryCandidateRow(row: MemoryCandidateRow): MemoryCandidate {
   };
 }
 
+interface InvestigationPlanRow {
+  id: string;
+  reasoning_job_id: string;
+  strategy: InvestigationPlan['strategy'];
+  objectives_json: string;
+  requested_capabilities_json: string;
+  created_at: string;
+}
+
+function mapInvestigationPlanRow(row: InvestigationPlanRow): InvestigationPlan {
+  return {
+    id: row.id,
+    reasoningJobId: row.reasoning_job_id,
+    strategy: row.strategy,
+    objectives: JSON.parse(row.objectives_json) as string[],
+    requestedCapabilities: JSON.parse(row.requested_capabilities_json) as string[],
+    createdAt: row.created_at,
+  };
+}
+
 function mapMemoryEntryRow(row: MemoryEntryRow): MemoryEntry {
   return {
     id: row.id,
@@ -773,6 +809,9 @@ function serializeReasoningMetadata(result: ReasoningResult): string | null {
   if (result.usedMemoryEntryIds && result.usedMemoryEntryIds.length > 0) {
     metadata['usedMemoryEntryIds'] = result.usedMemoryEntryIds;
   }
+  if (result.strategy) metadata['strategy'] = result.strategy;
+  if (result.strategyVersion) metadata['strategyVersion'] = result.strategyVersion;
+  if (result.investigationPlanId) metadata['investigationPlanId'] = result.investigationPlanId;
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
@@ -791,6 +830,9 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
       ...(parsed.truncated ? { truncated: true } : {}),
       ...(Array.isArray(parsed.missingCapability) ? { missingCapability: parsed.missingCapability } : {}),
       ...(Array.isArray(parsed.usedMemoryEntryIds) ? { usedMemoryEntryIds: parsed.usedMemoryEntryIds } : {}),
+      ...(typeof parsed.strategy === 'string' ? { strategy: parsed.strategy } : {}),
+      ...(typeof parsed.strategyVersion === 'string' ? { strategyVersion: parsed.strategyVersion } : {}),
+      ...(typeof parsed.investigationPlanId === 'string' ? { investigationPlanId: parsed.investigationPlanId } : {}),
     };
   } catch {
     return {};
@@ -934,6 +976,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_REASONING_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_MEMORY_CANDIDATES_TABLE_SQL);
     db.exec(CREATE_MEMORY_ENTRIES_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_PLANS_TABLE_SQL);
     const memoryCandidateColumns = new Set(
       (db.pragma('table_info(memory_candidates)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1077,6 +1120,17 @@ SELECT * FROM memory_entries WHERE status = 'ACTIVE' ORDER BY created_at, id;
 `);
   const updateMemoryEntryStatusStmt = db.prepare(`
 UPDATE memory_entries SET status = @status WHERE id = @id;
+`);
+  const insertInvestigationPlanStmt = db.prepare(`
+INSERT INTO investigation_plans (
+  id, reasoning_job_id, strategy, objectives_json, requested_capabilities_json, created_at
+) VALUES (
+  @id, @reasoning_job_id, @strategy, @objectives_json, @requested_capabilities_json, @created_at
+);
+`);
+  const getInvestigationPlanStmt = db.prepare('SELECT * FROM investigation_plans WHERE id = ?');
+  const listInvestigationPlansByJobStmt = db.prepare(`
+SELECT * FROM investigation_plans WHERE reasoning_job_id = ? ORDER BY created_at, id;
 `);
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
@@ -1820,6 +1874,27 @@ UPDATE memory_entries SET status = @status WHERE id = @id;
 
     updateMemoryEntryStatus(id: string, status: MemoryEntry['status']): void {
       updateMemoryEntryStatusStmt.run({ id, status });
+    },
+
+    insertInvestigationPlan(plan: InvestigationPlan): void {
+      insertInvestigationPlanStmt.run({
+        id: plan.id,
+        reasoning_job_id: plan.reasoningJobId,
+        strategy: plan.strategy,
+        objectives_json: JSON.stringify(plan.objectives),
+        requested_capabilities_json: JSON.stringify(plan.requestedCapabilities),
+        created_at: plan.createdAt,
+      });
+    },
+
+    getInvestigationPlan(id: string): InvestigationPlan | undefined {
+      const row = getInvestigationPlanStmt.get(id) as InvestigationPlanRow | undefined;
+      return row ? mapInvestigationPlanRow(row) : undefined;
+    },
+
+    listInvestigationPlansByJob(reasoningJobId: string): InvestigationPlan[] {
+      return (listInvestigationPlansByJobStmt.all(reasoningJobId) as InvestigationPlanRow[])
+        .map(mapInvestigationPlanRow);
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

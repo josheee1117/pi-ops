@@ -173,7 +173,7 @@ describe('ReasoningJob worker', () => {
       severity: 'warning',
     });
     const boom: Reasoner = {
-      type: 'boom',
+      type: 'fake',
       version: '1',
       reason(): never {
         throw new Error('reasoner exploded');
@@ -182,7 +182,7 @@ describe('ReasoningJob worker', () => {
     store.createReasoningJob({
       id: `rj-${incident.id}`,
       incidentId: incident.id,
-      reasonerType: 'boom',
+      reasonerType: 'fake',
       reasonerVersion: '1',
       createdAt: incident.last_seen,
     });
@@ -255,6 +255,100 @@ describe('ReasoningJob worker', () => {
     await worker.runOnce();
     assert.deepEqual(store.getIncident(incident.id), incidentBefore);
     assert.deepEqual(store.listEvidence(incident.id), evidenceBefore);
+    store.close();
+  });
+
+  it('records strategy provenance on a deterministic ReasoningResult', async () => {
+    const { store, incident } = processNewIncident();
+    store.insertEvidence(makeEvidence(incident.id));
+    const worker = createReasoningJobWorker(
+      makeConfig(),
+      store,
+      createReasonerRegistry([createFakeReasoner()]),
+    );
+    await worker.runOnce();
+    const result = store.listReasoningResults(incident.id)[0];
+    assert.equal(result?.strategy, 'deterministic');
+    assert.equal(result?.strategyVersion, '1');
+    assert.equal(result?.investigationPlanId, undefined);
+    store.close();
+  });
+
+  it('creates only an InvestigationPlan for delegated_analysis and does not execute a reasoner', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'data-asset-service',
+      node_id: 'test-svc-02',
+      type: 'application.slow_sql',
+      state: 'OPEN',
+      fingerprint: 'fp-delegated',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'warning',
+    });
+    store.insertEvidence(makeEvidence(incident.id));
+    let executed = 0;
+    const spy: Reasoner = {
+      type: 'delegated_analysis',
+      version: '1',
+      reason() {
+        executed += 1;
+        throw new Error('reasoner must not run');
+      },
+    };
+    store.createReasoningJob({
+      id: `rj-${incident.id}`,
+      incidentId: incident.id,
+      reasonerType: 'delegated_analysis',
+      reasonerVersion: '1',
+      createdAt: incident.last_seen,
+    });
+    const worker = createReasoningJobWorker(
+      makeConfig(),
+      store,
+      createReasonerRegistry([spy]),
+    );
+    await worker.runOnce();
+    const plans = store.listInvestigationPlansByJob(`rj-${incident.id}`);
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0]?.strategy, 'delegated_analysis');
+    assert.deepEqual(plans[0]?.requestedCapabilities, ['pi.runtime.delegated_analysis']);
+    assert.equal(executed, 0);
+    assert.equal(store.listReasoningResults(incident.id).length, 0);
+    assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'FAILED');
+    store.close();
+  });
+
+  it('fails closed when the strategy is unknown', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'data-asset-service',
+      node_id: 'test-svc-02',
+      type: 'application.slow_sql',
+      state: 'OPEN',
+      fingerprint: 'fp-unknown-strategy',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'warning',
+    });
+    store.createReasoningJob({
+      id: `rj-${incident.id}`,
+      incidentId: incident.id,
+      reasonerType: 'mystery-agent',
+      reasonerVersion: '1',
+      createdAt: incident.last_seen,
+    });
+    const worker = createReasoningJobWorker(
+      makeConfig(),
+      store,
+      createReasonerRegistry([createFakeReasoner()]),
+    );
+    await worker.runOnce();
+    assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'FAILED');
+    assert.match(store.getReasoningJob(`rj-${incident.id}`)?.lastError ?? '', /unknown reasoning strategy/);
+    assert.equal(store.listReasoningResults(incident.id).length, 0);
     store.close();
   });
 });

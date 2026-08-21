@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M12 completed
+
+- InvestigationPlan is the durable handoff for delegated_analysis
+- delegated_analysis creates a plan only and fails closed; no Reasoner/agent execution
+- ReasoningResult records strategy / strategyVersion provenance
+
 ## M11 completed
 
 - MemoryRetriever selects bounded ACTIVE MemoryEntry by incident type, service, and pattern keywords
