@@ -78,7 +78,8 @@ export function planEvidenceQueries(
   triggeringEvent: OpsEvent,
   logsMaxLines: number,
 ): EvidenceQueryRequest[] {
-  const container = stringAttribute(triggeringEvent, 'containerName') ?? incident.service;
+  const configuredContainer = stringAttribute(triggeringEvent, 'containerName');
+  const container = configuredContainer ?? incident.service;
 
   switch (incident.type) {
     case 'container.oom':
@@ -94,6 +95,41 @@ export function planEvidenceQueries(
         { type: 'docker.inspect', incidentId: incident.id, container },
         dockerLogsQuery(incident.id, container, triggeringEvent.time, logsMaxLines),
       ];
+
+    case 'jvm.cpu_pressure': {
+      const queries: EvidenceQueryRequest[] = [];
+      if (configuredContainer) {
+        queries.push({ type: 'docker.stats', incidentId: incident.id, container: configuredContainer });
+      }
+      queries.push({ type: 'host.load', incidentId: incident.id });
+      return queries;
+    }
+
+    case 'jvm.gc_pressure': {
+      const queries: EvidenceQueryRequest[] = [];
+      if (configuredContainer) {
+        queries.push({ type: 'docker.stats', incidentId: incident.id, container: configuredContainer });
+      }
+      queries.push({ type: 'host.memory', incidentId: incident.id });
+      return queries;
+    }
+
+    case 'application.slow_sql': {
+      const queries: EvidenceQueryRequest[] = [];
+      if (configuredContainer) {
+        queries.push({ type: 'docker.stats', incidentId: incident.id, container: configuredContainer });
+      }
+      queries.push({ type: 'host.load', incidentId: incident.id });
+      return queries;
+    }
+
+    case 'business.error': {
+      if (!configuredContainer) return [];
+      return [
+        { type: 'docker.inspect', incidentId: incident.id, container: configuredContainer },
+        dockerLogsQuery(incident.id, configuredContainer, triggeringEvent.time, logsMaxLines),
+      ];
+    }
 
     case 'health.failure': {
       const queries: EvidenceQueryRequest[] = [];

@@ -4,6 +4,7 @@ import { validateEventBatch } from '@pi-ops/protocol';
 import { createApp } from '../app.js';
 import { createEventStore } from '../store.js';
 import { createIncidentEngine } from '../incident.js';
+import { planEvidenceQueries } from '../evidence-orchestrator.js';
 import type { AgentConfig } from '../config.js';
 
 const CONFIG: AgentConfig = {
@@ -47,6 +48,7 @@ function dataAssetSlowSqlBatch() {
           datasourceRoute: 'primary',
           outcome: 'SUCCESS',
           durationMs: 1500,
+          containerName: 'data-asset',
         },
       },
     ],
@@ -84,6 +86,10 @@ describe('DataAsset event transport contract', () => {
     assert.equal(incident.state, 'OPEN');
     assert.equal(incident.type, 'application.slow_sql');
     assert.equal(incident.event_count, 1);
+    const triggeringEvent = batch.events[0]!;
+    const plan = planEvidenceQueries(incident, triggeringEvent, CONFIG.evidenceLogsMaxLines);
+    assert.deepEqual(plan.map((query) => query.type), ['docker.stats', 'host.load']);
+    assert.equal(plan[0]?.container, 'data-asset');
     store.close();
   });
 });

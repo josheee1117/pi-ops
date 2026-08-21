@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
+import { computeFingerprint } from './fingerprint.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -541,7 +542,7 @@ export function createEventStore(dbPath: string): EventStore {
       'SELECT id, state FROM incidents',
     ).all() as Array<{ id: string; state: IncidentState }>;
     const linkedIdentities = db.prepare(`
-      SELECT events.source, events.node_id, events.service, events.type
+      SELECT events.source, events.node_id, events.service, events.type, events.attributes
       FROM incident_events
       JOIN events ON events.id = incident_events.event_id
       WHERE incident_events.incident_id = ?
@@ -550,24 +551,21 @@ export function createEventStore(dbPath: string): EventStore {
     const updateFingerprint = db.prepare(
       'UPDATE incidents SET fingerprint = ? WHERE id = ?',
     );
-    const recoveryTypes: Readonly<Record<string, string>> = {
-      'health.recovered': 'health.failure',
-      'host.memory_recovered': 'host.memory_pressure',
-      'host.disk_recovered': 'host.disk_pressure',
-    };
     for (const incident of legacyIncidents) {
       const rows = linkedIdentities.all(incident.id) as Array<{
         source: string;
         node_id: string;
         service: string;
         type: string;
+        attributes: string;
       }>;
-      const identities = new Set(rows.map((event) => JSON.stringify([
-        event.source,
-        event.node_id,
-        event.service,
-        recoveryTypes[event.type] ?? event.type,
-      ])));
+      const identities = new Set(rows.map((event) => computeFingerprint({
+        source: event.source as OpsEvent['source'],
+        nodeId: event.node_id,
+        service: event.service,
+        type: event.type,
+        attributes: JSON.parse(event.attributes) as Record<string, unknown>,
+      })));
       if (identities.size > 1) {
         throw new Error(
           `Incident ${incident.id} links Events with multiple central identities`,
@@ -623,12 +621,7 @@ export function createEventStore(dbPath: string): EventStore {
       const event = mapStoredEvent(stored);
       insertPendingRecovery.run({
         event_id: event.id,
-        fingerprint: JSON.stringify([
-          event.source,
-          event.nodeId,
-          event.service,
-          recoveryTypes[event.type] ?? event.type,
-        ]),
+        fingerprint: computeFingerprint(event),
         event_time: event.time,
         event_json: JSON.stringify(event),
       });

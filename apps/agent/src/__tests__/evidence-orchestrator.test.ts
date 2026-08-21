@@ -158,6 +158,77 @@ describe('planEvidenceQueries', () => {
     assert.deepEqual(planEvidenceQueries(incident, makeEvent(), 200), []);
   });
 
+  it('maps jvm.cpu_pressure to docker.stats and host.load using configured containerName', () => {
+    const incident = makeIncident({ type: 'jvm.cpu_pressure', service: 'data-asset-service' });
+    const event = makeEvent({
+      source: 'jfr',
+      type: 'jvm.cpu_pressure',
+      service: 'data-asset-service',
+      attributes: { containerName: 'data-asset' },
+    });
+    const queries = planEvidenceQueries(incident, event, 200);
+    assert.deepEqual(queries.map((query) => query.type), ['docker.stats', 'host.load']);
+    assert.equal(queries[0]?.container, 'data-asset');
+  });
+
+  it('maps jvm.gc_pressure to docker.stats and host.memory', () => {
+    const incident = makeIncident({ type: 'jvm.gc_pressure', service: 'data-asset-service' });
+    const event = makeEvent({
+      source: 'jfr',
+      type: 'jvm.gc_pressure',
+      service: 'data-asset-service',
+      attributes: { containerName: 'data-asset' },
+    });
+    assert.deepEqual(
+      planEvidenceQueries(incident, event, 200).map((query) => query.type),
+      ['docker.stats', 'host.memory'],
+    );
+  });
+
+  it('maps application.slow_sql to docker.stats and host.load', () => {
+    const incident = makeIncident({ type: 'application.slow_sql', service: 'data-asset-service' });
+    const event = makeEvent({
+      source: 'application',
+      type: 'application.slow_sql',
+      service: 'data-asset-service',
+      attributes: { containerName: 'data-asset', sqlFingerprint: 'fp-a' },
+    });
+    assert.deepEqual(
+      planEvidenceQueries(incident, event, 200).map((query) => query.type),
+      ['docker.stats', 'host.load'],
+    );
+  });
+
+  it('maps business.error to inspect and event-time docker.logs', () => {
+    const incident = makeIncident({ type: 'business.error', service: 'data-asset-service' });
+    const event = makeEvent({
+      source: 'application',
+      type: 'business.error',
+      service: 'data-asset-service',
+      time: '2026-08-20T12:00:00.000Z',
+      attributes: { containerName: 'data-asset', businessCode: 'MANUAL_REQUIRED' },
+    });
+    const queries = planEvidenceQueries(incident, event, 120);
+    assert.deepEqual(queries.map((query) => query.type), ['docker.inspect', 'docker.logs']);
+    const logs = queries.find((query) => query.type === 'docker.logs');
+    assert.equal(logs?.container, 'data-asset');
+    assert.equal(logs?.since, '2026-08-20T11:58:00.000Z');
+    assert.equal(logs?.until, '2026-08-20T12:02:00.000Z');
+  });
+
+  it('does not infer DataAsset docker container from service name', () => {
+    const incident = makeIncident({ type: 'application.slow_sql', service: 'data-asset-service' });
+    const event = makeEvent({
+      source: 'application',
+      type: 'application.slow_sql',
+      service: 'data-asset-service',
+      attributes: { sqlFingerprint: 'fp-a' },
+    });
+    const queries = planEvidenceQueries(incident, event, 200);
+    assert.deepEqual(queries.map((query) => query.type), ['host.load']);
+    assert.equal(queries.some((query) => query.container === 'data-asset-service'), false);
+  });
+
   it('keeps docker.logs window around event.time when collection is delayed 10 minutes', () => {
     const eventTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const event = makeEvent({ time: eventTime });

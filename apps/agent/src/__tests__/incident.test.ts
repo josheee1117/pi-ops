@@ -62,6 +62,95 @@ describe('computeFingerprint', () => {
     assert.equal(computeFingerprint(recovery), computeFingerprint(failure));
   });
 
+  it('separates slow SQL incidents by sqlFingerprint in the same window', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({
+        id: 'evt-sql-a',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'application.slow_sql',
+        severity: 'warning',
+        time: '2026-08-20T12:00:00.000Z',
+        attributes: { sqlFingerprint: 'fp-a', statementId: 'Mapper.a' },
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({
+        id: 'evt-sql-b',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'application.slow_sql',
+        severity: 'warning',
+        time: '2026-08-20T12:01:00.000Z',
+        attributes: { sqlFingerprint: 'fp-b', statementId: 'Mapper.b' },
+      }),
+      '2026-08-20T12:01:00.000Z',
+    );
+    const repeat = engine.processEvent(
+      makeEvent({
+        id: 'evt-sql-a-repeat',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'application.slow_sql',
+        severity: 'warning',
+        time: '2026-08-20T12:02:00.000Z',
+        attributes: { sqlFingerprint: 'fp-a', statementId: 'Mapper.a' },
+      }),
+      '2026-08-20T12:02:00.000Z',
+    );
+
+    assert.notEqual(first.incidentId, second.incidentId);
+    assert.equal(repeat.incidentId, first.incidentId);
+    assert.equal(store.incidentCount(), 2);
+    assert.equal(store.getIncident(first.incidentId!)?.event_count, 2);
+    assert.equal(store.getIncident(second.incidentId!)?.event_count, 1);
+  });
+
+  it('falls back to statementId when sqlFingerprint is absent', () => {
+    const withFingerprint = makeEvent({
+      source: 'application',
+      type: 'application.slow_sql',
+      attributes: { sqlFingerprint: 'fp-1', statementId: 'Mapper.a' },
+    });
+    const sameFingerprint = makeEvent({
+      source: 'application',
+      type: 'application.slow_sql',
+      attributes: { sqlFingerprint: 'fp-1', statementId: 'Mapper.other' },
+    });
+    const fallbackStatement = makeEvent({
+      source: 'application',
+      type: 'application.slow_sql',
+      attributes: { statementId: 'Mapper.a' },
+    });
+    assert.equal(computeFingerprint(withFingerprint), computeFingerprint(sameFingerprint));
+    assert.notEqual(computeFingerprint(withFingerprint), computeFingerprint(fallbackStatement));
+  });
+
+  it('fingerprints business.error by businessCode not message text', () => {
+    const first = makeEvent({
+      source: 'application',
+      type: 'business.error',
+      message: 'user-facing text A',
+      attributes: { businessCode: 'MANUAL_REQUIRED', errorCode: 'MANUAL_REQUIRED' },
+    });
+    const sameCode = makeEvent({
+      source: 'application',
+      type: 'business.error',
+      message: 'user-facing text B',
+      attributes: { businessCode: 'MANUAL_REQUIRED', errorCode: 'MANUAL_REQUIRED' },
+    });
+    const otherCode = makeEvent({
+      source: 'application',
+      type: 'business.error',
+      message: 'user-facing text A',
+      attributes: { businessCode: 'TIMEOUT', errorCode: 'TIMEOUT' },
+    });
+    assert.equal(computeFingerprint(first), computeFingerprint(sameCode));
+    assert.notEqual(computeFingerprint(first), computeFingerprint(otherCode));
+  });
+
   it('aggregates matching stable fields despite different supplied fingerprints', () => {
     const { store, engine } = setup();
     const first = engine.processEvent(

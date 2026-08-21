@@ -1,5 +1,8 @@
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { EventStore } from './store.js';
+import { computeFingerprint, RECOVERY_TYPE_MAP } from './fingerprint.js';
+
+export { computeFingerprint } from './fingerprint.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,24 +38,6 @@ const SEVERITY_ORDER: Record<string, number> = {
 
 function maxSeverity(a: string, b: string): string {
   return (SEVERITY_ORDER[a] ?? 0) >= (SEVERITY_ORDER[b] ?? 0) ? a : b;
-}
-
-const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
-  'health.recovered': 'health.failure',
-  'host.memory_recovered': 'host.memory_pressure',
-  'host.disk_recovered': 'host.disk_pressure',
-};
-
-// ── Fingerprint ──────────────────────────────────────────────────────────────
-
-/**
- * Compute a deterministic fingerprint from centrally allowlisted stable event
- * dimensions. Producer fingerprints remain immutable Event audit data but are
- * never trusted for Incident identity.
- */
-export function computeFingerprint(event: OpsEvent): string {
-  const canonicalType = RECOVERY_TYPE_MAP[event.type] ?? event.type;
-  return JSON.stringify([event.source, event.nodeId, event.service, canonicalType]);
 }
 
 function earlierTimestamp(a: string, b: string): string {
