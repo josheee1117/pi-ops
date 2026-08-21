@@ -117,7 +117,10 @@ export function planEvidenceQueries(
     case 'application.slow_sql': {
       const queries: EvidenceQueryRequest[] = [];
       if (configuredContainer) {
-        queries.push({ type: 'docker.stats', incidentId: incident.id, container: configuredContainer });
+        queries.push(
+          { type: 'docker.inspect', incidentId: incident.id, container: configuredContainer },
+          { type: 'docker.stats', incidentId: incident.id, container: configuredContainer },
+        );
       }
       queries.push({ type: 'host.load', incidentId: incident.id });
       return queries;

@@ -151,6 +151,89 @@ describe('computeFingerprint', () => {
     assert.notEqual(computeFingerprint(first), computeFingerprint(otherCode));
   });
 
+  it('opens different Incidents for the same message with different businessCode', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({
+        id: 'evt-biz-a',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'business.error',
+        message: 'operation failed',
+        attributes: { businessCode: 'PAYMENT_TIMEOUT', module: 'payment' },
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({
+        id: 'evt-biz-b',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'business.error',
+        message: 'operation failed',
+        time: '2026-08-20T12:01:00.000Z',
+        attributes: { businessCode: 'INSUFFICIENT_FUNDS', module: 'payment' },
+      }),
+      '2026-08-20T12:01:00.000Z',
+    );
+    assert.notEqual(first.incidentId, second.incidentId);
+    assert.equal(store.incidentCount(), 2);
+  });
+
+  it('aggregates repeated business.error with the same businessCode', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({
+        id: 'evt-biz-1',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'business.error',
+        message: 'first wording',
+        attributes: { businessCode: 'PAYMENT_TIMEOUT', module: 'payment' },
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({
+        id: 'evt-biz-2',
+        source: 'application',
+        service: 'data-asset-service',
+        type: 'business.error',
+        message: 'second wording',
+        time: '2026-08-20T12:01:00.000Z',
+        attributes: { businessCode: 'PAYMENT_TIMEOUT', module: 'payment' },
+      }),
+      '2026-08-20T12:01:00.000Z',
+    );
+    assert.equal(second.incidentId, first.incidentId);
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.getIncident(first.incidentId!)?.event_count, 2);
+  });
+
+  it('does not create an Evidence job for every repeated slow_sql Event', () => {
+    const { store, engine } = setup();
+    let incidentId: string | undefined;
+    for (let i = 0; i < 100; i++) {
+      const time = `2026-08-20T12:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.000Z`;
+      const result = engine.processEvent(
+        makeEvent({
+          id: `evt-sql-storm-${i}`,
+          source: 'application',
+          service: 'data-asset-service',
+          type: 'application.slow_sql',
+          severity: 'warning',
+          time,
+          attributes: { sqlFingerprint: 'fp-storm', statementId: 'Mapper.storm' },
+        }),
+        time,
+      );
+      incidentId = result.incidentId ?? incidentId;
+    }
+    assert.equal(store.incidentCount(), 1);
+    assert.equal(store.getIncident(incidentId!)?.event_count, 100);
+    assert.equal(store.listPendingEvidenceJobs(1000).length, 1);
+  });
+
   it('aggregates matching stable fields despite different supplied fingerprints', () => {
     const { store, engine } = setup();
     const first = engine.processEvent(

@@ -1,5 +1,5 @@
 import type { OpsEvent } from '@pi-ops/protocol';
-import type { EventStore } from './store.js';
+import type { EvidenceJob, EventStore } from './store.js';
 import { computeFingerprint, RECOVERY_TYPE_MAP } from './fingerprint.js';
 
 export { computeFingerprint } from './fingerprint.js';
@@ -65,6 +65,27 @@ export function createIncidentEngine(
     return store.applyRecovery(incidentId, recovery);
   }
 
+  function evidenceExpired(job: EvidenceJob | undefined, eventTime: string): boolean {
+    if (!job || (job.state !== 'COMPLETED' && job.state !== 'FAILED')) return false;
+    const origin = Date.parse(job.triggeringEvent.time);
+    const current = Date.parse(eventTime);
+    return Number.isFinite(origin)
+      && Number.isFinite(current)
+      && current - origin >= config.aggregationWindowMs;
+  }
+
+  function maybeCollectEvidence(
+    incidentId: string,
+    event: OpsEvent,
+    previousSeverity: string,
+  ): void {
+    const job = store.getEvidenceJob(`job-${incidentId}`);
+    const escalated = (SEVERITY_ORDER[event.severity] ?? 0) > (SEVERITY_ORDER[previousSeverity] ?? 0);
+    if (escalated || evidenceExpired(job, event.time)) {
+      store.requeueEvidenceJob(incidentId, event);
+    }
+  }
+
   function reconcileFingerprint(fingerprint: string): void {
     while (true) {
       const matches = store.listPendingRecoveries(fingerprint).map((recovery) => ({
@@ -120,6 +141,7 @@ export function createIncidentEngine(
 
       if (existing) {
         let eventCount = existing.event_count;
+        const previousSeverity = existing.severity;
 
         // UNIQUE(event_id) prevents transport retries from double-counting.
         const linked = store.linkEventToIncident(existing.id, event.id);
@@ -133,6 +155,7 @@ export function createIncidentEngine(
           state: existing.state,
         });
 
+        maybeCollectEvidence(existing.id, event, previousSeverity);
         reconcileFingerprint(fingerprint);
         return {
           ignored: false,

@@ -185,7 +185,7 @@ describe('planEvidenceQueries', () => {
     );
   });
 
-  it('maps application.slow_sql to docker.stats and host.load', () => {
+  it('maps application.slow_sql to inspect, stats, and host.load', () => {
     const incident = makeIncident({ type: 'application.slow_sql', service: 'data-asset-service' });
     const event = makeEvent({
       source: 'application',
@@ -195,7 +195,7 @@ describe('planEvidenceQueries', () => {
     });
     assert.deepEqual(
       planEvidenceQueries(incident, event, 200).map((query) => query.type),
-      ['docker.stats', 'host.load'],
+      ['docker.inspect', 'docker.stats', 'host.load'],
     );
   });
 

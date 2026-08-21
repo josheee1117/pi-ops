@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { validateEventBatch } from '@pi-ops/protocol';
 import { createApp } from '../app.js';
 import { createEventStore } from '../store.js';
@@ -24,42 +27,21 @@ const CONFIG: AgentConfig = {
   eventReplayBatchSize: 100,
 };
 
-function dataAssetSlowSqlBatch() {
-  return {
-    producer: {
-      id: 'data-asset',
-      type: 'application' as const,
-      version: '0.1.0',
-    },
-    events: [
-      {
-        schemaVersion: 1 as const,
-        id: 'da-slow-sql-001',
-        time: '2026-08-20T12:00:00.000Z',
-        source: 'application' as const,
-        nodeId: 'test-svc-02',
-        service: 'data-asset-service',
-        type: 'application.slow_sql',
-        severity: 'warning' as const,
-        message: 'Slow SQL statementId=com.mbkj.FooMapper.select durationMs=1500',
-        attributes: {
-          statementId: 'com.mbkj.FooMapper.select',
-          sqlFingerprint: 'deadbeef',
-          datasourceRoute: 'primary',
-          outcome: 'SUCCESS',
-          durationMs: 1500,
-          containerName: 'data-asset',
-        },
-      },
-    ],
-  };
+function dataAssetSlowSqlBatch(): unknown {
+  const fixturePath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    'fixtures/dataasset-slow-sql.eventbatch.json',
+  );
+  return JSON.parse(readFileSync(fixturePath, 'utf8')) as unknown;
 }
 
 describe('DataAsset event transport contract', () => {
-  it('accepts a synthetic DataAsset EventBatch and opens an Incident', async () => {
-    const batch = dataAssetSlowSqlBatch();
-    const validation = validateEventBatch(batch);
+  it('accepts a golden DataAsset EventBatch and opens an Incident with an evidence plan', async () => {
+    const raw = dataAssetSlowSqlBatch();
+    const validation = validateEventBatch(raw);
     assert.equal(validation.success, true);
+    if (!validation.success) return;
+    const batch = validation.value;
 
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: CONFIG.aggregationWindowMs });
@@ -86,9 +68,9 @@ describe('DataAsset event transport contract', () => {
     assert.equal(incident.state, 'OPEN');
     assert.equal(incident.type, 'application.slow_sql');
     assert.equal(incident.event_count, 1);
-    const triggeringEvent = batch.events[0]!;
+    const triggeringEvent = batch.events[0];
     const plan = planEvidenceQueries(incident, triggeringEvent, CONFIG.evidenceLogsMaxLines);
-    assert.deepEqual(plan.map((query) => query.type), ['docker.stats', 'host.load']);
+    assert.deepEqual(plan.map((query) => query.type), ['docker.inspect', 'docker.stats', 'host.load']);
     assert.equal(plan[0]?.container, 'data-asset');
     store.close();
   });

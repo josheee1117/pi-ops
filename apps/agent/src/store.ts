@@ -345,6 +345,17 @@ INSERT INTO evidence_jobs (
 );
 `;
 
+const REQUEUE_EVIDENCE_JOB_SQL = `
+UPDATE evidence_jobs
+SET state = 'PENDING',
+    event_json = @event_json,
+    attempts = 0,
+    last_error = NULL,
+    updated_at = @updated_at
+WHERE incident_id = @incident_id
+  AND state IN ('COMPLETED', 'FAILED');
+`;
+
 const LIST_PENDING_EVIDENCE_JOBS_SQL = `
 SELECT * FROM evidence_jobs
 WHERE state = 'PENDING'
@@ -492,6 +503,8 @@ export interface EventStore {
   markEvidenceJobRetry(id: string, error: string, failed: boolean): void;
   resetRunningEvidenceJobs(): number;
   getEvidenceJob(id: string): EvidenceJob | undefined;
+  /** Requeue a terminal Evidence job for one Incident. No-op if still pending/running. */
+  requeueEvidenceJob(incidentId: string, event: OpsEvent): boolean;
 
   /** Close the database connection. */
   close(): void;
@@ -676,6 +689,7 @@ export function createEventStore(dbPath: string): EventStore {
   const markEvidenceJobRetryStmt = db.prepare(MARK_EVIDENCE_JOB_RETRY_SQL);
   const resetRunningEvidenceJobsStmt = db.prepare(RESET_RUNNING_EVIDENCE_JOBS_SQL);
   const getEvidenceJobStmt = db.prepare('SELECT * FROM evidence_jobs WHERE id = ?');
+  const requeueEvidenceJobStmt = db.prepare(REQUEUE_EVIDENCE_JOB_SQL);
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -1147,6 +1161,15 @@ export function createEventStore(dbPath: string): EventStore {
     getEvidenceJob(id: string): EvidenceJob | undefined {
       const row = getEvidenceJobStmt.get(id) as EvidenceJobRow | undefined;
       return row ? mapEvidenceJob(row) : undefined;
+    },
+
+    requeueEvidenceJob(incidentId: string, event: OpsEvent): boolean {
+      const result = requeueEvidenceJobStmt.run({
+        incident_id: incidentId,
+        event_json: JSON.stringify(event),
+        updated_at: new Date().toISOString(),
+      });
+      return result.changes > 0;
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

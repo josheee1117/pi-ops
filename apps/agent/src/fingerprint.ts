@@ -29,11 +29,11 @@ function typeSpecificDimensions(event: FingerprintEvent): string[] {
       ];
     }
     case 'business.error': {
-      return [
-        stringAttribute(event, 'businessCode')
-          ?? stringAttribute(event, 'errorCode')
-          ?? '',
-      ];
+      const code = stringAttribute(event, 'businessCode')
+        ?? stringAttribute(event, 'errorCode')
+        ?? '';
+      const module = stringAttribute(event, 'module');
+      return module ? [code, module] : [code];
     }
     default:
       return [];
