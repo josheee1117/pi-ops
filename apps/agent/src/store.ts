@@ -5,6 +5,7 @@ import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
+import type { MemoryEntry } from './memory-governance.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -262,6 +263,7 @@ const CREATE_MEMORY_CANDIDATES_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS memory_candidates (
   id TEXT PRIMARY KEY,
   source_reasoning_result_id TEXT NOT NULL,
+  source_evaluation_id TEXT,
   incident_type TEXT NOT NULL,
   pattern TEXT NOT NULL,
   evidence_summary TEXT NOT NULL,
@@ -273,6 +275,23 @@ CREATE TABLE IF NOT EXISTS memory_candidates (
 );
 CREATE INDEX IF NOT EXISTS idx_memory_candidates_source
   ON memory_candidates (source_reasoning_result_id, created_at, id);
+`;
+
+const CREATE_MEMORY_ENTRIES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS memory_entries (
+  id TEXT PRIMARY KEY,
+  source_memory_candidate_id TEXT NOT NULL UNIQUE,
+  source_evaluation_id TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  evidence_summary TEXT NOT NULL,
+  conclusion TEXT NOT NULL,
+  resolution TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  approved_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_entries_status ON memory_entries (status, created_at, id);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -661,6 +680,13 @@ export interface EventStore {
   insertMemoryCandidate(candidate: MemoryCandidate): void;
   listMemoryCandidates(sourceReasoningResultId?: string): MemoryCandidate[];
   getMemoryCandidate(id: string): MemoryCandidate | undefined;
+  updateMemoryCandidateStatus(id: string, status: MemoryCandidate['status']): void;
+  getReasoningEvaluation(id: string): ReasoningEvaluation | undefined;
+  insertMemoryEntry(entry: MemoryEntry): void;
+  getMemoryEntry(id: string): MemoryEntry | undefined;
+  getMemoryEntryByCandidateId(candidateId: string): MemoryEntry | undefined;
+  listActiveMemoryEntries(): MemoryEntry[];
+  updateMemoryEntryStatus(id: string, status: MemoryEntry['status']): void;
 
   /** Close the database connection. */
   close(): void;
@@ -670,6 +696,66 @@ export interface EventStore {
 
 function generateId(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
+}
+
+interface MemoryCandidateRow {
+  id: string;
+  source_reasoning_result_id: string;
+  source_evaluation_id: string | null;
+  incident_type: string;
+  pattern: string;
+  evidence_summary: string;
+  conclusion: string;
+  resolution: string;
+  confidence: number;
+  status: MemoryCandidate['status'];
+  created_at: string;
+}
+
+interface MemoryEntryRow {
+  id: string;
+  source_memory_candidate_id: string;
+  source_evaluation_id: string;
+  pattern: string;
+  evidence_summary: string;
+  conclusion: string;
+  resolution: string;
+  confidence: number;
+  status: MemoryEntry['status'];
+  created_at: string;
+  approved_at: string;
+}
+
+function mapMemoryCandidateRow(row: MemoryCandidateRow): MemoryCandidate {
+  return {
+    id: row.id,
+    sourceReasoningResultId: row.source_reasoning_result_id,
+    sourceEvaluationId: row.source_evaluation_id ?? '',
+    incidentType: row.incident_type,
+    pattern: row.pattern,
+    evidenceSummary: row.evidence_summary,
+    conclusion: row.conclusion,
+    resolution: row.resolution,
+    confidence: row.confidence,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+function mapMemoryEntryRow(row: MemoryEntryRow): MemoryEntry {
+  return {
+    id: row.id,
+    sourceMemoryCandidateId: row.source_memory_candidate_id,
+    sourceEvaluationId: row.source_evaluation_id,
+    pattern: row.pattern,
+    evidenceSummary: row.evidence_summary,
+    conclusion: row.conclusion,
+    resolution: row.resolution,
+    confidence: row.confidence,
+    status: row.status,
+    createdAt: row.created_at,
+    approvedAt: row.approved_at,
+  };
 }
 
 function serializeReasoningMetadata(result: ReasoningResult): string | null {
@@ -843,6 +929,13 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_REASONING_JOBS_TABLE_SQL);
     db.exec(CREATE_REASONING_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_MEMORY_CANDIDATES_TABLE_SQL);
+    db.exec(CREATE_MEMORY_ENTRIES_TABLE_SQL);
+    const memoryCandidateColumns = new Set(
+      (db.pragma('table_info(memory_candidates)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!memoryCandidateColumns.has('source_evaluation_id')) {
+      db.exec('ALTER TABLE memory_candidates ADD COLUMN source_evaluation_id TEXT');
+    }
     const reasoningColumns = new Set(
       (db.pragma('table_info(reasoning_results)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -945,10 +1038,10 @@ ORDER BY created_at, id;
 `);
   const insertMemoryCandidateStmt = db.prepare(`
 INSERT INTO memory_candidates (
-  id, source_reasoning_result_id, incident_type, pattern, evidence_summary,
+  id, source_reasoning_result_id, source_evaluation_id, incident_type, pattern, evidence_summary,
   conclusion, resolution, confidence, status, created_at
 ) VALUES (
-  @id, @source_reasoning_result_id, @incident_type, @pattern, @evidence_summary,
+  @id, @source_reasoning_result_id, @source_evaluation_id, @incident_type, @pattern, @evidence_summary,
   @conclusion, @resolution, @confidence, @status, @created_at
 );
 `);
@@ -958,6 +1051,29 @@ WHERE (@source_reasoning_result_id IS NULL OR source_reasoning_result_id = @sour
 ORDER BY created_at, id;
 `);
   const getMemoryCandidateStmt = db.prepare('SELECT * FROM memory_candidates WHERE id = ?');
+  const updateMemoryCandidateStatusStmt = db.prepare(`
+UPDATE memory_candidates SET status = @status WHERE id = @id;
+`);
+  const getReasoningEvaluationStmt = db.prepare('SELECT * FROM reasoning_evaluations WHERE id = ?');
+  const insertMemoryEntryStmt = db.prepare(`
+INSERT INTO memory_entries (
+  id, source_memory_candidate_id, source_evaluation_id, pattern, evidence_summary,
+  conclusion, resolution, confidence, status, created_at, approved_at
+) VALUES (
+  @id, @source_memory_candidate_id, @source_evaluation_id, @pattern, @evidence_summary,
+  @conclusion, @resolution, @confidence, @status, @created_at, @approved_at
+);
+`);
+  const getMemoryEntryStmt = db.prepare('SELECT * FROM memory_entries WHERE id = ?');
+  const getMemoryEntryByCandidateStmt = db.prepare(
+    'SELECT * FROM memory_entries WHERE source_memory_candidate_id = ?',
+  );
+  const listActiveMemoryEntriesStmt = db.prepare(`
+SELECT * FROM memory_entries WHERE status = 'ACTIVE' ORDER BY created_at, id;
+`);
+  const updateMemoryEntryStatusStmt = db.prepare(`
+UPDATE memory_entries SET status = @status WHERE id = @id;
+`);
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -1620,6 +1736,7 @@ ORDER BY created_at, id;
       insertMemoryCandidateStmt.run({
         id: candidate.id,
         source_reasoning_result_id: candidate.sourceReasoningResultId,
+        source_evaluation_id: candidate.sourceEvaluationId,
         incident_type: candidate.incidentType,
         pattern: candidate.pattern,
         evidence_summary: candidate.evidenceSummary,
@@ -1634,58 +1751,71 @@ ORDER BY created_at, id;
     listMemoryCandidates(sourceReasoningResultId?: string): MemoryCandidate[] {
       const rows = listMemoryCandidatesStmt.all({
         source_reasoning_result_id: sourceReasoningResultId ?? null,
-      }) as Array<{
-        id: string;
-        source_reasoning_result_id: string;
-        incident_type: string;
-        pattern: string;
-        evidence_summary: string;
-        conclusion: string;
-        resolution: string;
-        confidence: number;
-        status: MemoryCandidate['status'];
-        created_at: string;
-      }>;
-      return rows.map((row) => ({
-        id: row.id,
-        sourceReasoningResultId: row.source_reasoning_result_id,
-        incidentType: row.incident_type,
-        pattern: row.pattern,
-        evidenceSummary: row.evidence_summary,
-        conclusion: row.conclusion,
-        resolution: row.resolution,
-        confidence: row.confidence,
-        status: row.status,
-        createdAt: row.created_at,
-      }));
+      }) as MemoryCandidateRow[];
+      return rows.map(mapMemoryCandidateRow);
     },
 
     getMemoryCandidate(id: string): MemoryCandidate | undefined {
-      const row = getMemoryCandidateStmt.get(id) as {
+      const row = getMemoryCandidateStmt.get(id) as MemoryCandidateRow | undefined;
+      return row ? mapMemoryCandidateRow(row) : undefined;
+    },
+
+    updateMemoryCandidateStatus(id: string, status: MemoryCandidate['status']): void {
+      updateMemoryCandidateStatusStmt.run({ id, status });
+    },
+
+    getReasoningEvaluation(id: string): ReasoningEvaluation | undefined {
+      const row = getReasoningEvaluationStmt.get(id) as {
         id: string;
-        source_reasoning_result_id: string;
-        incident_type: string;
-        pattern: string;
-        evidence_summary: string;
-        conclusion: string;
-        resolution: string;
-        confidence: number;
-        status: MemoryCandidate['status'];
+        reasoning_result_id: string;
+        evaluator_type: string;
+        score: number;
+        feedback: string;
         created_at: string;
       } | undefined;
       if (!row) return undefined;
       return {
         id: row.id,
-        sourceReasoningResultId: row.source_reasoning_result_id,
-        incidentType: row.incident_type,
-        pattern: row.pattern,
-        evidenceSummary: row.evidence_summary,
-        conclusion: row.conclusion,
-        resolution: row.resolution,
-        confidence: row.confidence,
-        status: row.status,
+        reasoningResultId: row.reasoning_result_id,
+        evaluatorType: row.evaluator_type,
+        score: row.score,
+        feedback: row.feedback,
         createdAt: row.created_at,
       };
+    },
+
+    insertMemoryEntry(entry: MemoryEntry): void {
+      insertMemoryEntryStmt.run({
+        id: entry.id,
+        source_memory_candidate_id: entry.sourceMemoryCandidateId,
+        source_evaluation_id: entry.sourceEvaluationId,
+        pattern: entry.pattern,
+        evidence_summary: entry.evidenceSummary,
+        conclusion: entry.conclusion,
+        resolution: entry.resolution,
+        confidence: entry.confidence,
+        status: entry.status,
+        created_at: entry.createdAt,
+        approved_at: entry.approvedAt,
+      });
+    },
+
+    getMemoryEntry(id: string): MemoryEntry | undefined {
+      const row = getMemoryEntryStmt.get(id) as MemoryEntryRow | undefined;
+      return row ? mapMemoryEntryRow(row) : undefined;
+    },
+
+    getMemoryEntryByCandidateId(candidateId: string): MemoryEntry | undefined {
+      const row = getMemoryEntryByCandidateStmt.get(candidateId) as MemoryEntryRow | undefined;
+      return row ? mapMemoryEntryRow(row) : undefined;
+    },
+
+    listActiveMemoryEntries(): MemoryEntry[] {
+      return (listActiveMemoryEntriesStmt.all() as MemoryEntryRow[]).map(mapMemoryEntryRow);
+    },
+
+    updateMemoryEntryStatus(id: string, status: MemoryEntry['status']): void {
+      updateMemoryEntryStatusStmt.run({ id, status });
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

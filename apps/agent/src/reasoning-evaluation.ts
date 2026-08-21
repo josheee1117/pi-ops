@@ -20,6 +20,7 @@ export interface ReasoningEvaluation {
 export interface MemoryCandidate {
   id: string;
   sourceReasoningResultId: string;
+  sourceEvaluationId: string;
   incidentType: string;
   pattern: string;
   evidenceSummary: string;
@@ -107,6 +108,7 @@ export function buildMemoryCandidate(
   return {
     id: `mem-${evaluation.id}`,
     sourceReasoningResultId: result.id,
+    sourceEvaluationId: evaluation.id,
     incidentType: incident.type,
     pattern: derived.pattern,
     evidenceSummary: derived.evidenceSummary,

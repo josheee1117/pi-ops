@@ -2,6 +2,13 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M10.4 completed
+
+- MemoryGovernanceService approve/reject introduced
+- approved MemoryCandidate becomes MemoryEntry (ACTIVE / DISABLED)
+- rejected candidate creates no entry; candidate knowledge fields stay immutable
+- memory is still not injected into FakeReasoner or PiReasoner
+
 ## Reasoning strategy boundary
 
 - ReasoningJob executes through ReasoningStrategy (`deterministic` / `single_reasoner` / `delegated_analysis`)
