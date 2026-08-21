@@ -104,7 +104,8 @@ describe('planEvidenceQueries', () => {
     const logs = queries.find((query) => query.type === 'docker.logs');
     assert.equal(logs?.container, 'dataease');
     assert.equal(logs?.maxLines, 120);
-    assert.equal(logs?.since, '2m');
+    assert.equal(logs?.since, '2026-08-20T11:58:00.000Z');
+    assert.equal(logs?.until, '2026-08-20T12:02:00.000Z');
   });
 
   it('maps container.die to inspect and bounded logs', () => {
@@ -156,9 +157,71 @@ describe('planEvidenceQueries', () => {
     const incident = makeIncident({ type: 'application.error' });
     assert.deepEqual(planEvidenceQueries(incident, makeEvent(), 200), []);
   });
+
+  it('keeps docker.logs window around event.time when collection is delayed 10 minutes', () => {
+    const eventTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const event = makeEvent({ time: eventTime });
+    const logs = planEvidenceQueries(makeIncident(), event, 200)
+      .find((query) => query.type === 'docker.logs');
+    assert.ok(logs?.since);
+    assert.ok(logs?.until);
+    const sinceMs = Date.parse(logs.since);
+    const untilMs = Date.parse(logs.until);
+    const eventMs = Date.parse(eventTime);
+    assert.ok(sinceMs <= eventMs && eventMs <= untilMs);
+    assert.ok(untilMs - sinceMs <= 60 * 60 * 1000);
+    assert.ok(
+      sinceMs < Date.now() - 5 * 60 * 1000,
+      'window must not be last-2m from collection time',
+    );
+  });
 });
 
 describe('evidence orchestration', () => {
+  it('sends a docker.logs window around event.time after a 10 minute collection delay', async () => {
+    const store = createEventStore(':memory:');
+    const eventTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const incident = store.createIncident({
+      service: 'dataease',
+      node_id: 'test-svc-02',
+      type: 'container.die',
+      state: 'OPEN',
+      fingerprint: 'fp-delayed-logs',
+      first_seen: eventTime,
+      last_seen: eventTime,
+      event_count: 1,
+      severity: 'error',
+    });
+    const captured: EvidenceQueryRequest[] = [];
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
+      captured.push(query);
+      return new Response(JSON.stringify({
+        id: `evd-${query.type}`,
+        incidentId: incident.id,
+        nodeId: 'test-svc-02',
+        source: query.type.split('.')[0],
+        kind: query.type,
+        collectedAt: new Date().toISOString(),
+        data: { ok: true },
+      }), { status: 200 });
+    }) as FetchLike;
+
+    await createEvidenceOrchestrator(makeConfig(), store, fetchImpl)
+      .collectForIncident(
+        incident,
+        makeEvent({ type: 'container.die', severity: 'error', time: eventTime }),
+      );
+
+    const logs = captured.find((query) => query.type === 'docker.logs');
+    assert.ok(logs?.since);
+    assert.ok(logs?.until);
+    const eventMs = Date.parse(eventTime);
+    assert.ok(Date.parse(logs.since) <= eventMs && eventMs <= Date.parse(logs.until));
+    assert.ok(Date.parse(logs.since) < Date.now() - 5 * 60 * 1000);
+    store.close();
+  });
+
   it('persists a complete evidence set for a synthetic OOM incident', async () => {
     const store = createEventStore(':memory:');
     const incident = store.createIncident({

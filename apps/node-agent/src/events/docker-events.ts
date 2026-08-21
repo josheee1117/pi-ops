@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { NodeAgentConfig } from '../config.js';
 
@@ -20,6 +21,21 @@ const HIGH_VALUE_ACTIONS = new Set([
   'oom',
   'health_status',
 ]);
+
+/**
+ * Deterministic OpsEvent id from stable Docker identity so overlap replay
+ * after reconnect is idempotent at the central agent.
+ */
+export function dockerOpsEventId(
+  nodeId: string,
+  containerId: string,
+  action: string,
+  timeNano: number,
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify([nodeId, containerId, action, timeNano]))
+    .digest('hex');
+}
 
 /** Container state tracker for detecting restarts after failure. */
 interface ContainerState {
@@ -102,7 +118,7 @@ export function dockerEventToOpsEvent(
 
   return {
     schemaVersion: 1,
-    id: crypto.randomUUID(),
+    id: dockerOpsEventId(config.nodeId, Actor.ID, Action, timeNano),
     time: eventTime,
     source: 'docker',
     nodeId: config.nodeId,

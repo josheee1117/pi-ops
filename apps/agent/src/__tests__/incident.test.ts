@@ -743,6 +743,72 @@ describe('recovery', () => {
     assert.equal(store.pendingRecoveryCount(), 0);
   });
 
+  it('recovers a pending processed recovery against an existing OPEN Incident without a future Event', () => {
+    const { store, engine } = setup();
+    const failure = engine.processEvent(
+      makeEvent({
+        id: 'evt-startup-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const recovery = makeEvent({
+      id: 'evt-startup-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:05:00.000Z',
+    });
+    store.addPendingRecovery(recovery, computeFingerprint(recovery));
+    store.markEventProcessed(recovery.id, recovery.time);
+    assert.equal(store.getIncident(failure.incidentId!)?.state, 'OPEN');
+
+    engine.reconcilePendingRecoveries();
+
+    assert.equal(store.getIncident(failure.incidentId!)?.state, 'RECOVERED');
+    assert.equal(store.findIncidentByEventId(recovery.id)?.id, failure.incidentId);
+    assert.equal(store.pendingRecoveryCount(), 0);
+  });
+
+  it('keeps an ambiguous pending recovery fail-closed during startup reconcile', () => {
+    const { store, engine } = setup();
+    const first = engine.processEvent(
+      makeEvent({
+        id: 'evt-startup-ambiguous-first',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const second = engine.processEvent(
+      makeEvent({
+        id: 'evt-startup-ambiguous-second',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T13:00:00.000Z',
+      }),
+      '2026-08-20T13:00:00.000Z',
+    );
+    const recovery = makeEvent({
+      id: 'evt-startup-ambiguous-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T14:00:00.000Z',
+    });
+    store.addPendingRecovery(recovery, computeFingerprint(recovery));
+
+    engine.reconcilePendingRecoveries();
+
+    assert.equal(store.getIncident(first.incidentId!)?.state, 'OPEN');
+    assert.equal(store.getIncident(second.incidentId!)?.state, 'OPEN');
+    assert.equal(store.pendingRecoveryCount(), 1);
+    assert.equal(store.findIncidentByEventId(recovery.id), undefined);
+  });
+
   it('keeps an explicit recovery pending when no active Incident exists', () => {
     const { store, engine } = setup();
     const recovery = makeEvent({

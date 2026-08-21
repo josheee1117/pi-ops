@@ -1,9 +1,16 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { createEventSender } from '../events/sender.js';
-import { dockerEventToOpsEvent, createContainerStateTracker } from '../events/docker-events.js';
-import type { OpsEvent } from '@pi-ops/protocol';
+import { PassThrough } from 'node:stream';
+import { MAX_BATCH_SIZE, type OpsEvent } from '@pi-ops/protocol';
+import { createEventSender, type EventSender } from '../events/sender.js';
+import {
+  dockerEventToOpsEvent,
+  dockerOpsEventId,
+  createContainerStateTracker,
+  type DockerEvent,
+} from '../events/docker-events.js';
+import { createDockerWatcher } from '../events/watcher.js';
 import { makeNodeAgentConfig } from './test-config.js';
 
 function makeConfig(overrides: Parameters<typeof makeNodeAgentConfig>[0] = {}) {
@@ -60,6 +67,21 @@ describe('dockerEventToOpsEvent', () => {
     assert.equal(result.attributes.exitCode, 137);
     assert.equal(result.attributes.containerName, 'dataease');
     assert.equal(result.attributes.image, 'dataease:latest');
+    const again = dockerEventToOpsEvent({
+      Type: 'container',
+      Action: 'die',
+      Actor: {
+        ID: 'abc123def456',
+        Attributes: { name: 'dataease', image: 'dataease:latest', exitCode: '137' },
+      },
+      time: 1755691200,
+      timeNano: 1755691200000000000,
+    }, config);
+    assert.equal(result.id, again?.id);
+    assert.equal(
+      result.id,
+      dockerOpsEventId('test-node-01', 'abc123def456', 'die', 1755691200000000000),
+    );
   });
 
   it('converts OOMKilled die event to container.oom (critical)', () => {
@@ -347,5 +369,188 @@ describe('EventSender', () => {
 
     // Event should be dropped (counted)
     assert.ok(sender.droppedCount() >= 1);
+  });
+
+  it('sends at most one request while Central is slow', async () => {
+    let current = 0;
+    let maxConcurrent = 0;
+    const server = createServer((req, res) => {
+      if (req.url === '/v1/events' && req.method === 'POST') {
+        current++;
+        maxConcurrent = Math.max(maxConcurrent, current);
+        req.on('data', () => {});
+        req.on('end', () => {
+          setTimeout(() => {
+            current--;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ accepted: 1, rejected: 0 }));
+          }, 200);
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    const port = await listen(server);
+    const sender = createEventSender(makeConfig({
+      agentUrl: `http://localhost:${port}`,
+      eventFlushIntervalMs: 40,
+      eventSendTimeoutMs: 5000,
+      eventMaxRetries: 0,
+    }));
+    sender.start();
+    sender.enqueue(makeEvent({ id: 'slow-1' }));
+    await wait(70);
+    sender.enqueue(makeEvent({ id: 'slow-2' }));
+    await wait(70);
+    sender.enqueue(makeEvent({ id: 'slow-3' }));
+    await wait(800);
+    await sender.stop();
+    server.close();
+    assert.equal(maxConcurrent, 1);
+    assert.equal(current, 0);
+  });
+
+  it('drains 2500 queued events in batches of at most MAX_BATCH_SIZE without loss', async () => {
+    const batches: number[] = [];
+    const ids: string[] = [];
+    const server = createServer((req, res) => {
+      if (req.url === '/v1/events' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk; });
+        req.on('end', () => {
+          const parsed = JSON.parse(body) as { events: OpsEvent[] };
+          batches.push(parsed.events.length);
+          ids.push(...parsed.events.map((event) => event.id));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ accepted: parsed.events.length, rejected: 0 }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    const port = await listen(server);
+    const sender = createEventSender(makeConfig({
+      agentUrl: `http://localhost:${port}`,
+      eventQueueSize: 3000,
+      eventFlushIntervalMs: 10_000,
+      eventMaxRetries: 0,
+    }));
+    sender.start();
+    for (let i = 0; i < 2500; i++) {
+      assert.ok(sender.enqueue(makeEvent({ id: `evt-batch-${i}` })));
+    }
+    await sender.stop();
+    server.close();
+    assert.ok(batches.every((size) => size > 0 && size <= MAX_BATCH_SIZE));
+    assert.ok(batches.length >= 3);
+    assert.equal(ids.length, 2500);
+    assert.equal(new Set(ids).size, 2500);
+  });
+});
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error('timed out waiting');
+    await wait(10);
+  }
+}
+
+function listen(server: Server): Promise<number> {
+  return new Promise((resolve) => {
+    server.listen(0, () => {
+      const addr = server.address();
+      if (addr && typeof addr === 'object') resolve(addr.port);
+    });
+  });
+}
+
+function recordingSender(): EventSender & { events: OpsEvent[] } {
+  const events: OpsEvent[] = [];
+  return {
+    events,
+    enqueue(event) {
+      events.push(event);
+      return true;
+    },
+    droppedCount: () => 0,
+    start() {},
+    async stop() {},
+    queueDepth: () => events.length,
+  };
+}
+
+function historicalDieEvent(): DockerEvent {
+  return {
+    Type: 'container',
+    Action: 'die',
+    Actor: {
+      ID: 'abc123def456',
+      Attributes: { name: 'dataease', image: 'dataease:latest', exitCode: '137' },
+    },
+    time: 1_600_000_000,
+    timeNano: 1_600_000_000_123_456,
+  };
+}
+
+describe('Docker watcher reconnect', () => {
+  it('reconnect overlap produces the same OpsEvent id for the same Docker event', async () => {
+    const streams: PassThrough[] = [];
+    const connectOptions: Array<{ since: number }> = [];
+    const sender = recordingSender();
+    const watcher = createDockerWatcher(makeConfig(), sender, {
+      initialBackoffMs: 20,
+      maxBackoffMs: 80,
+      connect: async (options) => {
+        connectOptions.push(options);
+        const stream = new PassThrough();
+        streams.push(stream);
+        return stream;
+      },
+    });
+    await watcher.start();
+    await waitFor(() => streams.length === 1);
+    const payload = `${JSON.stringify(historicalDieEvent())}\n`;
+    streams[0]!.write(payload);
+    await waitFor(() => sender.events.length >= 1);
+    streams[0]!.end();
+    await waitFor(() => streams.length === 2);
+    assert.ok(Math.abs(connectOptions[1]!.since - 1_600_000_000) < 2);
+    assert.ok(Math.abs(connectOptions[1]!.since - Math.floor(Date.now() / 1000)) > 1000);
+    streams[1]!.write(payload);
+    await waitFor(() => sender.events.length >= 2);
+    assert.equal(sender.events[0]!.id, sender.events[1]!.id);
+    assert.equal(
+      sender.events[0]!.id,
+      dockerOpsEventId('test-node-01', 'abc123def456', 'die', 1_600_000_000_123_456),
+    );
+    watcher.stop();
+    streams[1]!.end();
+  });
+
+  it('retries Docker reconnect until the stream succeeds', async () => {
+    let attempts = 0;
+    const sender = recordingSender();
+    const stream = new PassThrough();
+    const watcher = createDockerWatcher(makeConfig(), sender, {
+      initialBackoffMs: 20,
+      maxBackoffMs: 80,
+      connect: async () => {
+        attempts++;
+        if (attempts < 3) throw new Error(`connect failed ${attempts}`);
+        return stream;
+      },
+    });
+    await watcher.start();
+    await waitFor(() => attempts >= 3);
+    assert.ok(attempts >= 3);
+    watcher.stop();
+    stream.end();
   });
 });

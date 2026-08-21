@@ -131,7 +131,10 @@ export interface EvidenceQueryRequest {
   incidentId: string;
   container?: string;
   maxLines?: number;
+  /** Absolute ISO datetime or a bounded duration such as `2m`. */
   since?: string;
+  /** Absolute ISO datetime upper bound for docker.logs. */
+  until?: string;
   path?: string;
   url?: string;
   method?: string;
@@ -144,6 +147,7 @@ export const evidenceQueryRequestSchema = z.object({
   container: z.string().min(1).optional(),
   maxLines: z.number().int().positive().optional(),
   since: z.string().min(1).optional(),
+  until: z.string().min(1).optional(),
   path: z.string().min(1).optional(),
   url: z.string().url().optional(),
   method: z.string().min(1).optional(),

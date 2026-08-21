@@ -30,6 +30,7 @@ export interface DockerStatsResult {
 export interface DockerLogOptions {
   maxLines: number;
   since?: number;
+  until?: number;
 }
 
 export type DockerLogFetcher = (
@@ -62,6 +63,12 @@ function durationToUnixSeconds(duration: string): number {
   const unit = duration.at(-1);
   const seconds = amount * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
   return Math.floor(Date.now() / 1000) - seconds;
+}
+
+function toUnixSeconds(value: string): number | undefined {
+  if (/^\d+[smh]$/.test(value)) return durationToUnixSeconds(value);
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : undefined;
 }
 
 /** Stream one Docker Engine response and stop before it exceeds maxBytes. */
@@ -151,6 +158,7 @@ export const fetchDockerLogs: DockerLogFetcher = async (
     tail: String(options.maxLines),
   });
   if (options.since !== undefined) params.set('since', String(options.since));
+  if (options.until !== undefined) params.set('until', String(options.until));
   return fetchDockerBytes(
     config,
     `/containers/${encodeURIComponent(container)}/logs?${params.toString()}`,
@@ -272,12 +280,17 @@ export function createDockerEvidenceProvider(
         }
         case 'docker.logs': {
           const maxLines = request.maxLines ?? config.logsMaxLines;
-          const since = request.since ? durationToUnixSeconds(request.since) : undefined;
+          const since = request.since ? toUnixSeconds(request.since) : undefined;
+          const until = request.until ? toUnixSeconds(request.until) : undefined;
           const rawLimit = config.logsMaxBytes + maxLines * 8;
           const collected = await fetchLogs(
             config,
             containerName,
-            { maxLines, ...(since !== undefined ? { since } : {}) },
+            {
+              maxLines,
+              ...(since !== undefined ? { since } : {}),
+              ...(until !== undefined ? { until } : {}),
+            },
             rawLimit,
           );
           data = decodeDockerLogs(

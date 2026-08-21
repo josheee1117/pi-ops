@@ -175,6 +175,9 @@ describe('POST /v1/events', () => {
         realEngine.processEvent(event, timestamp);
         throw new Error('simulated Incident processing failure');
       },
+      reconcilePendingRecoveries() {
+        realEngine.reconcilePendingRecoveries();
+      },
     };
     let wakes = 0;
     const worker: EvidenceJobWorker = {
@@ -296,6 +299,9 @@ describe('POST /v1/events', () => {
       processEvent(event, timestamp) {
         processCalls++;
         return realEngine.processEvent(event, timestamp);
+      },
+      reconcilePendingRecoveries() {
+        realEngine.reconcilePendingRecoveries();
       },
     };
     const app = createApp(config, store, countingEngine);
@@ -734,6 +740,70 @@ describe('persistence', () => {
     assert.equal(store2.count(), 1);
     assert.equal(store2.incidentCount(), 1);
     assert.equal(store2.listPendingEvidenceJobs(10).length, 1);
+    store2.close();
+    rmSync(dbPath, { recursive: true, force: true });
+  });
+
+  it('recovers a migrated processed recovery against an existing OPEN Incident on startup', () => {
+    const { store: store1, dbPath } = setupFileDb();
+    const engine1 = createIncidentEngine(store1, { aggregationWindowMs: 5 * 60 * 1000 });
+    const producer = { id: 'node-agent-01', type: 'node-agent' as const, version: '0.1.0' };
+    const failure = {
+      schemaVersion: 1 as const,
+      id: 'evt-startup-failure',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'health' as const,
+      nodeId: 'test-svc-02',
+      service: 'dataease',
+      type: 'health.failure',
+      severity: 'error' as const,
+      message: 'Historical failure',
+      attributes: {},
+    };
+    store1.processBatch(
+      { producer, events: [failure] },
+      '2026-08-20T12:00:01.000Z',
+      (event) => engine1.processEvent(event, event.time),
+    );
+    const incidentId = store1.findIncidentByEventId(failure.id)?.id;
+    assert.ok(incidentId);
+    assert.equal(store1.getIncident(incidentId)?.state, 'OPEN');
+
+    const recovery = {
+      ...failure,
+      id: 'evt-startup-recovery',
+      time: '2026-08-20T12:05:00.000Z',
+      type: 'health.recovered',
+      severity: 'info' as const,
+      message: 'Processed unmatched recovery',
+    };
+    store1.insertBatch(
+      { producer, events: [recovery] },
+      '2026-08-20T12:05:01.000Z',
+    );
+    store1.markEventProcessed(recovery.id, '2026-08-20T12:05:01.000Z');
+    store1.close();
+
+    const legacy = new Database(dbPath);
+    legacy.prepare('DELETE FROM pending_recoveries WHERE event_id = ?').run(recovery.id);
+    legacy.close();
+
+    const store2 = createEventStore(dbPath);
+    const engine2 = createIncidentEngine(store2, { aggregationWindowMs: 5 * 60 * 1000 });
+    assert.equal(store2.pendingRecoveryCount(), 1);
+    assert.equal(store2.getIncident(incidentId)?.state, 'OPEN');
+    assert.equal(store2.replayPendingEvents(
+      (event) => engine2.processEvent(event, event.time),
+      '2026-08-20T12:30:00.000Z',
+      100,
+    ), 0);
+    assert.equal(store2.getIncident(incidentId)?.state, 'OPEN');
+
+    engine2.reconcilePendingRecoveries();
+
+    assert.equal(store2.getIncident(incidentId)?.state, 'RECOVERED');
+    assert.equal(store2.findIncidentByEventId(recovery.id)?.id, incidentId);
+    assert.equal(store2.pendingRecoveryCount(), 0);
     store2.close();
     rmSync(dbPath, { recursive: true, force: true });
   });

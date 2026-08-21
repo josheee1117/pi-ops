@@ -1,4 +1,4 @@
-import type { OpsEvent, EventBatch } from '@pi-ops/protocol';
+import { MAX_BATCH_SIZE, type OpsEvent, type EventBatch } from '@pi-ops/protocol';
 import type { NodeAgentConfig } from '../config.js';
 
 export interface EventSender {
@@ -19,6 +19,8 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
   let dropped = 0;
   let running = false;
   let timer: ReturnType<typeof setInterval> | null = null;
+  let activeRun: Promise<void> | undefined;
+  let drainRequested = false;
 
   const producerId = config.nodeId;
   const producerVersion = '0.1.0';
@@ -41,11 +43,7 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
     return queue.length;
   }
 
-  async function flush(): Promise<void> {
-    if (queue.length === 0) return;
-
-    // Take a batch from the queue
-    const batch = queue.splice(0, queue.length);
+  async function sendBatch(batch: OpsEvent[]): Promise<boolean> {
     const eventBatch: EventBatch = {
       producer: {
         id: producerId,
@@ -54,7 +52,6 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
       },
       events: batch,
     };
-
     const body = JSON.stringify(eventBatch);
 
     let lastError: Error | null = null;
@@ -78,10 +75,9 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
           if (attempt > 0) {
             console.log(`[node-agent] event push succeeded on attempt ${attempt + 1}`);
           }
-          return; // success
+          return true;
         }
 
-        // Non-2xx: retry
         const resText = await res.text().catch(() => '');
         lastError = new Error(`HTTP ${res.status}: ${resText.slice(0, 200)}`);
       } catch (err) {
@@ -95,18 +91,42 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
       }
     }
 
-    // All retries exhausted
     dropped += batch.length;
     console.error(`[node-agent] event push failed after ${config.eventMaxRetries + 1} attempts, dropping ${batch.length} events: ${lastError?.message}`);
+    return false;
+  }
+
+  async function drain(): Promise<void> {
+    while (queue.length > 0) {
+      const batch = queue.splice(0, Math.min(MAX_BATCH_SIZE, queue.length));
+      const ok = await sendBatch(batch);
+      if (!ok) return;
+    }
+  }
+
+  function requestDrain(): void {
+    drainRequested = true;
+    if (activeRun) return;
+    activeRun = (async () => {
+      try {
+        while (drainRequested) {
+          drainRequested = false;
+          await drain();
+        }
+      } catch (err) {
+        console.error(`[node-agent] event flush error: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        activeRun = undefined;
+        if (drainRequested) requestDrain();
+      }
+    })();
   }
 
   function start(): void {
     running = true;
     timer = setInterval(() => {
       if (!running) return;
-      flush().catch((err) => {
-        console.error(`[node-agent] event flush error: ${err instanceof Error ? err.message : String(err)}`);
-      });
+      requestDrain();
     }, config.eventFlushIntervalMs);
     console.log(`[node-agent] event sender started (flush every ${config.eventFlushIntervalMs}ms, queue max ${config.eventQueueSize})`);
   }
@@ -117,8 +137,8 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
       clearInterval(timer);
       timer = null;
     }
-    // Final flush
-    await flush();
+    requestDrain();
+    if (activeRun) await activeRun;
     console.log(`[node-agent] event sender stopped (total dropped: ${dropped})`);
   }
 

@@ -160,6 +160,51 @@ describe('validateQueryRequest', () => {
     assert.ok(!result.valid);
   });
 
+  it('accepts a bounded absolute docker.logs since/until window', () => {
+    const result = validateQueryRequest(
+      {
+        type: 'docker.logs',
+        incidentId: 'inc-1',
+        container: 'dataease',
+        since: '2026-08-20T11:58:00.000Z',
+        until: '2026-08-20T12:02:00.000Z',
+      },
+      makeConfig(),
+    );
+    assert.ok(result.valid);
+    if (result.valid) {
+      assert.equal(result.request.since, '2026-08-20T11:58:00.000Z');
+      assert.equal(result.request.until, '2026-08-20T12:02:00.000Z');
+    }
+  });
+
+  it('rejects an absolute docker.logs since without until', () => {
+    const result = validateQueryRequest(
+      {
+        type: 'docker.logs',
+        incidentId: 'inc-1',
+        container: 'dataease',
+        since: '2026-08-20T11:58:00.000Z',
+      },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
+  });
+
+  it('rejects an absolute docker.logs window longer than 1h', () => {
+    const result = validateQueryRequest(
+      {
+        type: 'docker.logs',
+        incidentId: 'inc-1',
+        container: 'dataease',
+        since: '2026-08-20T10:00:00.000Z',
+        until: '2026-08-20T12:00:00.000Z',
+      },
+      makeConfig(),
+    );
+    assert.ok(!result.valid);
+  });
+
   // ── Host disk ───────────────────────────────────────────────────────────
 
   it('rejects host.disk without path', () => {
@@ -473,6 +518,26 @@ describe('Docker log evidence', () => {
       (result.data as { lines: string[] }).lines,
       ['line-one', 'line-two'],
     );
+  });
+
+  it('forwards an absolute event-time window to Docker instead of collection time', async () => {
+    let capturedOptions: DockerLogOptions | undefined;
+    const logFetcher: DockerLogFetcher = async (_config, _container, options) => {
+      capturedOptions = options;
+      return { buffer: dockerFrame(1, 'line\n'), truncated: false };
+    };
+    const provider = createDockerEvidenceProvider(async () => ({}), logFetcher);
+    await provider.query({
+      type: 'docker.logs',
+      incidentId: 'inc-1',
+      container: 'dataease',
+      since: '2026-08-20T11:58:00.000Z',
+      until: '2026-08-20T12:02:00.000Z',
+      maxLines: 20,
+    }, makeConfig());
+
+    assert.equal(capturedOptions?.since, Date.parse('2026-08-20T11:58:00.000Z') / 1000);
+    assert.equal(capturedOptions?.until, Date.parse('2026-08-20T12:02:00.000Z') / 1000);
   });
 });
 

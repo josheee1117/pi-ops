@@ -40,6 +40,35 @@ function stringAttribute(event: OpsEvent, key: string): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+/** Bounded lookback/lookahead around Incident/Event time for docker.logs. */
+export const EVIDENCE_LOG_LOOKBACK_MS = 2 * 60 * 1000;
+
+/** Absolute docker.logs window anchored at the triggering Event time. */
+export function evidenceLogWindow(eventTime: string): { since: string; until: string } {
+  const timestamp = new Date(eventTime).getTime();
+  return {
+    since: new Date(timestamp - EVIDENCE_LOG_LOOKBACK_MS).toISOString(),
+    until: new Date(timestamp + EVIDENCE_LOG_LOOKBACK_MS).toISOString(),
+  };
+}
+
+function dockerLogsQuery(
+  incidentId: string,
+  container: string,
+  eventTime: string,
+  maxLines: number,
+): EvidenceQueryRequest {
+  const { since, until } = evidenceLogWindow(eventTime);
+  return {
+    type: 'docker.logs',
+    incidentId,
+    container,
+    since,
+    until,
+    maxLines,
+  };
+}
+
 /**
  * Deterministically map an Incident to bounded, typed evidence requests.
  * No model or prompt participates in this decision.
@@ -56,26 +85,14 @@ export function planEvidenceQueries(
       return [
         { type: 'docker.inspect', incidentId: incident.id, container },
         { type: 'docker.stats', incidentId: incident.id, container },
-        {
-          type: 'docker.logs',
-          incidentId: incident.id,
-          container,
-          since: '2m',
-          maxLines: logsMaxLines,
-        },
+        dockerLogsQuery(incident.id, container, triggeringEvent.time, logsMaxLines),
         { type: 'host.memory', incidentId: incident.id },
       ];
 
     case 'container.die':
       return [
         { type: 'docker.inspect', incidentId: incident.id, container },
-        {
-          type: 'docker.logs',
-          incidentId: incident.id,
-          container,
-          since: '2m',
-          maxLines: logsMaxLines,
-        },
+        dockerLogsQuery(incident.id, container, triggeringEvent.time, logsMaxLines),
       ];
 
     case 'health.failure': {
@@ -96,13 +113,7 @@ export function planEvidenceQueries(
       if (mappedContainer) {
         queries.push(
           { type: 'docker.inspect', incidentId: incident.id, container: mappedContainer },
-          {
-            type: 'docker.logs',
-            incidentId: incident.id,
-            container: mappedContainer,
-            since: '2m',
-            maxLines: logsMaxLines,
-          },
+          dockerLogsQuery(incident.id, mappedContainer, triggeringEvent.time, logsMaxLines),
         );
       }
       return queries;

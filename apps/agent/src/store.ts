@@ -257,6 +257,10 @@ WHERE fingerprint = @fingerprint
 ORDER BY julianday(event_time), event_id;
 `;
 
+const LIST_PENDING_RECOVERY_FINGERPRINTS_SQL = `
+SELECT DISTINCT fingerprint FROM pending_recoveries ORDER BY fingerprint;
+`;
+
 const DELETE_PENDING_RECOVERY_SQL = `
 DELETE FROM pending_recoveries WHERE event_id = ?;
 `;
@@ -408,6 +412,9 @@ export interface EventStore {
 
   /** List pending recoveries for one central fingerprint in event-time order. */
   listPendingRecoveries(fingerprint: string): OpsEvent[];
+
+  /** Distinct fingerprints with unmatched recoveries, ordered deterministically. */
+  listPendingRecoveryFingerprints(): string[];
 
   /** Remove one recovery after it is linked to an Incident. */
   removePendingRecovery(eventId: string): void;
@@ -653,6 +660,7 @@ export function createEventStore(dbPath: string): EventStore {
   const markEventProcessedStmt = db.prepare(MARK_EVENT_PROCESSED_SQL);
   const insertPendingRecoveryStmt = db.prepare(INSERT_PENDING_RECOVERY_SQL);
   const listPendingRecoveriesStmt = db.prepare(LIST_PENDING_RECOVERIES_SQL);
+  const listPendingRecoveryFingerprintsStmt = db.prepare(LIST_PENDING_RECOVERY_FINGERPRINTS_SQL);
   const deletePendingRecoveryStmt = db.prepare(DELETE_PENDING_RECOVERY_SQL);
   const countPendingRecoveriesStmt = db.prepare('SELECT COUNT(*) AS count FROM pending_recoveries');
   const listIncidentsByFingerprintStmt = db.prepare(LIST_INCIDENTS_BY_FINGERPRINT_SQL);
@@ -914,6 +922,11 @@ export function createEventStore(dbPath: string): EventStore {
         event_json: string;
       }>;
       return rows.map((row) => JSON.parse(row.event_json) as OpsEvent);
+    },
+
+    listPendingRecoveryFingerprints(): string[] {
+      const rows = listPendingRecoveryFingerprintsStmt.all() as Array<{ fingerprint: string }>;
+      return rows.map((row) => row.fingerprint);
     },
 
     removePendingRecovery(eventId: string): void {

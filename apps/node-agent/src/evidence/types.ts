@@ -18,6 +18,22 @@ export interface QueryValidationError {
 }
 
 const READ_ONLY_HTTP_METHODS = new Set(['GET', 'HEAD']);
+const MAX_LOG_WINDOW_MS = 60 * 60 * 1000;
+const DURATION_PATTERN = /^(\d+)([smh])$/;
+
+function parseDurationSeconds(value: string): number | undefined {
+  const match = DURATION_PATTERN.exec(value);
+  if (!match) return undefined;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  return amount * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
+}
+
+function parseAbsoluteDateTime(value: string): number | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return undefined;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : undefined;
+}
 
 function normalizeUrl(value: string): string | undefined {
   try {
@@ -87,17 +103,56 @@ export function validateQueryRequest(
           request.maxLines = maxLines;
         }
         const since = req['since'];
+        const until = req['until'];
+        let sinceKind: 'duration' | 'absolute' | undefined;
         if (since !== undefined) {
-          if (typeof since !== 'string' || !/^\d+[smh]$/.test(since)) {
-            errors.push({ field: 'since', message: 'since must be a duration such as 30s, 2m, or 1h' });
+          if (typeof since !== 'string') {
+            errors.push({ field: 'since', message: 'since must be a duration or ISO datetime' });
           } else {
-            const amount = parseInt(since.slice(0, -1), 10);
-            const unit = since.at(-1);
-            const seconds = amount * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
-            if (seconds > 3600) {
-              errors.push({ field: 'since', message: 'since cannot exceed 1h' });
-            } else {
+            const duration = parseDurationSeconds(since);
+            const absolute = parseAbsoluteDateTime(since);
+            if (duration !== undefined) {
+              if (duration > MAX_LOG_WINDOW_MS / 1000) {
+                errors.push({ field: 'since', message: 'since cannot exceed 1h' });
+              } else {
+                request.since = since;
+                sinceKind = 'duration';
+              }
+            } else if (absolute !== undefined) {
               request.since = since;
+              sinceKind = 'absolute';
+            } else {
+              errors.push({
+                field: 'since',
+                message: 'since must be a duration such as 30s, 2m, or 1h, or an ISO datetime',
+              });
+            }
+          }
+        }
+        if (until !== undefined) {
+          if (typeof until !== 'string' || parseAbsoluteDateTime(until) === undefined) {
+            errors.push({ field: 'until', message: 'until must be an ISO datetime with timezone offset' });
+          } else {
+            request.until = until;
+          }
+        }
+        if (sinceKind === 'duration' && until !== undefined) {
+          errors.push({ field: 'until', message: 'until cannot be combined with a duration since' });
+        }
+        if (sinceKind === 'absolute' && request.until === undefined) {
+          errors.push({ field: 'until', message: 'until is required with an absolute since' });
+        }
+        if (until !== undefined && since === undefined) {
+          errors.push({ field: 'since', message: 'since is required with until' });
+        }
+        if (sinceKind === 'absolute' && request.until) {
+          const sinceMs = parseAbsoluteDateTime(request.since!);
+          const untilMs = parseAbsoluteDateTime(request.until);
+          if (sinceMs !== undefined && untilMs !== undefined) {
+            if (!(untilMs > sinceMs)) {
+              errors.push({ field: 'until', message: 'until must be after since' });
+            } else if (untilMs - sinceMs > MAX_LOG_WINDOW_MS) {
+              errors.push({ field: 'until', message: 'log window cannot exceed 1h' });
             }
           }
         }

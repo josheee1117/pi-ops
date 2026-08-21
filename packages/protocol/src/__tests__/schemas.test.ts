@@ -272,6 +272,22 @@ describe('validateEvidenceQueryRequest', () => {
     assert.ok(result.success);
   });
 
+  it('accepts an absolute docker.logs since/until window', () => {
+    const result = validateEvidenceQueryRequest({
+      type: 'docker.logs',
+      incidentId: 'inc-0001',
+      container: 'dataease',
+      since: '2026-08-20T11:58:00.000Z',
+      until: '2026-08-20T12:02:00.000Z',
+      maxLines: 200,
+    });
+    assert.ok(result.success);
+    if (result.success) {
+      assert.equal(result.value.since, '2026-08-20T11:58:00.000Z');
+      assert.equal(result.value.until, '2026-08-20T12:02:00.000Z');
+    }
+  });
+
   it('rejects an arbitrary command query', () => {
     const result = validateEvidenceQueryRequest({
       type: 'shell.exec',

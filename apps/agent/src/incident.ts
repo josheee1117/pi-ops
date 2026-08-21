@@ -68,6 +68,8 @@ function laterTimestamp(a: string, b: string): string {
 export interface IncidentEngine {
   /** Process an event through the incident engine. */
   processEvent(event: OpsEvent, timestamp: string): IncidentResult;
+  /** Reconcile every durable unmatched recovery against existing Incidents. */
+  reconcilePendingRecoveries(): void;
 }
 
 export function createIncidentEngine(
@@ -91,7 +93,7 @@ export function createIncidentEngine(
     return true;
   }
 
-  function reconcilePendingRecoveries(fingerprint: string): void {
+  function reconcileFingerprint(fingerprint: string): void {
     while (true) {
       const matches = store.listPendingRecoveries(fingerprint).map((recovery) => ({
         recovery,
@@ -106,6 +108,12 @@ export function createIncidentEngine(
   }
 
   return {
+    reconcilePendingRecoveries(): void {
+      for (const fingerprint of store.listPendingRecoveryFingerprints()) {
+        reconcileFingerprint(fingerprint);
+      }
+    },
+
     processEvent(event: OpsEvent, timestamp: string): IncidentResult {
       // Transport retry guard: an immutable Event can belong to only one
       // Incident, regardless of time window or current Incident state.
@@ -127,7 +135,7 @@ export function createIncidentEngine(
         : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs);
 
       if (existing && isExplicitRecovery) {
-        reconcilePendingRecoveries(fingerprint);
+        reconcileFingerprint(fingerprint);
         applyRecovery(existing.id, event);
         return {
           ignored: false,
@@ -153,7 +161,7 @@ export function createIncidentEngine(
           state: existing.state,
         });
 
-        reconcilePendingRecoveries(fingerprint);
+        reconcileFingerprint(fingerprint);
         return {
           ignored: false,
           incidentId: existing.id,
@@ -188,7 +196,7 @@ export function createIncidentEngine(
         event_count: 1,
         severity: event.severity,
       }, event);
-      reconcilePendingRecoveries(fingerprint);
+      reconcileFingerprint(fingerprint);
 
       return {
         ignored: false,

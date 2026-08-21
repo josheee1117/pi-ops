@@ -24,6 +24,7 @@ while (true) {
 if (replayedEvents > 0) {
   console.log(`[pi-ops-agent] replayed ${replayedEvents} pending Event(s)`);
 }
+incidentEngine.reconcilePendingRecoveries();
 const evidenceOrchestrator = createEvidenceOrchestrator(config, store);
 const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator);
 evidenceWorker.start();
