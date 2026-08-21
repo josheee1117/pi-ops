@@ -57,13 +57,13 @@ describe('DataAsset event transport contract', () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { accepted: 1, rejected: 0 });
-    const stored = store.getEvent('da-slow-sql-001');
+    const stored = store.getEvent(batch.events[0].id);
     assert.ok(stored);
     assert.equal(stored.source, 'application');
     assert.equal(stored.type, 'application.slow_sql');
     assert.equal(stored.producer_type, 'application');
     assert.equal(stored.producer_id, 'data-asset');
-    const incident = store.findIncidentByEventId('da-slow-sql-001');
+    const incident = store.findIncidentByEventId(batch.events[0].id);
     assert.ok(incident);
     assert.equal(incident.state, 'OPEN');
     assert.equal(incident.type, 'application.slow_sql');
