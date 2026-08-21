@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
+import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -242,6 +243,36 @@ CREATE TABLE IF NOT EXISTS reasoning_jobs (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_jobs_status ON reasoning_jobs (status, created_at);
+`;
+
+const CREATE_REASONING_EVALUATIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS reasoning_evaluations (
+  id TEXT PRIMARY KEY,
+  reasoning_result_id TEXT NOT NULL,
+  evaluator_type TEXT NOT NULL,
+  score REAL NOT NULL,
+  feedback TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reasoning_evaluations_result
+  ON reasoning_evaluations (reasoning_result_id, created_at, id);
+`;
+
+const CREATE_MEMORY_CANDIDATES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS memory_candidates (
+  id TEXT PRIMARY KEY,
+  source_reasoning_result_id TEXT NOT NULL,
+  incident_type TEXT NOT NULL,
+  pattern TEXT NOT NULL,
+  evidence_summary TEXT NOT NULL,
+  conclusion TEXT NOT NULL,
+  resolution TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_candidates_source
+  ON memory_candidates (source_reasoning_result_id, created_at, id);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -623,7 +654,13 @@ export interface EventStore {
   getReasoningJob(id: string): ReasoningJob | undefined;
   insertReasoningResult(result: ReasoningResult): boolean;
   listReasoningResults(incidentId: string): ReasoningResult[];
+  getReasoningResult(id: string): ReasoningResult | undefined;
   getReasoningResultByJobId(jobId: string): ReasoningResult | undefined;
+  insertReasoningEvaluation(evaluation: ReasoningEvaluation): void;
+  listReasoningEvaluations(reasoningResultId: string): ReasoningEvaluation[];
+  insertMemoryCandidate(candidate: MemoryCandidate): void;
+  listMemoryCandidates(sourceReasoningResultId?: string): MemoryCandidate[];
+  getMemoryCandidate(id: string): MemoryCandidate | undefined;
 
   /** Close the database connection. */
   close(): void;
@@ -804,6 +841,8 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
     db.exec(CREATE_REASONING_RESULTS_TABLE_SQL);
     db.exec(CREATE_REASONING_JOBS_TABLE_SQL);
+    db.exec(CREATE_REASONING_EVALUATIONS_TABLE_SQL);
+    db.exec(CREATE_MEMORY_CANDIDATES_TABLE_SQL);
     const reasoningColumns = new Set(
       (db.pragma('table_info(reasoning_results)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -891,6 +930,34 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
   const getReasoningResultByJobStmt = db.prepare(
     'SELECT * FROM reasoning_results WHERE reasoning_job_id = ?',
   );
+  const getReasoningResultStmt = db.prepare('SELECT * FROM reasoning_results WHERE id = ?');
+  const insertReasoningEvaluationStmt = db.prepare(`
+INSERT INTO reasoning_evaluations (
+  id, reasoning_result_id, evaluator_type, score, feedback, created_at
+) VALUES (
+  @id, @reasoning_result_id, @evaluator_type, @score, @feedback, @created_at
+);
+`);
+  const listReasoningEvaluationsStmt = db.prepare(`
+SELECT * FROM reasoning_evaluations
+WHERE reasoning_result_id = ?
+ORDER BY created_at, id;
+`);
+  const insertMemoryCandidateStmt = db.prepare(`
+INSERT INTO memory_candidates (
+  id, source_reasoning_result_id, incident_type, pattern, evidence_summary,
+  conclusion, resolution, confidence, status, created_at
+) VALUES (
+  @id, @source_reasoning_result_id, @incident_type, @pattern, @evidence_summary,
+  @conclusion, @resolution, @confidence, @status, @created_at
+);
+`);
+  const listMemoryCandidatesStmt = db.prepare(`
+SELECT * FROM memory_candidates
+WHERE (@source_reasoning_result_id IS NULL OR source_reasoning_result_id = @source_reasoning_result_id)
+ORDER BY created_at, id;
+`);
+  const getMemoryCandidateStmt = db.prepare('SELECT * FROM memory_candidates WHERE id = ?');
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -1509,9 +1576,116 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
         .map(mapReasoningResult);
     },
 
+    getReasoningResult(id: string): ReasoningResult | undefined {
+      const row = getReasoningResultStmt.get(id) as Parameters<typeof mapReasoningResult>[0] | undefined;
+      return row ? mapReasoningResult(row) : undefined;
+    },
+
     getReasoningResultByJobId(jobId: string): ReasoningResult | undefined {
       const row = getReasoningResultByJobStmt.get(jobId) as Parameters<typeof mapReasoningResult>[0] | undefined;
       return row ? mapReasoningResult(row) : undefined;
+    },
+
+    insertReasoningEvaluation(evaluation: ReasoningEvaluation): void {
+      insertReasoningEvaluationStmt.run({
+        id: evaluation.id,
+        reasoning_result_id: evaluation.reasoningResultId,
+        evaluator_type: evaluation.evaluatorType,
+        score: evaluation.score,
+        feedback: evaluation.feedback,
+        created_at: evaluation.createdAt,
+      });
+    },
+
+    listReasoningEvaluations(reasoningResultId: string): ReasoningEvaluation[] {
+      const rows = listReasoningEvaluationsStmt.all(reasoningResultId) as Array<{
+        id: string;
+        reasoning_result_id: string;
+        evaluator_type: string;
+        score: number;
+        feedback: string;
+        created_at: string;
+      }>;
+      return rows.map((row) => ({
+        id: row.id,
+        reasoningResultId: row.reasoning_result_id,
+        evaluatorType: row.evaluator_type,
+        score: row.score,
+        feedback: row.feedback,
+        createdAt: row.created_at,
+      }));
+    },
+
+    insertMemoryCandidate(candidate: MemoryCandidate): void {
+      insertMemoryCandidateStmt.run({
+        id: candidate.id,
+        source_reasoning_result_id: candidate.sourceReasoningResultId,
+        incident_type: candidate.incidentType,
+        pattern: candidate.pattern,
+        evidence_summary: candidate.evidenceSummary,
+        conclusion: candidate.conclusion,
+        resolution: candidate.resolution,
+        confidence: candidate.confidence,
+        status: candidate.status,
+        created_at: candidate.createdAt,
+      });
+    },
+
+    listMemoryCandidates(sourceReasoningResultId?: string): MemoryCandidate[] {
+      const rows = listMemoryCandidatesStmt.all({
+        source_reasoning_result_id: sourceReasoningResultId ?? null,
+      }) as Array<{
+        id: string;
+        source_reasoning_result_id: string;
+        incident_type: string;
+        pattern: string;
+        evidence_summary: string;
+        conclusion: string;
+        resolution: string;
+        confidence: number;
+        status: MemoryCandidate['status'];
+        created_at: string;
+      }>;
+      return rows.map((row) => ({
+        id: row.id,
+        sourceReasoningResultId: row.source_reasoning_result_id,
+        incidentType: row.incident_type,
+        pattern: row.pattern,
+        evidenceSummary: row.evidence_summary,
+        conclusion: row.conclusion,
+        resolution: row.resolution,
+        confidence: row.confidence,
+        status: row.status,
+        createdAt: row.created_at,
+      }));
+    },
+
+    getMemoryCandidate(id: string): MemoryCandidate | undefined {
+      const row = getMemoryCandidateStmt.get(id) as {
+        id: string;
+        source_reasoning_result_id: string;
+        incident_type: string;
+        pattern: string;
+        evidence_summary: string;
+        conclusion: string;
+        resolution: string;
+        confidence: number;
+        status: MemoryCandidate['status'];
+        created_at: string;
+      } | undefined;
+      if (!row) return undefined;
+      return {
+        id: row.id,
+        sourceReasoningResultId: row.source_reasoning_result_id,
+        incidentType: row.incident_type,
+        pattern: row.pattern,
+        evidenceSummary: row.evidence_summary,
+        conclusion: row.conclusion,
+        resolution: row.resolution,
+        confidence: row.confidence,
+        status: row.status,
+        createdAt: row.created_at,
+      };
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

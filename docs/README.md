@@ -3,7 +3,9 @@
 The current implementation source of truth is:
 
 1. `adr/ADR-0001-dual-source-node-agent-architecture.md`
-2. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+2. `adr/ADR-0006-reasoning-memory-foundation.md`
+3. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+4. `evolution/timeline.md`
 
 The architecture intentionally separates:
 
