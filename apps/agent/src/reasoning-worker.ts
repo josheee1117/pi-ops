@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { AgentConfig } from './config.js';
 import type { ReasonerRegistry, ReasoningResult } from './reasoner.js';
+import {
+  createDefaultReasoningStrategies,
+  strategyNameFor,
+  type ReasoningStrategyRegistry,
+} from './reasoning-strategy.js';
 import type { EvidenceRecord, EventStore, ReasoningJob } from './store.js';
 
 export interface ReasoningWorkerMetrics {
@@ -36,6 +41,7 @@ export function createReasoningJobWorker(
   config: AgentConfig,
   store: EventStore,
   registry: ReasonerRegistry,
+  strategies: ReasoningStrategyRegistry = createDefaultReasoningStrategies(),
 ): ReasoningJobWorker {
   let timer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
@@ -55,6 +61,9 @@ export function createReasoningJobWorker(
       if (!incident) throw new Error(`Incident ${job.incidentId} no longer exists`);
       const reasoner = registry.get(job.reasonerType);
       if (!reasoner) throw new Error(`unknown reasoner type ${job.reasonerType}`);
+      const strategyName = strategyNameFor(job.reasonerType);
+      const strategy = strategies.get(strategyName);
+      if (!strategy) throw new Error(`unknown reasoning strategy ${strategyName}`);
       const evidence = store.listEvidence(job.incidentId);
       const existing = store.getReasoningResultByJobId(job.id);
       if (existing) {
@@ -64,7 +73,7 @@ export function createReasoningJobWorker(
         return;
       }
       const decision = await withTimeout(
-        () => reasoner.reason(incident, evidence),
+        () => strategy.execute({ incident, evidence, reasoner }),
         config.reasoningTimeoutMs,
       );
       const result: ReasoningResult = {
