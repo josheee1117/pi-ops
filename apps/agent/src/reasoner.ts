@@ -28,6 +28,7 @@ export interface ReasoningResult {
   usage?: ReasoningUsage;
   truncated?: boolean;
   missingCapability?: string[];
+  usedMemoryEntryIds?: string[];
 }
 
 export interface Reasoner {

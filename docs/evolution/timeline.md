@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M11 completed
+
+- MemoryRetriever selects bounded ACTIVE MemoryEntry by incident type, service, and pattern keywords
+- usedMemoryEntryIds recorded on ReasoningResult; Reasoner still sees only Incident + Evidence
+- retrieval failure or empty results do not fail Event / Incident / Evidence / ReasoningJob
+
 ## M10.4 completed
 
 - MemoryGovernanceService approve/reject introduced

@@ -770,6 +770,9 @@ function serializeReasoningMetadata(result: ReasoningResult): string | null {
   if (result.missingCapability && result.missingCapability.length > 0) {
     metadata['missingCapability'] = result.missingCapability;
   }
+  if (result.usedMemoryEntryIds && result.usedMemoryEntryIds.length > 0) {
+    metadata['usedMemoryEntryIds'] = result.usedMemoryEntryIds;
+  }
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
@@ -787,6 +790,7 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
       ...(parsed.usage ? { usage: parsed.usage } : {}),
       ...(parsed.truncated ? { truncated: true } : {}),
       ...(Array.isArray(parsed.missingCapability) ? { missingCapability: parsed.missingCapability } : {}),
+      ...(Array.isArray(parsed.usedMemoryEntryIds) ? { usedMemoryEntryIds: parsed.usedMemoryEntryIds } : {}),
     };
   } catch {
     return {};

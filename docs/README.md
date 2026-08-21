@@ -6,8 +6,9 @@ The current implementation source of truth is:
 2. `adr/ADR-0006-reasoning-memory-foundation.md`
 3. `adr/ADR-0008-reasoning-strategy-boundary.md`
 4. `adr/ADR-0009-memory-governance.md`
-5. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-6. `evolution/timeline.md`
+5. `adr/ADR-0010-memory-retrieval-boundary.md`
+6. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+7. `evolution/timeline.md`
 
 The architecture intentionally separates:
 

@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
 import type { AgentConfig } from './config.js';
+import { buildIncidentContext } from './incident-context.js';
+import type { MemoryRetriever } from './memory-retriever.js';
 import type { ReasonerRegistry, ReasoningResult } from './reasoner.js';
 import {
   createDefaultReasoningStrategies,
   strategyNameFor,
   type ReasoningStrategyRegistry,
 } from './reasoning-strategy.js';
-import type { EvidenceRecord, EventStore, ReasoningJob } from './store.js';
+import type { EvidenceRecord, EventStore, IncidentRow, ReasoningJob } from './store.js';
 
 export interface ReasoningWorkerMetrics {
   created: number;
@@ -42,6 +44,7 @@ export function createReasoningJobWorker(
   store: EventStore,
   registry: ReasonerRegistry,
   strategies: ReasoningStrategyRegistry = createDefaultReasoningStrategies(),
+  retriever?: MemoryRetriever,
 ): ReasoningJobWorker {
   let timer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
@@ -72,6 +75,7 @@ export function createReasoningJobWorker(
         stats.lastDurationMs = Date.now() - started;
         return;
       }
+      const usedMemoryEntryIds = retrieveMemoryIds(retriever, incident, evidence, config);
       const decision = await withTimeout(
         () => strategy.execute({ incident, evidence, reasoner }),
         config.reasoningTimeoutMs,
@@ -86,6 +90,7 @@ export function createReasoningJobWorker(
         reasonerVersion: reasoner.version,
         evidenceIds: evidence.map((item) => item.id),
         evidenceSnapshotHash: hashEvidenceSnapshot(evidence),
+        ...(usedMemoryEntryIds.length > 0 ? { usedMemoryEntryIds } : {}),
       };
       store.insertReasoningResult(result);
       store.markReasoningJobCompleted(job.id);
@@ -148,6 +153,25 @@ export function createReasoningJobWorker(
       return { ...stats };
     },
   };
+}
+
+function retrieveMemoryIds(
+  retriever: MemoryRetriever | undefined,
+  incident: IncidentRow,
+  evidence: EvidenceRecord[],
+  config: AgentConfig,
+): string[] {
+  if (!retriever) return [];
+  try {
+    const context = buildIncidentContext(incident, evidence, {
+      maxEvidenceItems: config.reasoningMaxEvidenceItems,
+      maxContextBytes: config.reasoningMaxContextBytes,
+      maxLogLines: config.reasoningMaxLogLines,
+    });
+    return retriever.retrieve(context).map((entry) => entry.id);
+  } catch {
+    return [];
+  }
 }
 
 function withTimeout<T>(work: () => T | Promise<T>, ms: number): Promise<T> {
