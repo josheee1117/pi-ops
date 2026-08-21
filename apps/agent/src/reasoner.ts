@@ -2,6 +2,11 @@ import type { EvidenceRecord, IncidentRow } from './store.js';
 
 export type ReasoningStatus = 'complete' | 'incomplete';
 
+export interface ReasoningUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface ReasoningResult {
   id: string;
   incidentId: string;
@@ -15,11 +20,23 @@ export interface ReasoningResult {
   reasonerVersion?: string;
   evidenceIds?: string[];
   evidenceSnapshotHash?: string;
+  provider?: string;
+  model?: string;
+  reasoningSummary?: string;
+  recommendedActions?: string[];
+  needHuman?: boolean;
+  usage?: ReasoningUsage;
+  truncated?: boolean;
+  missingCapability?: string[];
 }
 
 export interface Reasoner {
   readonly type: string;
   readonly version: string;
+  reason(incident: IncidentRow, evidence: EvidenceRecord[]): ReasoningResult | Promise<ReasoningResult>;
+}
+
+export interface SyncReasoner extends Reasoner {
   reason(incident: IncidentRow, evidence: EvidenceRecord[]): ReasoningResult;
 }
 
@@ -133,7 +150,7 @@ function result(
   };
 }
 
-export function createFakeReasoner(): Reasoner {
+export function createFakeReasoner(): SyncReasoner {
   return {
     type: 'fake',
     version: '1',

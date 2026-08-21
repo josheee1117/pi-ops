@@ -222,7 +222,8 @@ CREATE TABLE IF NOT EXISTS reasoning_results (
   reasoner_type TEXT,
   reasoner_version TEXT,
   evidence_ids TEXT,
-  evidence_snapshot_hash TEXT
+  evidence_snapshot_hash TEXT,
+  metadata_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_results_incident
   ON reasoning_results (incident_id, created_at, id);
@@ -562,6 +563,7 @@ export interface EventStore {
   createIncidentFromEvent(
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
+    reasoning?: { reasonerType: string; reasonerVersion: string },
   ): IncidentRow;
 
   /** Update an existing incident's mutable fields. */
@@ -631,6 +633,41 @@ export interface EventStore {
 
 function generateId(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
+}
+
+function serializeReasoningMetadata(result: ReasoningResult): string | null {
+  const metadata: Record<string, unknown> = {};
+  if (result.provider) metadata['provider'] = result.provider;
+  if (result.model) metadata['model'] = result.model;
+  if (result.reasoningSummary) metadata['reasoningSummary'] = result.reasoningSummary;
+  if (result.recommendedActions) metadata['recommendedActions'] = result.recommendedActions;
+  if (result.needHuman !== undefined) metadata['needHuman'] = result.needHuman;
+  if (result.usage) metadata['usage'] = result.usage;
+  if (result.truncated) metadata['truncated'] = true;
+  if (result.missingCapability && result.missingCapability.length > 0) {
+    metadata['missingCapability'] = result.missingCapability;
+  }
+  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
+}
+
+function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Partial<ReasoningResult>;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return {
+      ...(typeof parsed.provider === 'string' ? { provider: parsed.provider } : {}),
+      ...(typeof parsed.model === 'string' ? { model: parsed.model } : {}),
+      ...(typeof parsed.reasoningSummary === 'string' ? { reasoningSummary: parsed.reasoningSummary } : {}),
+      ...(Array.isArray(parsed.recommendedActions) ? { recommendedActions: parsed.recommendedActions } : {}),
+      ...(typeof parsed.needHuman === 'boolean' ? { needHuman: parsed.needHuman } : {}),
+      ...(parsed.usage ? { usage: parsed.usage } : {}),
+      ...(parsed.truncated ? { truncated: true } : {}),
+      ...(Array.isArray(parsed.missingCapability) ? { missingCapability: parsed.missingCapability } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 export function createEventStore(dbPath: string): EventStore {
@@ -776,6 +813,7 @@ export function createEventStore(dbPath: string): EventStore {
       ['reasoner_version', 'TEXT'],
       ['evidence_ids', 'TEXT'],
       ['evidence_snapshot_hash', 'TEXT'],
+      ['metadata_json', 'TEXT'],
     ];
     for (const [name, type] of reasoningResultColumns) {
       if (!reasoningColumns.has(name)) {
@@ -832,10 +870,12 @@ export function createEventStore(dbPath: string): EventStore {
   const insertReasoningResultStmt = db.prepare(`
 INSERT OR IGNORE INTO reasoning_results (
   id, incident_id, created_at, hypotheses_json, missing_evidence_json, confidence, status,
-  reasoning_job_id, reasoner_type, reasoner_version, evidence_ids, evidence_snapshot_hash
+  reasoning_job_id, reasoner_type, reasoner_version, evidence_ids, evidence_snapshot_hash,
+  metadata_json
 ) VALUES (
   @id, @incident_id, @created_at, @hypotheses_json, @missing_evidence_json, @confidence, @status,
-  @reasoning_job_id, @reasoner_type, @reasoner_version, @evidence_ids, @evidence_snapshot_hash
+  @reasoning_job_id, @reasoner_type, @reasoner_version, @evidence_ids, @evidence_snapshot_hash,
+  @metadata_json
 );
 `);
   const listReasoningResultsStmt = db.prepare(`
@@ -892,7 +932,9 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
     reasoner_version: string | null;
     evidence_ids: string | null;
     evidence_snapshot_hash: string | null;
+    metadata_json: string | null;
   }): ReasoningResult {
+    const metadata = parseReasoningMetadata(row.metadata_json);
     return {
       id: row.id,
       incidentId: row.incident_id,
@@ -906,6 +948,7 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
       ...(row.reasoner_version ? { reasonerVersion: row.reasoner_version } : {}),
       ...(row.evidence_ids ? { evidenceIds: JSON.parse(row.evidence_ids) as string[] } : {}),
       ...(row.evidence_snapshot_hash ? { evidenceSnapshotHash: row.evidence_snapshot_hash } : {}),
+      ...metadata,
     };
   }
 
@@ -1060,6 +1103,7 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
   const createIncidentFromEventTransaction = db.transaction((
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
+    reasoning: { reasonerType: string; reasonerVersion: string },
   ): IncidentRow => {
     const id = generateId('inc');
     insertIncident(id, incident);
@@ -1078,8 +1122,8 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
     insertReasoningJobStmt.run({
       id: `rj-${id}`,
       incident_id: id,
-      reasoner_type: 'fake',
-      reasoner_version: '1',
+      reasoner_type: reasoning.reasonerType,
+      reasoner_version: reasoning.reasonerVersion,
       created_at: now,
       updated_at: now,
     });
@@ -1265,8 +1309,12 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
     createIncidentFromEvent(
       incident: Omit<IncidentRow, 'id'>,
       event: OpsEvent,
+      reasoning: { reasonerType: string; reasonerVersion: string } = {
+        reasonerType: 'fake',
+        reasonerVersion: '1',
+      },
     ): IncidentRow {
-      return createIncidentFromEventTransaction(incident, event);
+      return createIncidentFromEventTransaction(incident, event, reasoning);
     },
 
     updateIncident(id: string, updates: {
@@ -1451,6 +1499,7 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
         reasoner_version: result.reasonerVersion ?? null,
         evidence_ids: result.evidenceIds ? JSON.stringify(result.evidenceIds) : null,
         evidence_snapshot_hash: result.evidenceSnapshotHash ?? null,
+        metadata_json: serializeReasoningMetadata(result),
       });
       return inserted.changes > 0;
     },

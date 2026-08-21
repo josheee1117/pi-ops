@@ -7,9 +7,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:smoke": "tsx --test src/smoke/pi-reasoner.smoke.ts",
     "lint": "echo 'lint not configured yet'"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.2",
     "@hono/node-server": "^2.1.1",
     "@pi-ops/protocol": "workspace:*",
     "better-sqlite3": "^13.0.3",

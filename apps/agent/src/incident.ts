@@ -9,6 +9,9 @@ export { computeFingerprint } from './fingerprint.js';
 export interface IncidentConfig {
   /** Aggregation window in milliseconds. */
   aggregationWindowMs: number;
+  /** Reasoner assigned to newly created ReasoningJobs. */
+  reasonerType?: string;
+  reasonerVersion?: string;
 }
 
 export type IncidentResult =
@@ -190,7 +193,10 @@ export function createIncidentEngine(
         last_seen: timestamp,
         event_count: 1,
         severity: event.severity,
-      }, event);
+      }, event, {
+        reasonerType: config.reasonerType ?? 'fake',
+        reasonerVersion: config.reasonerVersion ?? '1',
+      });
       reconcileFingerprint(fingerprint);
 
       return {
