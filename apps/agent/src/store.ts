@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
+import type { ReasoningResult } from './reasoner.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -180,6 +181,20 @@ CREATE TABLE IF NOT EXISTS evidence_jobs (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_evidence_jobs_state ON evidence_jobs (state, created_at);
+`;
+
+const CREATE_REASONING_RESULTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS reasoning_results (
+  id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  hypotheses_json TEXT NOT NULL,
+  missing_evidence_json TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  status TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reasoning_results_incident
+  ON reasoning_results (incident_id, created_at, id);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -506,6 +521,11 @@ export interface EventStore {
   /** Requeue a terminal Evidence job for one Incident. No-op if still pending/running. */
   requeueEvidenceJob(incidentId: string, event: OpsEvent): boolean;
 
+  // ── Reasoning ────────────────────────────────────────────────────────────
+
+  insertReasoningResult(result: ReasoningResult): void;
+  listReasoningResults(incidentId: string): ReasoningResult[];
+
   /** Close the database connection. */
   close(): void;
 }
@@ -648,6 +668,7 @@ export function createEventStore(dbPath: string): EventStore {
       db.exec('ALTER TABLE evidence ADD COLUMN failure_class TEXT');
     }
     db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
+    db.exec(CREATE_REASONING_RESULTS_TABLE_SQL);
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_events_event_time ON events (event_time, id);
       CREATE INDEX IF NOT EXISTS idx_incidents_fingerprint_state
@@ -690,6 +711,16 @@ export function createEventStore(dbPath: string): EventStore {
   const resetRunningEvidenceJobsStmt = db.prepare(RESET_RUNNING_EVIDENCE_JOBS_SQL);
   const getEvidenceJobStmt = db.prepare('SELECT * FROM evidence_jobs WHERE id = ?');
   const requeueEvidenceJobStmt = db.prepare(REQUEUE_EVIDENCE_JOB_SQL);
+  const insertReasoningResultStmt = db.prepare(`
+INSERT INTO reasoning_results (
+  id, incident_id, created_at, hypotheses_json, missing_evidence_json, confidence, status
+) VALUES (
+  @id, @incident_id, @created_at, @hypotheses_json, @missing_evidence_json, @confidence, @status
+);
+`);
+  const listReasoningResultsStmt = db.prepare(`
+SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
+`);
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -1170,6 +1201,39 @@ export function createEventStore(dbPath: string): EventStore {
         updated_at: new Date().toISOString(),
       });
       return result.changes > 0;
+    },
+
+    insertReasoningResult(result: ReasoningResult): void {
+      insertReasoningResultStmt.run({
+        id: result.id,
+        incident_id: result.incidentId,
+        created_at: result.createdAt,
+        hypotheses_json: JSON.stringify(result.hypotheses),
+        missing_evidence_json: JSON.stringify(result.missingEvidence),
+        confidence: result.confidence,
+        status: result.status,
+      });
+    },
+
+    listReasoningResults(incidentId: string): ReasoningResult[] {
+      const rows = listReasoningResultsStmt.all(incidentId) as Array<{
+        id: string;
+        incident_id: string;
+        created_at: string;
+        hypotheses_json: string;
+        missing_evidence_json: string;
+        confidence: number;
+        status: ReasoningResult['status'];
+      }>;
+      return rows.map((row) => ({
+        id: row.id,
+        incidentId: row.incident_id,
+        createdAt: row.created_at,
+        hypotheses: JSON.parse(row.hypotheses_json) as string[],
+        missingEvidence: JSON.parse(row.missing_evidence_json) as string[],
+        confidence: row.confidence,
+        status: row.status,
+      }));
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
