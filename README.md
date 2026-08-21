@@ -134,7 +134,7 @@ josheee1117/test-infra
 
 That repository owns Ansible, server-side Compose/runtime configuration, global Nginx and deployment topology.
 
-DataAsset RecordingStream implementation lives in the DataAsset repository; Pi-Ops owns the event wire contract and receiving/incident/evidence pipeline.
+DataAsset RecordingStream implementation lives in the DataAsset repository; Pi-Ops owns the event wire contract and receiving/incident/evidence pipeline. DataAsset posts `EventBatch` with `producer.type=application` to central `POST /v1/events` using the shared protocol. The JFR callback never performs HTTP: it offers onto a bounded in-memory queue and a single-flight async sender flushes batches of at most 1000 events.
 
 ## Bootstrap
 
