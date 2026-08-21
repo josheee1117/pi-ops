@@ -44,6 +44,8 @@ export interface NodeAgentConfig {
   eventMaxRetries: number;
   /** Flush interval when queue is not full (ms). */
   eventFlushIntervalMs: number;
+  /** Initial Docker event replay lookback on a fresh watcher process (seconds). */
+  dockerReplayLookbackSeconds: number;
   // ── Detectors ─────────────────────────────────────────────────────────────
   /** Polling interval for detectors (ms). */
   detectorPollIntervalMs: number;
@@ -213,6 +215,9 @@ export function loadConfig(): NodeAgentConfig {
     eventMaxRetries: integerEnv('PI_OPS_EVENT_MAX_RETRIES', 3, { min: 0, max: 100 }),
     eventFlushIntervalMs: integerEnv('PI_OPS_EVENT_FLUSH_INTERVAL_MS', 1000, {
       max: 60 * 60 * 1000,
+    }),
+    dockerReplayLookbackSeconds: integerEnv('PI_OPS_DOCKER_REPLAY_LOOKBACK_SECONDS', 300, {
+      max: 86_400,
     }),
     // Detectors
     detectorPollIntervalMs: integerEnv('PI_OPS_DETECTOR_POLL_INTERVAL_MS', 10_000, {

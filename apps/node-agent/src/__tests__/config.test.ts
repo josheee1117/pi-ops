@@ -15,6 +15,7 @@ const CONFIG_KEYS = [
   'PI_OPS_EVENT_SEND_TIMEOUT_MS',
   'PI_OPS_EVENT_MAX_RETRIES',
   'PI_OPS_EVENT_FLUSH_INTERVAL_MS',
+  'PI_OPS_DOCKER_REPLAY_LOOKBACK_SECONDS',
   'PI_OPS_DETECTOR_POLL_INTERVAL_MS',
   'PI_OPS_MEMORY_PRESSURE_THRESHOLD',
   'PI_OPS_MEMORY_PRESSURE_DURATION',
@@ -51,6 +52,7 @@ describe('Node Agent loadConfig numeric validation', () => {
       PI_OPS_MEMORY_PRESSURE_THRESHOLD: '0.9',
       PI_OPS_DISK_PRESSURE_THRESHOLD: '1',
       PI_OPS_EVENT_MAX_RETRIES: '0',
+      PI_OPS_DOCKER_REPLAY_LOOKBACK_SECONDS: '300',
     }, () => {
       const config = loadConfig();
       assert.equal(config.port, 8081);
@@ -58,6 +60,7 @@ describe('Node Agent loadConfig numeric validation', () => {
       assert.equal(config.memoryPressureThreshold, 0.9);
       assert.equal(config.diskPressureThreshold, 1);
       assert.equal(config.eventMaxRetries, 0);
+      assert.equal(config.dockerReplayLookbackSeconds, 300);
     });
   });
 
@@ -76,6 +79,8 @@ describe('Node Agent loadConfig numeric validation', () => {
       ['PI_OPS_EVENT_SEND_TIMEOUT_MS', '-500'],
       ['PI_OPS_EVENT_MAX_RETRIES', '-1'],
       ['PI_OPS_EVENT_FLUSH_INTERVAL_MS', '1000ms'],
+      ['PI_OPS_DOCKER_REPLAY_LOOKBACK_SECONDS', '0'],
+      ['PI_OPS_DOCKER_REPLAY_LOOKBACK_SECONDS', '86401'],
       ['PI_OPS_DETECTOR_POLL_INTERVAL_MS', '0'],
       ['PI_OPS_MEMORY_PRESSURE_DURATION', '2.5'],
       ['PI_OPS_DISK_PRESSURE_DURATION', ''],

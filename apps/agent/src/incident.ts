@@ -77,20 +77,7 @@ export function createIncidentEngine(
   config: IncidentConfig,
 ): IncidentEngine {
   function applyRecovery(incidentId: string, recovery: OpsEvent): boolean {
-    const incident = store.getIncident(incidentId);
-    if (!incident) return false;
-    const linked = store.linkEventToIncident(incident.id, recovery.id);
-    if (!linked && store.findIncidentByEventId(recovery.id)?.id !== incident.id) return false;
-    store.updateIncident(incident.id, {
-      first_seen: incident.first_seen,
-      last_seen: laterTimestamp(incident.last_seen, recovery.time),
-      event_count: incident.event_count + (linked ? 1 : 0),
-      severity: incident.severity,
-      state: 'RECOVERED',
-    });
-    store.removePendingRecovery(recovery.id);
-    store.markEventProcessed(recovery.id, recovery.time);
-    return true;
+    return store.applyRecovery(incidentId, recovery);
   }
 
   function reconcileFingerprint(fingerprint: string): void {

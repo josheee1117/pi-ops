@@ -553,4 +553,48 @@ describe('Docker watcher reconnect', () => {
     watcher.stop();
     stream.end();
   });
+
+  it('replays a lookback event after a new watcher process starts', async () => {
+    const lookback = 300;
+    const eventTime = Math.floor(Date.now() / 1000) - 60;
+    const dockerEvent: DockerEvent = {
+      Type: 'container',
+      Action: 'die',
+      Actor: {
+        ID: 'abc123def456',
+        Attributes: { name: 'dataease', image: 'dataease:latest', exitCode: '137' },
+      },
+      time: eventTime,
+      timeNano: eventTime * 1000,
+    };
+    const expectedId = dockerOpsEventId('test-node-01', 'abc123def456', 'die', dockerEvent.timeNano);
+    const connectOptions: Array<{ since: number }> = [];
+    const sender = recordingSender();
+    const watcher = createDockerWatcher(
+      makeConfig({ dockerReplayLookbackSeconds: lookback }),
+      sender,
+      {
+        initialBackoffMs: 20,
+        maxBackoffMs: 80,
+        connect: async (options) => {
+          connectOptions.push(options);
+          const stream = new PassThrough();
+          queueMicrotask(() => {
+            if (options.since <= eventTime) {
+              stream.write(`${JSON.stringify(dockerEvent)}\n`);
+            }
+          });
+          return stream;
+        },
+      },
+    );
+    await watcher.start();
+    await waitFor(() => sender.events.length >= 1);
+    const now = Math.floor(Date.now() / 1000);
+    assert.ok(connectOptions[0]!.since <= eventTime);
+    assert.ok(now - connectOptions[0]!.since >= lookback - 1);
+    assert.ok(now - connectOptions[0]!.since <= lookback + 2);
+    assert.equal(sender.events[0]!.id, expectedId);
+    watcher.stop();
+  });
 });

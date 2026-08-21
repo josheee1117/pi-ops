@@ -419,6 +419,9 @@ export interface EventStore {
   /** Remove one recovery after it is linked to an Incident. */
   removePendingRecovery(eventId: string): void;
 
+  /** Atomically apply a recovery onto one Incident. */
+  applyRecovery(incidentId: string, recovery: OpsEvent): boolean;
+
   /** Total unmatched recovery count. */
   pendingRecoveryCount(): number;
 
@@ -863,7 +866,11 @@ export function createEventStore(dbPath: string): EventStore {
     return { id, ...incident };
   });
 
-  return {
+  function laterTimestamp(a: string, b: string): string {
+    return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
+  }
+
+  const store: EventStore = {
     // ── Events ────────────────────────────────────────────────────────────
 
     insertBatch(batch: EventBatch, receiveTime: string): number {
@@ -931,6 +938,10 @@ export function createEventStore(dbPath: string): EventStore {
 
     removePendingRecovery(eventId: string): void {
       deletePendingRecoveryStmt.run(eventId);
+    },
+
+    applyRecovery(incidentId: string, recovery: OpsEvent): boolean {
+      return applyRecoveryTransaction(incidentId, recovery);
     },
 
     pendingRecoveryCount(): number {
@@ -1151,4 +1162,23 @@ export function createEventStore(dbPath: string): EventStore {
       db.close();
     },
   };
+
+  const applyRecoveryTransaction = db.transaction((incidentId: string, recovery: OpsEvent): boolean => {
+    const incident = store.getIncident(incidentId);
+    if (!incident) return false;
+    const linked = store.linkEventToIncident(incident.id, recovery.id);
+    if (!linked && store.findIncidentByEventId(recovery.id)?.id !== incident.id) return false;
+    store.updateIncident(incident.id, {
+      first_seen: incident.first_seen,
+      last_seen: laterTimestamp(incident.last_seen, recovery.time),
+      event_count: incident.event_count + (linked ? 1 : 0),
+      severity: incident.severity,
+      state: 'RECOVERED',
+    });
+    store.removePendingRecovery(recovery.id);
+    store.markEventProcessed(recovery.id, recovery.time);
+    return true;
+  });
+
+  return store;
 }

@@ -66,7 +66,7 @@ export function createDockerWatcher(
     if (lastEventTime !== undefined) return lastEventTime;
     if (lastTimeNano !== undefined) return Math.floor(lastTimeNano / 1e9);
     if (lastConnectSince !== undefined) return lastConnectSince;
-    return Math.floor(Date.now() / 1000);
+    return Math.floor(Date.now() / 1000) - config.dockerReplayLookbackSeconds;
   }
 
   function delay(ms: number): Promise<void> {

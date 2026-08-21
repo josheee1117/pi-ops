@@ -21,6 +21,7 @@ export function makeNodeAgentConfig(overrides: Partial<NodeAgentConfig> = {}): N
     eventSendTimeoutMs: 5000,
     eventMaxRetries: 3,
     eventFlushIntervalMs: 1000,
+    dockerReplayLookbackSeconds: 300,
     detectorPollIntervalMs: 10_000,
     memoryPressureThreshold: 0.9,
     memoryPressureDuration: 3,

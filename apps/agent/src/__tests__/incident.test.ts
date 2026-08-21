@@ -772,6 +772,41 @@ describe('recovery', () => {
     assert.equal(store.pendingRecoveryCount(), 0);
   });
 
+  it('does not persist RECOVERED while leaving the same recovery pending', () => {
+    const { store, engine } = setup();
+    const failure = engine.processEvent(
+      makeEvent({
+        id: 'evt-atomic-failure',
+        source: 'health',
+        type: 'health.failure',
+        time: '2026-08-20T12:00:00.000Z',
+      }),
+      '2026-08-20T12:00:00.000Z',
+    );
+    const recovery = makeEvent({
+      id: 'evt-atomic-recovery',
+      source: 'health',
+      type: 'health.recovered',
+      severity: 'info',
+      time: '2026-08-20T12:05:00.000Z',
+    });
+    store.addPendingRecovery(recovery, computeFingerprint(recovery));
+    const originalMark = store.markEventProcessed.bind(store);
+    store.markEventProcessed = () => {
+      originalMark(recovery.id, recovery.time);
+      throw new Error('simulated crash after recovery mutations');
+    };
+
+    assert.throws(
+      () => engine.reconcilePendingRecoveries(),
+      /simulated crash after recovery mutations/,
+    );
+    assert.equal(store.getIncident(failure.incidentId!)?.state, 'OPEN');
+    assert.equal(store.pendingRecoveryCount(), 1);
+    assert.equal(store.findIncidentByEventId(recovery.id), undefined);
+    assert.equal(store.getEventProcessedAt(recovery.id), undefined);
+  });
+
   it('keeps an ambiguous pending recovery fail-closed during startup reconcile', () => {
     const { store, engine } = setup();
     const first = engine.processEvent(
