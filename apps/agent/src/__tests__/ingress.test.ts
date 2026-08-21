@@ -28,6 +28,10 @@ const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   evidenceJobMaxAttempts: 3,
   evidenceJobBatchSize: 10,
   eventReplayBatchSize: 100,
+  reasoningJobPollIntervalMs: 1000,
+  reasoningJobMaxAttempts: 3,
+  reasoningTimeoutMs: 5000,
+  reasoningJobBatchSize: 10,
 };
 
 function makeTestConfig(sqlitePath: string): AgentConfig {

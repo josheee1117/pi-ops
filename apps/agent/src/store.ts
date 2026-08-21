@@ -106,6 +106,32 @@ interface EvidenceJobRow {
   updated_at: string;
 }
 
+export type ReasoningJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+export interface ReasoningJob {
+  id: string;
+  incidentId: string;
+  reasonerType: string;
+  reasonerVersion: string;
+  status: ReasoningJobStatus;
+  attempts: number;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ReasoningJobRow {
+  id: string;
+  incident_id: string;
+  reasoner_type: string;
+  reasoner_version: string;
+  status: ReasoningJobStatus;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── SQL ──────────────────────────────────────────────────────────────────────
 
 const CREATE_EVENTS_TABLE_SQL = `
@@ -191,10 +217,30 @@ CREATE TABLE IF NOT EXISTS reasoning_results (
   hypotheses_json TEXT NOT NULL,
   missing_evidence_json TEXT NOT NULL,
   confidence REAL NOT NULL,
-  status TEXT NOT NULL
+  status TEXT NOT NULL,
+  reasoning_job_id TEXT,
+  reasoner_type TEXT,
+  reasoner_version TEXT,
+  evidence_ids TEXT,
+  evidence_snapshot_hash TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_results_incident
   ON reasoning_results (incident_id, created_at, id);
+`;
+
+const CREATE_REASONING_JOBS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS reasoning_jobs (
+  id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL UNIQUE,
+  reasoner_type TEXT NOT NULL,
+  reasoner_version TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reasoning_jobs_status ON reasoning_jobs (status, created_at);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -400,6 +446,43 @@ const RESET_RUNNING_EVIDENCE_JOBS_SQL = `
 UPDATE evidence_jobs SET state = 'PENDING', updated_at = ? WHERE state = 'RUNNING';
 `;
 
+const INSERT_REASONING_JOB_SQL = `
+INSERT OR IGNORE INTO reasoning_jobs (
+  id, incident_id, reasoner_type, reasoner_version, status, attempts, last_error, created_at, updated_at
+) VALUES (
+  @id, @incident_id, @reasoner_type, @reasoner_version, 'PENDING', 0, NULL, @created_at, @updated_at
+);
+`;
+
+const LIST_PENDING_REASONING_JOBS_SQL = `
+SELECT * FROM reasoning_jobs
+WHERE status = 'PENDING'
+ORDER BY created_at, id
+LIMIT ?;
+`;
+
+const MARK_REASONING_JOB_RUNNING_SQL = `
+UPDATE reasoning_jobs
+SET status = 'RUNNING', attempts = attempts + 1, updated_at = @updated_at
+WHERE id = @id AND status = 'PENDING';
+`;
+
+const MARK_REASONING_JOB_COMPLETED_SQL = `
+UPDATE reasoning_jobs
+SET status = 'COMPLETED', last_error = NULL, updated_at = @updated_at
+WHERE id = @id;
+`;
+
+const MARK_REASONING_JOB_FAILED_SQL = `
+UPDATE reasoning_jobs
+SET status = 'FAILED', last_error = @last_error, updated_at = @updated_at
+WHERE id = @id;
+`;
+
+const RESET_RUNNING_REASONING_JOBS_SQL = `
+UPDATE reasoning_jobs SET status = 'PENDING', updated_at = ? WHERE status = 'RUNNING';
+`;
+
 // ── Store interface ──────────────────────────────────────────────────────────
 
 export interface EventStore {
@@ -475,7 +558,7 @@ export interface EventStore {
   /** Create a new incident without scheduling evidence (tests/manual use). */
   createIncident(incident: Omit<IncidentRow, 'id'>): IncidentRow;
 
-  /** Atomically create Incident + event link + durable evidence job. */
+  /** Atomically create Incident + event link + durable evidence and reasoning jobs. */
   createIncidentFromEvent(
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
@@ -523,8 +606,22 @@ export interface EventStore {
 
   // ── Reasoning ────────────────────────────────────────────────────────────
 
-  insertReasoningResult(result: ReasoningResult): void;
+  createReasoningJob(job: {
+    id: string;
+    incidentId: string;
+    reasonerType: string;
+    reasonerVersion: string;
+    createdAt: string;
+  }): void;
+  listPendingReasoningJobs(limit: number): ReasoningJob[];
+  markReasoningJobRunning(id: string): boolean;
+  markReasoningJobCompleted(id: string): void;
+  markReasoningJobFailed(id: string, error: string): void;
+  resetRunningReasoningJobs(): number;
+  getReasoningJob(id: string): ReasoningJob | undefined;
+  insertReasoningResult(result: ReasoningResult): boolean;
   listReasoningResults(incidentId: string): ReasoningResult[];
+  getReasoningResultByJobId(jobId: string): ReasoningResult | undefined;
 
   /** Close the database connection. */
   close(): void;
@@ -669,6 +766,27 @@ export function createEventStore(dbPath: string): EventStore {
     }
     db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
     db.exec(CREATE_REASONING_RESULTS_TABLE_SQL);
+    db.exec(CREATE_REASONING_JOBS_TABLE_SQL);
+    const reasoningColumns = new Set(
+      (db.pragma('table_info(reasoning_results)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    const reasoningResultColumns: Array<[string, string]> = [
+      ['reasoning_job_id', 'TEXT'],
+      ['reasoner_type', 'TEXT'],
+      ['reasoner_version', 'TEXT'],
+      ['evidence_ids', 'TEXT'],
+      ['evidence_snapshot_hash', 'TEXT'],
+    ];
+    for (const [name, type] of reasoningResultColumns) {
+      if (!reasoningColumns.has(name)) {
+        db.exec(`ALTER TABLE reasoning_results ADD COLUMN ${name} ${type}`);
+      }
+    }
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_results_job
+        ON reasoning_results (reasoning_job_id)
+        WHERE reasoning_job_id IS NOT NULL;
+    `);
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_events_event_time ON events (event_time, id);
       CREATE INDEX IF NOT EXISTS idx_incidents_fingerprint_state
@@ -712,15 +830,27 @@ export function createEventStore(dbPath: string): EventStore {
   const getEvidenceJobStmt = db.prepare('SELECT * FROM evidence_jobs WHERE id = ?');
   const requeueEvidenceJobStmt = db.prepare(REQUEUE_EVIDENCE_JOB_SQL);
   const insertReasoningResultStmt = db.prepare(`
-INSERT INTO reasoning_results (
-  id, incident_id, created_at, hypotheses_json, missing_evidence_json, confidence, status
+INSERT OR IGNORE INTO reasoning_results (
+  id, incident_id, created_at, hypotheses_json, missing_evidence_json, confidence, status,
+  reasoning_job_id, reasoner_type, reasoner_version, evidence_ids, evidence_snapshot_hash
 ) VALUES (
-  @id, @incident_id, @created_at, @hypotheses_json, @missing_evidence_json, @confidence, @status
+  @id, @incident_id, @created_at, @hypotheses_json, @missing_evidence_json, @confidence, @status,
+  @reasoning_job_id, @reasoner_type, @reasoner_version, @evidence_ids, @evidence_snapshot_hash
 );
 `);
   const listReasoningResultsStmt = db.prepare(`
 SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
 `);
+  const insertReasoningJobStmt = db.prepare(INSERT_REASONING_JOB_SQL);
+  const listPendingReasoningJobsStmt = db.prepare(LIST_PENDING_REASONING_JOBS_SQL);
+  const markReasoningJobRunningStmt = db.prepare(MARK_REASONING_JOB_RUNNING_SQL);
+  const markReasoningJobCompletedStmt = db.prepare(MARK_REASONING_JOB_COMPLETED_SQL);
+  const markReasoningJobFailedStmt = db.prepare(MARK_REASONING_JOB_FAILED_SQL);
+  const resetRunningReasoningJobsStmt = db.prepare(RESET_RUNNING_REASONING_JOBS_SQL);
+  const getReasoningJobStmt = db.prepare('SELECT * FROM reasoning_jobs WHERE id = ?');
+  const getReasoningResultByJobStmt = db.prepare(
+    'SELECT * FROM reasoning_results WHERE reasoning_job_id = ?',
+  );
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -732,6 +862,50 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
       ...(row.last_error ? { lastError: row.last_error } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  function mapReasoningJob(row: ReasoningJobRow): ReasoningJob {
+    return {
+      id: row.id,
+      incidentId: row.incident_id,
+      reasonerType: row.reasoner_type,
+      reasonerVersion: row.reasoner_version,
+      status: row.status,
+      attempts: row.attempts,
+      ...(row.last_error ? { lastError: row.last_error } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  function mapReasoningResult(row: {
+    id: string;
+    incident_id: string;
+    created_at: string;
+    hypotheses_json: string;
+    missing_evidence_json: string;
+    confidence: number;
+    status: ReasoningResult['status'];
+    reasoning_job_id: string | null;
+    reasoner_type: string | null;
+    reasoner_version: string | null;
+    evidence_ids: string | null;
+    evidence_snapshot_hash: string | null;
+  }): ReasoningResult {
+    return {
+      id: row.id,
+      incidentId: row.incident_id,
+      createdAt: row.created_at,
+      hypotheses: JSON.parse(row.hypotheses_json) as string[],
+      missingEvidence: JSON.parse(row.missing_evidence_json) as string[],
+      confidence: row.confidence,
+      status: row.status,
+      ...(row.reasoning_job_id ? { reasoningJobId: row.reasoning_job_id } : {}),
+      ...(row.reasoner_type ? { reasonerType: row.reasoner_type } : {}),
+      ...(row.reasoner_version ? { reasonerVersion: row.reasoner_version } : {}),
+      ...(row.evidence_ids ? { evidenceIds: JSON.parse(row.evidence_ids) as string[] } : {}),
+      ...(row.evidence_snapshot_hash ? { evidenceSnapshotHash: row.evidence_snapshot_hash } : {}),
     };
   }
 
@@ -898,6 +1072,14 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
       id: `job-${id}`,
       incident_id: id,
       event_json: JSON.stringify(event),
+      created_at: now,
+      updated_at: now,
+    });
+    insertReasoningJobStmt.run({
+      id: `rj-${id}`,
+      incident_id: id,
+      reasoner_type: 'fake',
+      reasoner_version: '1',
       created_at: now,
       updated_at: now,
     });
@@ -1203,8 +1385,60 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
       return result.changes > 0;
     },
 
-    insertReasoningResult(result: ReasoningResult): void {
-      insertReasoningResultStmt.run({
+    createReasoningJob(job: {
+      id: string;
+      incidentId: string;
+      reasonerType: string;
+      reasonerVersion: string;
+      createdAt: string;
+    }): void {
+      insertReasoningJobStmt.run({
+        id: job.id,
+        incident_id: job.incidentId,
+        reasoner_type: job.reasonerType,
+        reasoner_version: job.reasonerVersion,
+        created_at: job.createdAt,
+        updated_at: job.createdAt,
+      });
+    },
+
+    listPendingReasoningJobs(limit: number): ReasoningJob[] {
+      const rows = listPendingReasoningJobsStmt.all(limit) as ReasoningJobRow[];
+      return rows.map(mapReasoningJob);
+    },
+
+    markReasoningJobRunning(id: string): boolean {
+      const result = markReasoningJobRunningStmt.run({
+        id,
+        updated_at: new Date().toISOString(),
+      });
+      return result.changes > 0;
+    },
+
+    markReasoningJobCompleted(id: string): void {
+      markReasoningJobCompletedStmt.run({ id, updated_at: new Date().toISOString() });
+    },
+
+    markReasoningJobFailed(id: string, error: string): void {
+      markReasoningJobFailedStmt.run({
+        id,
+        last_error: error,
+        updated_at: new Date().toISOString(),
+      });
+    },
+
+    resetRunningReasoningJobs(): number {
+      const result = resetRunningReasoningJobsStmt.run(new Date().toISOString());
+      return result.changes;
+    },
+
+    getReasoningJob(id: string): ReasoningJob | undefined {
+      const row = getReasoningJobStmt.get(id) as ReasoningJobRow | undefined;
+      return row ? mapReasoningJob(row) : undefined;
+    },
+
+    insertReasoningResult(result: ReasoningResult): boolean {
+      const inserted = insertReasoningResultStmt.run({
         id: result.id,
         incident_id: result.incidentId,
         created_at: result.createdAt,
@@ -1212,28 +1446,23 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
         missing_evidence_json: JSON.stringify(result.missingEvidence),
         confidence: result.confidence,
         status: result.status,
+        reasoning_job_id: result.reasoningJobId ?? null,
+        reasoner_type: result.reasonerType ?? null,
+        reasoner_version: result.reasonerVersion ?? null,
+        evidence_ids: result.evidenceIds ? JSON.stringify(result.evidenceIds) : null,
+        evidence_snapshot_hash: result.evidenceSnapshotHash ?? null,
       });
+      return inserted.changes > 0;
     },
 
     listReasoningResults(incidentId: string): ReasoningResult[] {
-      const rows = listReasoningResultsStmt.all(incidentId) as Array<{
-        id: string;
-        incident_id: string;
-        created_at: string;
-        hypotheses_json: string;
-        missing_evidence_json: string;
-        confidence: number;
-        status: ReasoningResult['status'];
-      }>;
-      return rows.map((row) => ({
-        id: row.id,
-        incidentId: row.incident_id,
-        createdAt: row.created_at,
-        hypotheses: JSON.parse(row.hypotheses_json) as string[],
-        missingEvidence: JSON.parse(row.missing_evidence_json) as string[],
-        confidence: row.confidence,
-        status: row.status,
-      }));
+      return (listReasoningResultsStmt.all(incidentId) as Array<Parameters<typeof mapReasoningResult>[0]>)
+        .map(mapReasoningResult);
+    },
+
+    getReasoningResultByJobId(jobId: string): ReasoningResult | undefined {
+      const row = getReasoningResultByJobStmt.get(jobId) as Parameters<typeof mapReasoningResult>[0] | undefined;
+      return row ? mapReasoningResult(row) : undefined;
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

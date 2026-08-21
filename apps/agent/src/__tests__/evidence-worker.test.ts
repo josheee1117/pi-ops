@@ -33,6 +33,10 @@ function makeConfig(
     evidenceJobMaxAttempts: 3,
     evidenceJobBatchSize: 10,
     eventReplayBatchSize: 100,
+    reasoningJobPollIntervalMs: 60_000,
+    reasoningJobMaxAttempts: 3,
+    reasoningTimeoutMs: 5000,
+    reasoningJobBatchSize: 10,
     ...overrides,
   };
 }

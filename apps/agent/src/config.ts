@@ -32,6 +32,14 @@ export interface AgentConfig {
   evidenceJobBatchSize: number;
   /** Maximum pending Events replayed in one startup transaction. */
   eventReplayBatchSize: number;
+  /** Poll interval for durable reasoning jobs. */
+  reasoningJobPollIntervalMs: number;
+  /** Maximum unexpected reasoning attempts recorded on a job. */
+  reasoningJobMaxAttempts: number;
+  /** Timeout for one Reasoner invocation. */
+  reasoningTimeoutMs: number;
+  /** Maximum reasoning jobs processed in one drain. */
+  reasoningJobBatchSize: number;
 }
 
 function requireEnv(key: string): string {
@@ -155,6 +163,18 @@ export function loadConfig(): AgentConfig {
     }),
     eventReplayBatchSize: integerEnv('PI_OPS_EVENT_REPLAY_BATCH_SIZE', 100, {
       max: 10_000,
+    }),
+    reasoningJobPollIntervalMs: integerEnv('PI_OPS_REASONING_JOB_POLL_INTERVAL_MS', 2000, {
+      max: 60 * 60 * 1000,
+    }),
+    reasoningJobMaxAttempts: integerEnv('PI_OPS_REASONING_JOB_MAX_ATTEMPTS', 3, {
+      max: 100,
+    }),
+    reasoningTimeoutMs: integerEnv('PI_OPS_REASONING_TIMEOUT_MS', 5000, {
+      max: 10 * 60 * 1000,
+    }),
+    reasoningJobBatchSize: integerEnv('PI_OPS_REASONING_JOB_BATCH_SIZE', 10, {
+      max: 1000,
     }),
   };
 }

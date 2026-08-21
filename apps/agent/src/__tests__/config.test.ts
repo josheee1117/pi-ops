@@ -16,6 +16,10 @@ const CONFIG_KEYS = [
   'PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS',
   'PI_OPS_EVIDENCE_JOB_BATCH_SIZE',
   'PI_OPS_EVENT_REPLAY_BATCH_SIZE',
+  'PI_OPS_REASONING_JOB_POLL_INTERVAL_MS',
+  'PI_OPS_REASONING_JOB_MAX_ATTEMPTS',
+  'PI_OPS_REASONING_TIMEOUT_MS',
+  'PI_OPS_REASONING_JOB_BATCH_SIZE',
 ] as const;
 
 function withConfigEnv(values: Record<string, string | undefined>, run: () => void): void {

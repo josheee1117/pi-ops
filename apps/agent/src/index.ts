@@ -4,6 +4,8 @@ import { createEventStore } from './store.js';
 import { createIncidentEngine } from './incident.js';
 import { createEvidenceOrchestrator } from './evidence-orchestrator.js';
 import { createEvidenceJobWorker } from './evidence-worker.js';
+import { createFakeReasoner, createReasonerRegistry } from './reasoner.js';
+import { createReasoningJobWorker } from './reasoning-worker.js';
 import { createApp } from './app.js';
 
 const config = loadConfig();
@@ -28,6 +30,12 @@ incidentEngine.reconcilePendingRecoveries();
 const evidenceOrchestrator = createEvidenceOrchestrator(config, store);
 const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator);
 evidenceWorker.start();
+const reasoningWorker = createReasoningJobWorker(
+  config,
+  store,
+  createReasonerRegistry([createFakeReasoner()]),
+);
+reasoningWorker.start();
 const app = createApp(config, store, incidentEngine, evidenceWorker);
 
 console.log(`[pi-ops-agent] starting on :${config.port}, db=${config.sqlitePath}`);

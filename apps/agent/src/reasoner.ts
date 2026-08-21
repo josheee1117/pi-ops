@@ -10,10 +10,30 @@ export interface ReasoningResult {
   missingEvidence: string[];
   confidence: number;
   status: ReasoningStatus;
+  reasoningJobId?: string;
+  reasonerType?: string;
+  reasonerVersion?: string;
+  evidenceIds?: string[];
+  evidenceSnapshotHash?: string;
 }
 
 export interface Reasoner {
+  readonly type: string;
+  readonly version: string;
   reason(incident: IncidentRow, evidence: EvidenceRecord[]): ReasoningResult;
+}
+
+export interface ReasonerRegistry {
+  get(type: string): Reasoner | undefined;
+}
+
+export function createReasonerRegistry(reasoners: Reasoner[]): ReasonerRegistry {
+  const byType = new Map(reasoners.map((reasoner) => [reasoner.type, reasoner]));
+  return {
+    get(type: string): Reasoner | undefined {
+      return byType.get(type);
+    },
+  };
 }
 
 export const HYPOTHESIS_RESOURCE_SATURATION = 'application resource saturation';
@@ -115,6 +135,8 @@ function result(
 
 export function createFakeReasoner(): Reasoner {
   return {
+    type: 'fake',
+    version: '1',
     reason(incident: IncidentRow, evidence: EvidenceRecord[]): ReasoningResult {
       if (incident.type === 'application.slow_sql') {
         if (isCpuHigh(evidence)) {
