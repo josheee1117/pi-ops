@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M14 completed
+
+- DelegatedReasoningResult ingest validates plan, job, confidence, and incident evidence ids
+- WAITING_DELEGATION → ReasoningResult → COMPLETED
+- duplicate ingest is idempotent; Incident/Evidence stay immutable
+
 ## M13 completed
 
 - delegated_analysis persists InvestigationPlan and enters WAITING_DELEGATION

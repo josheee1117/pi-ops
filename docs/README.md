@@ -9,8 +9,9 @@ The current implementation source of truth is:
 5. `adr/ADR-0010-memory-retrieval-boundary.md`
 6. `adr/ADR-0011-reasoning-delegation-boundary.md`
 7. `adr/ADR-0012-pi-runtime-delegation-contract.md`
-8. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-9. `evolution/timeline.md`
+8. `adr/ADR-0013-delegated-result-ingestion.md`
+9. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+10. `evolution/timeline.md`
 
 The architecture intentionally separates:
 
