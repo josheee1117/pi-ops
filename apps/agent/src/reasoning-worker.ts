@@ -195,7 +195,7 @@ function retrieveMemoryIds(
       maxContextBytes: config.reasoningMaxContextBytes,
       maxLogLines: config.reasoningMaxLogLines,
     });
-    return retriever.retrieve(context).map((entry) => entry.id);
+    return retriever.retrieve(context).memories.map((entry) => entry.id);
   } catch {
     return [];
   }

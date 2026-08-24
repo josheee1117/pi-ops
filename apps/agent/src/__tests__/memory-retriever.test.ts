@@ -100,7 +100,7 @@ function seedApproved(
 describe('MemoryRetriever', () => {
   it('retrieves ACTIVE memory for a matching IncidentContext', () => {
     const { store, incident, evidence, entry } = seedApproved();
-    const retrieved = createMemoryRetriever(store).retrieve(buildIncidentContext(incident, evidence, BOUNDS));
+    const retrieved = createMemoryRetriever(store).retrieve(buildIncidentContext(incident, evidence, BOUNDS)).memories;
     assert.equal(retrieved.length, 1);
     assert.equal(retrieved[0]?.id, entry.id);
     store.close();
@@ -109,7 +109,7 @@ describe('MemoryRetriever', () => {
   it('does not retrieve DISABLED memory', () => {
     const { store, incident, evidence, entry } = seedApproved();
     createMemoryGovernanceService(store).disable(entry.id);
-    const retrieved = createMemoryRetriever(store).retrieve(buildIncidentContext(incident, evidence, BOUNDS));
+    const retrieved = createMemoryRetriever(store).retrieve(buildIncidentContext(incident, evidence, BOUNDS)).memories;
     assert.equal(retrieved.length, 0);
     store.close();
   });
@@ -117,7 +117,7 @@ describe('MemoryRetriever', () => {
   it('does not retrieve a rejected candidate', () => {
     const { store, incident, evidence, candidate } = seedCandidate();
     createMemoryGovernanceService(store).reject(candidate.id);
-    const retrieved = createMemoryRetriever(store).retrieve(buildIncidentContext(incident, evidence, BOUNDS));
+    const retrieved = createMemoryRetriever(store).retrieve(buildIncidentContext(incident, evidence, BOUNDS)).memories;
     assert.equal(retrieved.length, 0);
     store.close();
   });
@@ -127,8 +127,8 @@ describe('MemoryRetriever', () => {
     const second = seedApproved(first.store, { fingerprint: 'fp-mem-2' });
     const retriever = createMemoryRetriever(first.store);
     const context = buildIncidentContext(first.incident, first.evidence, BOUNDS);
-    const once = retriever.retrieve(context).map((item) => item.id);
-    const twice = retriever.retrieve(context).map((item) => item.id);
+    const once = retriever.retrieve(context).memories.map((item) => item.id);
+    const twice = retriever.retrieve(context).memories.map((item) => item.id);
     assert.deepEqual(once, twice);
     assert.ok(once.includes(first.entry.id));
     assert.ok(once.includes(second.entry.id));

@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 3 completed
+
+- Memory quality (success/failed/usage/effectiveness) is derived from MemoryFeedback
+- MemoryRetriever ranks by quality; conflicting conclusions are listed, not merged
+- InvestigationContext is a frozen handoff for future Pi Runtime
+
 ## M16 completed
 
 - MemoryFeedback records SUCCESS / FAILED / UNKNOWN against Memory + Incident + optional ReasoningResult

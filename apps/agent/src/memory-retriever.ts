@@ -1,11 +1,23 @@
 import type { IncidentContext } from './incident-context.js';
 import type { MemoryEntry } from './memory-governance.js';
+import {
+  deriveMemoryQuality,
+  lastUsedAt,
+  successRatio,
+  withMemoryQuality,
+  type MemoryIntelligence,
+} from './memory-quality.js';
 import type { EventStore } from './store.js';
 
 export const MEMORY_RETRIEVAL_LIMIT = 3;
 
+export interface MemoryRetrieval {
+  memories: MemoryIntelligence[];
+  conflictingMemories: MemoryIntelligence[];
+}
+
 export interface MemoryRetriever {
-  retrieve(context: IncidentContext): MemoryEntry[];
+  retrieve(context: IncidentContext): MemoryRetrieval;
 }
 
 export function createMemoryRetriever(
@@ -14,9 +26,9 @@ export function createMemoryRetriever(
 ): MemoryRetriever {
   const limit = options.limit ?? MEMORY_RETRIEVAL_LIMIT;
   return {
-    retrieve(context: IncidentContext): MemoryEntry[] {
+    retrieve(context: IncidentContext): MemoryRetrieval {
       const queryTokens = contextTokens(context);
-      const scored: Array<{ entry: MemoryEntry; overlap: number }> = [];
+      const matched: RankedMemory[] = [];
       for (const entry of store.listActiveMemoryEntries()) {
         if (entry.status !== 'ACTIVE') continue;
         const origin = originFor(store, entry);
@@ -25,16 +37,54 @@ export function createMemoryRetriever(
         if (origin.service !== context.incident.service) continue;
         const overlap = tokenOverlap(queryTokens, memoryTokens(entry));
         if (overlap === 0) continue;
-        scored.push({ entry, overlap });
+        const feedbacks = store.listMemoryFeedbacks(entry.id);
+        const quality = deriveMemoryQuality(feedbacks, entry.confidence);
+        matched.push({
+          memory: withMemoryQuality(entry, quality),
+          overlap,
+          lastUsedAt: lastUsedAt(feedbacks),
+        });
       }
-      scored.sort((left, right) =>
-        right.overlap - left.overlap
-        || right.entry.confidence - left.entry.confidence
-        || left.entry.id.localeCompare(right.entry.id),
-      );
-      return scored.slice(0, Math.max(1, limit)).map((item) => item.entry);
+      matched.sort(compareRanked);
+      const conflictingMemories = detectConflictingMemories(matched.map((item) => item.memory));
+      return {
+        memories: matched.slice(0, Math.max(1, limit)).map((item) => item.memory),
+        conflictingMemories,
+      };
     },
   };
+}
+
+export function detectConflictingMemories(memories: MemoryIntelligence[]): MemoryIntelligence[] {
+  const conclusions = new Set(memories.map((item) => normalizeConclusion(item.conclusion)));
+  if (conclusions.size <= 1) return [];
+  return [...memories];
+}
+
+interface RankedMemory {
+  memory: MemoryIntelligence;
+  overlap: number;
+  lastUsedAt?: string;
+}
+
+function compareRanked(left: RankedMemory, right: RankedMemory): number {
+  return right.memory.effectivenessScore - left.memory.effectivenessScore
+    || successRatio(right.memory) - successRatio(left.memory)
+    || compareRecent(right.lastUsedAt, left.lastUsedAt)
+    || right.memory.usageCount - left.memory.usageCount
+    || right.overlap - left.overlap
+    || left.memory.id.localeCompare(right.memory.id);
+}
+
+function compareRecent(right?: string, left?: string): number {
+  if (right && left) return right > left ? 1 : right < left ? -1 : 0;
+  if (right) return 1;
+  if (left) return -1;
+  return 0;
+}
+
+function normalizeConclusion(conclusion: string): string {
+  return conclusion.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function originFor(store: EventStore, entry: MemoryEntry): { incidentType: string; service: string } | undefined {
