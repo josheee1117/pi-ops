@@ -332,6 +332,7 @@ describe('ReasoningJob worker', () => {
     assert.equal(executed, 0);
     assert.equal(store.listReasoningResults(incident.id).length, 0);
     assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'WAITING_DELEGATION');
+    assert.equal(store.getDelegationTaskByPlanId(plans[0]!.id)?.status, 'SUBMITTED');
     assert.equal(store.listPendingReasoningJobs(10).length, 0);
     store.close();
   });

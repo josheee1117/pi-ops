@@ -12,15 +12,19 @@ export interface DelegatedReasoningResult {
  * Replaceable contract for a future Pi Runtime.
  * Pi-Ops must not implement agents, tools, or HTTP here.
  */
+export interface PiRuntimeSubmitAck {
+  runtimeTaskId?: string;
+}
+
 export interface PiRuntimeClient {
-  submit(plan: InvestigationPlan): Promise<void>;
+  submit(plan: InvestigationPlan): Promise<PiRuntimeSubmitAck | void>;
   poll(planId: string): Promise<DelegatedReasoningResult | undefined>;
 }
 
 export function createNoopPiRuntimeClient(): PiRuntimeClient {
   const submitted = new Map<string, InvestigationPlan>();
   return {
-    async submit(plan: InvestigationPlan): Promise<void> {
+    async submit(plan: InvestigationPlan): Promise<PiRuntimeSubmitAck | void> {
       submitted.set(plan.id, plan);
     },
     async poll(_planId: string): Promise<DelegatedReasoningResult | undefined> {

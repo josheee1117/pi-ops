@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AgentConfig } from './config.js';
 import { buildIncidentContext } from './incident-context.js';
 import type { MemoryRetriever } from './memory-retriever.js';
+import { buildDelegationTask } from './delegation-task.js';
 import { createNoopPiRuntimeClient, type PiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasonerRegistry, ReasoningResult } from './reasoner.js';
 import {
@@ -79,10 +80,19 @@ export function createReasoningJobWorker(
       if (strategy.name === 'delegated_analysis') {
         const plan = buildInvestigationPlan(job.id, incident, strategy.name);
         if (!store.getInvestigationPlan(plan.id)) store.insertInvestigationPlan(plan);
+        const existingTask = store.getDelegationTaskByPlanId(plan.id);
+        const task = existingTask ?? buildDelegationTask(plan);
+        if (!existingTask) store.insertDelegationTask(task);
         try {
-          await runtime.submit(plan);
-        } catch {
-          // Plan is the durable handoff. Submit is best-effort for the no-op contract.
+          const ack = await runtime.submit(plan);
+          store.markDelegationTaskSubmitted(
+            task.id,
+            new Date().toISOString(),
+            ack && 'runtimeTaskId' in ack ? ack.runtimeTaskId : undefined,
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          store.markDelegationTaskFailed(task.id, message);
         }
         store.markReasoningJobWaitingDelegation(job.id);
         stats.lastDurationMs = Date.now() - started;

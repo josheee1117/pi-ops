@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDelegatedResultIngestionService } from '../delegated-result-ingestion.js';
+import { buildDelegationTask } from '../delegation-task.js';
 import type { DelegatedReasoningResult } from '../pi-runtime-client.js';
 import { buildInvestigationPlan } from '../reasoning-strategy.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
@@ -38,8 +39,11 @@ function waitingJob(store = createEventStore(':memory:')) {
   });
   const plan = buildInvestigationPlan(jobId, incident, 'delegated_analysis', incident.last_seen);
   store.insertInvestigationPlan(plan);
+  const task = buildDelegationTask(plan);
+  store.insertDelegationTask(task);
+  store.markDelegationTaskSubmitted(task.id, incident.last_seen);
   store.markReasoningJobWaitingDelegation(jobId);
-  return { store, incident, evidence, jobId, plan };
+  return { store, incident, evidence, jobId, plan, task };
 }
 
 function payload(overrides: Partial<DelegatedReasoningResult> = {}): DelegatedReasoningResult {
@@ -60,6 +64,8 @@ describe('DelegatedResultIngestionService', () => {
     }).ingest(payload({ investigationPlanId: plan.id }));
     assert.equal(store.getReasoningJob(jobId)?.status, 'COMPLETED');
     assert.equal(result.investigationPlanId, plan.id);
+    assert.equal(result.delegationTaskId, `dtask-${plan.id}`);
+    assert.equal(store.getDelegationTaskByPlanId(plan.id)?.status, 'COMPLETED');
     assert.equal(result.strategy, 'delegated_analysis');
     assert.equal(result.strategyVersion, '1');
     assert.equal(result.reasoningJobId, jobId);
@@ -79,6 +85,20 @@ describe('DelegatedResultIngestionService', () => {
     );
     assert.equal(store.getReasoningJob(jobId)?.status, 'WAITING_DELEGATION');
     assert.equal(store.listReasoningResults(store.getReasoningJob(jobId)!.incidentId).length, 0);
+    store.close();
+  });
+
+  it('rejects a result when the DelegationTask is missing', () => {
+    const { store, plan, jobId } = waitingJob();
+    const task = store.getDelegationTaskByPlanId(plan.id)!;
+    store.markDelegationTaskFailed(task.id, 'gone');
+    assert.throws(
+      () => createDelegatedResultIngestionService(store).ingest(
+        payload({ investigationPlanId: plan.id }),
+      ),
+      /not ready to complete/,
+    );
+    assert.equal(store.getReasoningJob(jobId)?.status, 'WAITING_DELEGATION');
     store.close();
   });
 
@@ -106,6 +126,7 @@ describe('DelegatedResultIngestionService', () => {
     assert.equal(second.id, first.id);
     assert.equal(second.reasoningSummary, first.reasoningSummary);
     assert.equal(store.listReasoningResults(first.incidentId).length, 1);
+    assert.equal(store.getDelegationTaskByPlanId(plan.id)?.status, 'COMPLETED');
     store.close();
   });
 

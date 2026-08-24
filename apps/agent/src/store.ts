@@ -7,6 +7,7 @@ import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
 import type { MemoryEntry } from './memory-governance.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
+import type { DelegationTask } from './delegation-task.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -305,6 +306,19 @@ CREATE TABLE IF NOT EXISTS investigation_plans (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_investigation_plans_job ON investigation_plans (reasoning_job_id, created_at, id);
+`;
+
+const CREATE_DELEGATION_TASKS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS delegation_tasks (
+  id TEXT PRIMARY KEY,
+  investigation_plan_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL,
+  submitted_at TEXT,
+  completed_at TEXT,
+  runtime_task_id TEXT,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_delegation_tasks_status ON delegation_tasks (status, id);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -710,6 +724,12 @@ export interface EventStore {
   insertInvestigationPlan(plan: InvestigationPlan): void;
   getInvestigationPlan(id: string): InvestigationPlan | undefined;
   listInvestigationPlansByJob(reasoningJobId: string): InvestigationPlan[];
+  insertDelegationTask(task: DelegationTask): void;
+  getDelegationTask(id: string): DelegationTask | undefined;
+  getDelegationTaskByPlanId(planId: string): DelegationTask | undefined;
+  markDelegationTaskSubmitted(id: string, submittedAt: string, runtimeTaskId?: string): void;
+  markDelegationTaskCompleted(id: string, completedAt: string): void;
+  markDelegationTaskFailed(id: string, error: string): void;
 
   /** Close the database connection. */
   close(): void;
@@ -774,6 +794,28 @@ interface InvestigationPlanRow {
   created_at: string;
 }
 
+interface DelegationTaskRow {
+  id: string;
+  investigation_plan_id: string;
+  status: DelegationTask['status'];
+  submitted_at: string | null;
+  completed_at: string | null;
+  runtime_task_id: string | null;
+  last_error: string | null;
+}
+
+function mapDelegationTaskRow(row: DelegationTaskRow): DelegationTask {
+  return {
+    id: row.id,
+    investigationPlanId: row.investigation_plan_id,
+    status: row.status,
+    ...(row.submitted_at ? { submittedAt: row.submitted_at } : {}),
+    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+    ...(row.runtime_task_id ? { runtimeTaskId: row.runtime_task_id } : {}),
+    ...(row.last_error ? { lastError: row.last_error } : {}),
+  };
+}
+
 function mapInvestigationPlanRow(row: InvestigationPlanRow): InvestigationPlan {
   return {
     id: row.id,
@@ -819,6 +861,7 @@ function serializeReasoningMetadata(result: ReasoningResult): string | null {
   if (result.strategy) metadata['strategy'] = result.strategy;
   if (result.strategyVersion) metadata['strategyVersion'] = result.strategyVersion;
   if (result.investigationPlanId) metadata['investigationPlanId'] = result.investigationPlanId;
+  if (result.delegationTaskId) metadata['delegationTaskId'] = result.delegationTaskId;
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
@@ -840,6 +883,7 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
       ...(typeof parsed.strategy === 'string' ? { strategy: parsed.strategy } : {}),
       ...(typeof parsed.strategyVersion === 'string' ? { strategyVersion: parsed.strategyVersion } : {}),
       ...(typeof parsed.investigationPlanId === 'string' ? { investigationPlanId: parsed.investigationPlanId } : {}),
+      ...(typeof parsed.delegationTaskId === 'string' ? { delegationTaskId: parsed.delegationTaskId } : {}),
     };
   } catch {
     return {};
@@ -984,6 +1028,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_MEMORY_CANDIDATES_TABLE_SQL);
     db.exec(CREATE_MEMORY_ENTRIES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_PLANS_TABLE_SQL);
+    db.exec(CREATE_DELEGATION_TASKS_TABLE_SQL);
     const memoryCandidateColumns = new Set(
       (db.pragma('table_info(memory_candidates)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1139,6 +1184,32 @@ INSERT INTO investigation_plans (
   const getInvestigationPlanStmt = db.prepare('SELECT * FROM investigation_plans WHERE id = ?');
   const listInvestigationPlansByJobStmt = db.prepare(`
 SELECT * FROM investigation_plans WHERE reasoning_job_id = ? ORDER BY created_at, id;
+`);
+  const insertDelegationTaskStmt = db.prepare(`
+INSERT INTO delegation_tasks (
+  id, investigation_plan_id, status, submitted_at, completed_at, runtime_task_id, last_error
+) VALUES (
+  @id, @investigation_plan_id, @status, @submitted_at, @completed_at, @runtime_task_id, @last_error
+);
+`);
+  const getDelegationTaskStmt = db.prepare('SELECT * FROM delegation_tasks WHERE id = ?');
+  const getDelegationTaskByPlanStmt = db.prepare(
+    'SELECT * FROM delegation_tasks WHERE investigation_plan_id = ?',
+  );
+  const markDelegationTaskSubmittedStmt = db.prepare(`
+UPDATE delegation_tasks
+SET status = 'SUBMITTED', submitted_at = @submitted_at, runtime_task_id = @runtime_task_id, last_error = NULL
+WHERE id = @id;
+`);
+  const markDelegationTaskCompletedStmt = db.prepare(`
+UPDATE delegation_tasks
+SET status = 'COMPLETED', completed_at = @completed_at, last_error = NULL
+WHERE id = @id;
+`);
+  const markDelegationTaskFailedStmt = db.prepare(`
+UPDATE delegation_tasks
+SET status = 'FAILED', last_error = @last_error
+WHERE id = @id;
 `);
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
@@ -1910,6 +1981,44 @@ SELECT * FROM investigation_plans WHERE reasoning_job_id = ? ORDER BY created_at
     listInvestigationPlansByJob(reasoningJobId: string): InvestigationPlan[] {
       return (listInvestigationPlansByJobStmt.all(reasoningJobId) as InvestigationPlanRow[])
         .map(mapInvestigationPlanRow);
+    },
+
+    insertDelegationTask(task: DelegationTask): void {
+      insertDelegationTaskStmt.run({
+        id: task.id,
+        investigation_plan_id: task.investigationPlanId,
+        status: task.status,
+        submitted_at: task.submittedAt ?? null,
+        completed_at: task.completedAt ?? null,
+        runtime_task_id: task.runtimeTaskId ?? null,
+        last_error: task.lastError ?? null,
+      });
+    },
+
+    getDelegationTask(id: string): DelegationTask | undefined {
+      const row = getDelegationTaskStmt.get(id) as DelegationTaskRow | undefined;
+      return row ? mapDelegationTaskRow(row) : undefined;
+    },
+
+    getDelegationTaskByPlanId(planId: string): DelegationTask | undefined {
+      const row = getDelegationTaskByPlanStmt.get(planId) as DelegationTaskRow | undefined;
+      return row ? mapDelegationTaskRow(row) : undefined;
+    },
+
+    markDelegationTaskSubmitted(id: string, submittedAt: string, runtimeTaskId?: string): void {
+      markDelegationTaskSubmittedStmt.run({
+        id,
+        submitted_at: submittedAt,
+        runtime_task_id: runtimeTaskId ?? null,
+      });
+    },
+
+    markDelegationTaskCompleted(id: string, completedAt: string): void {
+      markDelegationTaskCompletedStmt.run({ id, completed_at: completedAt });
+    },
+
+    markDelegationTaskFailed(id: string, error: string): void {
+      markDelegationTaskFailedStmt.run({ id, last_error: error });
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

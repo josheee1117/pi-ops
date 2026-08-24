@@ -17,6 +17,8 @@ export function createDelegatedResultIngestionService(
       validatePayload(input);
       const plan = store.getInvestigationPlan(input.investigationPlanId);
       if (!plan) throw new Error(`InvestigationPlan ${input.investigationPlanId} does not exist`);
+      const task = store.getDelegationTaskByPlanId(plan.id);
+      if (!task) throw new Error(`DelegationTask for plan ${plan.id} does not exist`);
       const job = store.getReasoningJob(plan.reasoningJobId);
       if (!job) throw new Error(`ReasoningJob ${plan.reasoningJobId} does not exist`);
       if (plan.reasoningJobId !== job.id) {
@@ -28,10 +30,14 @@ export function createDelegatedResultIngestionService(
           throw new Error('ReasoningJob already has a result for a different InvestigationPlan');
         }
         if (job.status !== 'COMPLETED') store.markReasoningJobCompleted(job.id);
+        if (task.status !== 'COMPLETED') store.markDelegationTaskCompleted(task.id, now());
         return existing;
       }
       if (job.status !== 'WAITING_DELEGATION') {
         throw new Error(`ReasoningJob ${job.id} is not waiting for delegation`);
+      }
+      if (task.status === 'FAILED' || task.status === 'PENDING') {
+        throw new Error(`DelegationTask ${task.id} is not ready to complete`);
       }
       const incident = store.getIncident(job.incidentId);
       if (!incident) throw new Error(`Incident ${job.incidentId} does not exist`);
@@ -59,11 +65,13 @@ export function createDelegatedResultIngestionService(
         strategy: plan.strategy,
         strategyVersion: REASONING_STRATEGY_VERSION,
         investigationPlanId: plan.id,
+        delegationTaskId: task.id,
         ...(input.memoryIds && input.memoryIds.length > 0
           ? { usedMemoryEntryIds: [...input.memoryIds] }
           : {}),
       };
       store.insertReasoningResult(result);
+      store.markDelegationTaskCompleted(task.id, result.createdAt);
       store.markReasoningJobCompleted(job.id);
       return store.getReasoningResult(result.id) ?? result;
     },

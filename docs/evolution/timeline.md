@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M14 lifecycle
+
+- DelegationTask tracks PENDING → SUBMITTED → COMPLETED without executing agents
+- ingest requires plan + task; ReasoningResult records delegationTaskId
+- ADR-0014 documents Pi-Ops owning delegation lifecycle
+
 ## M14 completed
 
 - DelegatedReasoningResult ingest validates plan, job, confidence, and incident evidence ids
