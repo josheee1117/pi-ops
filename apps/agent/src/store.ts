@@ -8,6 +8,9 @@ import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluatio
 import type { MemoryFeedback } from './memory-feedback.js';
 import type { MemoryEntry } from './memory-governance.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
+import type { InvestigationReport } from './investigation-report.js';
+import type { InvestigationContext } from './investigation-context.js';
+import type { InvestigationSession } from './investigation-session.js';
 import type { DelegationTask } from './delegation-task.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
@@ -336,6 +339,41 @@ CREATE TABLE IF NOT EXISTS delegation_tasks (
   last_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_delegation_tasks_status ON delegation_tasks (status, id);
+`;
+
+const CREATE_INVESTIGATION_CONTEXT_SNAPSHOTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_context_snapshots (
+  hash TEXT PRIMARY KEY,
+  context_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
+const CREATE_INVESTIGATION_SESSIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_sessions (
+  id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL,
+  context_snapshot_hash TEXT NOT NULL,
+  delegation_task_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_investigation_sessions_incident
+  ON investigation_sessions (incident_id, created_at, id);
+`;
+
+const CREATE_INVESTIGATION_REPORTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_reports (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL UNIQUE,
+  hypothesis TEXT NOT NULL,
+  supporting_evidence_ids_json TEXT NOT NULL,
+  contradicting_evidence_ids_json TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  recommendation TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -749,6 +787,18 @@ export interface EventStore {
   markDelegationTaskSubmitted(id: string, submittedAt: string, runtimeTaskId?: string): void;
   markDelegationTaskCompleted(id: string, completedAt: string): void;
   markDelegationTaskFailed(id: string, error: string): void;
+  insertInvestigationContextSnapshot(hash: string, context: InvestigationContext, createdAt: string): void;
+  getInvestigationContextSnapshot(hash: string): InvestigationContext | undefined;
+  insertInvestigationSession(session: InvestigationSession): void;
+  getInvestigationSession(id: string): InvestigationSession | undefined;
+  updateInvestigationSessionStatus(
+    id: string,
+    status: InvestigationSession['status'],
+    completedAt?: string,
+  ): void;
+  insertInvestigationReport(report: InvestigationReport): void;
+  getInvestigationReport(id: string): InvestigationReport | undefined;
+  getInvestigationReportBySessionId(sessionId: string): InvestigationReport | undefined;
 
   /** Close the database connection. */
   close(): void;
@@ -849,6 +899,60 @@ interface DelegationTaskRow {
   last_error: string | null;
 }
 
+interface InvestigationSessionRow {
+  id: string;
+  incident_id: string;
+  context_snapshot_hash: string;
+  delegation_task_id: string;
+  status: InvestigationSession['status'];
+  created_at: string;
+  completed_at: string | null;
+}
+
+interface InvestigationReportRow {
+  id: string;
+  session_id: string;
+  hypothesis: string;
+  supporting_evidence_ids_json: string;
+  contradicting_evidence_ids_json: string;
+  confidence: number;
+  recommendation: string;
+  created_at: string;
+}
+
+function mapInvestigationSessionRow(row: InvestigationSessionRow): InvestigationSession {
+  return {
+    id: row.id,
+    incidentId: row.incident_id,
+    contextSnapshotHash: row.context_snapshot_hash,
+    delegationTaskId: row.delegation_task_id,
+    status: row.status,
+    createdAt: row.created_at,
+    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+  };
+}
+
+function mapInvestigationReportRow(row: InvestigationReportRow): InvestigationReport {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    hypothesis: row.hypothesis,
+    supportingEvidenceIds: JSON.parse(row.supporting_evidence_ids_json) as string[],
+    contradictingEvidenceIds: JSON.parse(row.contradicting_evidence_ids_json) as string[],
+    confidence: row.confidence,
+    recommendation: row.recommendation,
+    createdAt: row.created_at,
+  };
+}
+
+function freezeSnapshot<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const nested of Object.values(value)) freezeSnapshot(nested);
+  }
+  return value;
+}
+
 function mapDelegationTaskRow(row: DelegationTaskRow): DelegationTask {
   return {
     id: row.id,
@@ -929,6 +1033,8 @@ function serializeReasoningMetadata(result: ReasoningResult): string | null {
   if (result.strategyVersion) metadata['strategyVersion'] = result.strategyVersion;
   if (result.investigationPlanId) metadata['investigationPlanId'] = result.investigationPlanId;
   if (result.delegationTaskId) metadata['delegationTaskId'] = result.delegationTaskId;
+  if (result.investigationSessionId) metadata['investigationSessionId'] = result.investigationSessionId;
+  if (result.investigationReportId) metadata['investigationReportId'] = result.investigationReportId;
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
@@ -951,6 +1057,8 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
       ...(typeof parsed.strategyVersion === 'string' ? { strategyVersion: parsed.strategyVersion } : {}),
       ...(typeof parsed.investigationPlanId === 'string' ? { investigationPlanId: parsed.investigationPlanId } : {}),
       ...(typeof parsed.delegationTaskId === 'string' ? { delegationTaskId: parsed.delegationTaskId } : {}),
+      ...(typeof parsed.investigationSessionId === 'string' ? { investigationSessionId: parsed.investigationSessionId } : {}),
+      ...(typeof parsed.investigationReportId === 'string' ? { investigationReportId: parsed.investigationReportId } : {}),
     };
   } catch {
     return {};
@@ -1106,6 +1214,9 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_MEMORY_FEEDBACKS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_PLANS_TABLE_SQL);
     db.exec(CREATE_DELEGATION_TASKS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_CONTEXT_SNAPSHOTS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_SESSIONS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
     const memoryCandidateColumns = new Set(
       (db.pragma('table_info(memory_candidates)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1300,6 +1411,39 @@ UPDATE delegation_tasks
 SET status = 'FAILED', last_error = @last_error
 WHERE id = @id;
 `);
+  const insertInvestigationContextSnapshotStmt = db.prepare(`
+INSERT OR IGNORE INTO investigation_context_snapshots (hash, context_json, created_at)
+VALUES (@hash, @context_json, @created_at);
+`);
+  const getInvestigationContextSnapshotStmt = db.prepare(
+    'SELECT * FROM investigation_context_snapshots WHERE hash = ?',
+  );
+  const insertInvestigationSessionStmt = db.prepare(`
+INSERT INTO investigation_sessions (
+  id, incident_id, context_snapshot_hash, delegation_task_id, status, created_at, completed_at
+) VALUES (
+  @id, @incident_id, @context_snapshot_hash, @delegation_task_id, @status, @created_at, @completed_at
+);
+`);
+  const getInvestigationSessionStmt = db.prepare('SELECT * FROM investigation_sessions WHERE id = ?');
+  const updateInvestigationSessionStatusStmt = db.prepare(`
+UPDATE investigation_sessions
+SET status = @status, completed_at = COALESCE(@completed_at, completed_at)
+WHERE id = @id;
+`);
+  const insertInvestigationReportStmt = db.prepare(`
+INSERT INTO investigation_reports (
+  id, session_id, hypothesis, supporting_evidence_ids_json, contradicting_evidence_ids_json,
+  confidence, recommendation, created_at
+) VALUES (
+  @id, @session_id, @hypothesis, @supporting_evidence_ids_json, @contradicting_evidence_ids_json,
+  @confidence, @recommendation, @created_at
+);
+`);
+  const getInvestigationReportStmt = db.prepare('SELECT * FROM investigation_reports WHERE id = ?');
+  const getInvestigationReportBySessionStmt = db.prepare(
+    'SELECT * FROM investigation_reports WHERE session_id = ?',
+  );
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -2100,6 +2244,74 @@ WHERE id = @id;
 
     markDelegationTaskFailed(id: string, error: string): void {
       markDelegationTaskFailedStmt.run({ id, last_error: error });
+    },
+
+    insertInvestigationContextSnapshot(hash: string, context: InvestigationContext, createdAt: string): void {
+      insertInvestigationContextSnapshotStmt.run({
+        hash,
+        context_json: JSON.stringify(context),
+        created_at: createdAt,
+      });
+    },
+
+    getInvestigationContextSnapshot(hash: string): InvestigationContext | undefined {
+      const row = getInvestigationContextSnapshotStmt.get(hash) as
+        | { hash: string; context_json: string; created_at: string }
+        | undefined;
+      if (!row) return undefined;
+      return freezeSnapshot(JSON.parse(row.context_json) as InvestigationContext);
+    },
+
+    insertInvestigationSession(session: InvestigationSession): void {
+      insertInvestigationSessionStmt.run({
+        id: session.id,
+        incident_id: session.incidentId,
+        context_snapshot_hash: session.contextSnapshotHash,
+        delegation_task_id: session.delegationTaskId,
+        status: session.status,
+        created_at: session.createdAt,
+        completed_at: session.completedAt ?? null,
+      });
+    },
+
+    getInvestigationSession(id: string): InvestigationSession | undefined {
+      const row = getInvestigationSessionStmt.get(id) as InvestigationSessionRow | undefined;
+      return row ? mapInvestigationSessionRow(row) : undefined;
+    },
+
+    updateInvestigationSessionStatus(
+      id: string,
+      status: InvestigationSession['status'],
+      completedAt?: string,
+    ): void {
+      updateInvestigationSessionStatusStmt.run({
+        id,
+        status,
+        completed_at: completedAt ?? null,
+      });
+    },
+
+    insertInvestigationReport(report: InvestigationReport): void {
+      insertInvestigationReportStmt.run({
+        id: report.id,
+        session_id: report.sessionId,
+        hypothesis: report.hypothesis,
+        supporting_evidence_ids_json: JSON.stringify(report.supportingEvidenceIds),
+        contradicting_evidence_ids_json: JSON.stringify(report.contradictingEvidenceIds),
+        confidence: report.confidence,
+        recommendation: report.recommendation,
+        created_at: report.createdAt,
+      });
+    },
+
+    getInvestigationReport(id: string): InvestigationReport | undefined {
+      const row = getInvestigationReportStmt.get(id) as InvestigationReportRow | undefined;
+      return row ? mapInvestigationReportRow(row) : undefined;
+    },
+
+    getInvestigationReportBySessionId(sessionId: string): InvestigationReport | undefined {
+      const row = getInvestigationReportBySessionStmt.get(sessionId) as InvestigationReportRow | undefined;
+      return row ? mapInvestigationReportRow(row) : undefined;
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

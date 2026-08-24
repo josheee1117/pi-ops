@@ -88,7 +88,10 @@ describe('ReasoningEvaluationService', () => {
 
   it('keeps multiple evaluations for one ReasoningResult', () => {
     const { store, result } = persistCompleteResult();
-    const service = createReasoningEvaluationService(store);
+    let tick = 0;
+    const service = createReasoningEvaluationService(store, {
+      now: () => `2026-08-21T01:00:0${tick++}.000Z`,
+    });
     service.evaluate({ reasoningResultId: result.id, score: 0.4, feedback: 'uncertain' });
     service.evaluate({ reasoningResultId: result.id, score: 0.95, feedback: 'Confirmed by DBA' });
     const listed = store.listReasoningEvaluations(result.id);

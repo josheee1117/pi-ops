@@ -313,6 +313,9 @@ describe('ReasoningJob worker', () => {
       async poll() {
         return undefined;
       },
+      async submitInvestigation() {
+        return undefined;
+      },
     };
     const worker = createReasoningJobWorker(
       makeConfig(),

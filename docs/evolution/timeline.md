@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 4 completed
+
+- InvestigationSession snapshots InvestigationContext and tracks CREATED → COMPLETED/FAILED
+- Pi Runtime returns InvestigationReport; Incident/Evidence stay immutable
+- MemoryCandidate from this loop requires report + evaluation
+
 ## Phase 3 completed
 
 - Memory quality (success/failed/usage/effectiveness) is derived from MemoryFeedback

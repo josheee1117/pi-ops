@@ -33,6 +33,8 @@ export interface ReasoningResult {
   strategyVersion?: string;
   investigationPlanId?: string;
   delegationTaskId?: string;
+  investigationSessionId?: string;
+  investigationReportId?: string;
 }
 
 export interface Reasoner {
