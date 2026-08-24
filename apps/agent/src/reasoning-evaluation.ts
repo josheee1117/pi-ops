@@ -13,6 +13,8 @@ export interface ReasoningEvaluation {
   reasoningResultId: string;
   evaluatorType: string;
   score: number;
+  confidenceScore: number;
+  evidenceCoverageScore: number;
   feedback: string;
   createdAt: string;
 }
@@ -33,7 +35,9 @@ export interface MemoryCandidate {
 
 export interface EvaluateInput {
   reasoningResultId: string;
-  score: number;
+  score?: number;
+  confidenceScore?: number;
+  evidenceCoverageScore?: number;
   feedback: string;
   evaluatorType?: string;
 }
@@ -55,9 +59,7 @@ export function createReasoningEvaluationService(
 
   return {
     evaluate(input: EvaluateInput): EvaluateResult {
-      if (typeof input.score !== 'number' || !Number.isFinite(input.score) || input.score < 0 || input.score > 1) {
-        throw new Error('evaluation score must be a number in [0, 1]');
-      }
+      const scores = normalizeQualityScores(input);
       const feedback = input.feedback.trim();
       if (!feedback) throw new Error('evaluation feedback is required');
       if (feedback.length > MAX_EVALUATION_FEEDBACK_CHARS) {
@@ -73,7 +75,9 @@ export function createReasoningEvaluationService(
         id: `eval-${randomUUID()}`,
         reasoningResultId: result.id,
         evaluatorType,
-        score: input.score,
+        score: scores.score,
+        confidenceScore: scores.confidenceScore,
+        evidenceCoverageScore: scores.evidenceCoverageScore,
         feedback,
         createdAt: now(),
       };
@@ -95,7 +99,34 @@ export function shouldCreateCandidate(
   evaluation: ReasoningEvaluation,
   scoreThreshold = MEMORY_CANDIDATE_SCORE_THRESHOLD,
 ): boolean {
-  return result.status === 'complete' && evaluation.score >= scoreThreshold;
+  return result.status === 'complete'
+    && evaluation.confidenceScore >= scoreThreshold
+    && evaluation.evidenceCoverageScore >= scoreThreshold;
+}
+
+function requireUnitScore(name: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`${name} must be a number in [0, 1]`);
+  }
+  return value;
+}
+
+function normalizeQualityScores(input: EvaluateInput): {
+  score: number;
+  confidenceScore: number;
+  evidenceCoverageScore: number;
+} {
+  if (input.confidenceScore !== undefined || input.evidenceCoverageScore !== undefined) {
+    const confidenceScore = requireUnitScore('confidenceScore', input.confidenceScore);
+    const evidenceCoverageScore = requireUnitScore('evidenceCoverageScore', input.evidenceCoverageScore);
+    return {
+      score: Math.min(confidenceScore, evidenceCoverageScore),
+      confidenceScore,
+      evidenceCoverageScore,
+    };
+  }
+  const score = requireUnitScore('score', input.score);
+  return { score, confidenceScore: score, evidenceCoverageScore: score };
 }
 
 export function buildMemoryCandidate(

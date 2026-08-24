@@ -254,6 +254,8 @@ CREATE TABLE IF NOT EXISTS reasoning_evaluations (
   reasoning_result_id TEXT NOT NULL,
   evaluator_type TEXT NOT NULL,
   score REAL NOT NULL,
+  confidence_score REAL,
+  evidence_coverage_score REAL,
   feedback TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
@@ -741,6 +743,32 @@ function generateId(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
 }
 
+interface EvaluationRow {
+  id: string;
+  reasoning_result_id: string;
+  evaluator_type: string;
+  score: number;
+  confidence_score: number | null;
+  evidence_coverage_score: number | null;
+  feedback: string;
+  created_at: string;
+}
+
+function mapEvaluationRow(row: EvaluationRow): ReasoningEvaluation {
+  const confidenceScore = row.confidence_score ?? row.score;
+  const evidenceCoverageScore = row.evidence_coverage_score ?? row.score;
+  return {
+    id: row.id,
+    reasoningResultId: row.reasoning_result_id,
+    evaluatorType: row.evaluator_type,
+    score: row.score,
+    confidenceScore,
+    evidenceCoverageScore,
+    feedback: row.feedback,
+    createdAt: row.created_at,
+  };
+}
+
 interface MemoryCandidateRow {
   id: string;
   source_reasoning_result_id: string;
@@ -1025,6 +1053,15 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_REASONING_RESULTS_TABLE_SQL);
     db.exec(CREATE_REASONING_JOBS_TABLE_SQL);
     db.exec(CREATE_REASONING_EVALUATIONS_TABLE_SQL);
+    const evaluationColumns = new Set(
+      (db.pragma('table_info(reasoning_evaluations)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!evaluationColumns.has('confidence_score')) {
+      db.exec('ALTER TABLE reasoning_evaluations ADD COLUMN confidence_score REAL');
+    }
+    if (!evaluationColumns.has('evidence_coverage_score')) {
+      db.exec('ALTER TABLE reasoning_evaluations ADD COLUMN evidence_coverage_score REAL');
+    }
     db.exec(CREATE_MEMORY_CANDIDATES_TABLE_SQL);
     db.exec(CREATE_MEMORY_ENTRIES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_PLANS_TABLE_SQL);
@@ -1126,9 +1163,9 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
   const getReasoningResultStmt = db.prepare('SELECT * FROM reasoning_results WHERE id = ?');
   const insertReasoningEvaluationStmt = db.prepare(`
 INSERT INTO reasoning_evaluations (
-  id, reasoning_result_id, evaluator_type, score, feedback, created_at
+  id, reasoning_result_id, evaluator_type, score, confidence_score, evidence_coverage_score, feedback, created_at
 ) VALUES (
-  @id, @reasoning_result_id, @evaluator_type, @score, @feedback, @created_at
+  @id, @reasoning_result_id, @evaluator_type, @score, @confidence_score, @evidence_coverage_score, @feedback, @created_at
 );
 `);
   const listReasoningEvaluationsStmt = db.prepare(`
@@ -1852,31 +1889,22 @@ WHERE id = @id;
         reasoning_result_id: evaluation.reasoningResultId,
         evaluator_type: evaluation.evaluatorType,
         score: evaluation.score,
+        confidence_score: evaluation.confidenceScore,
+        evidence_coverage_score: evaluation.evidenceCoverageScore,
         feedback: evaluation.feedback,
         created_at: evaluation.createdAt,
       });
     },
 
     listReasoningEvaluations(reasoningResultId: string): ReasoningEvaluation[] {
-      const rows = listReasoningEvaluationsStmt.all(reasoningResultId) as Array<{
-        id: string;
-        reasoning_result_id: string;
-        evaluator_type: string;
-        score: number;
-        feedback: string;
-        created_at: string;
-      }>;
-      return rows.map((row) => ({
-        id: row.id,
-        reasoningResultId: row.reasoning_result_id,
-        evaluatorType: row.evaluator_type,
-        score: row.score,
-        feedback: row.feedback,
-        createdAt: row.created_at,
-      }));
+      const rows = listReasoningEvaluationsStmt.all(reasoningResultId) as EvaluationRow[];
+      return rows.map(mapEvaluationRow);
     },
 
     insertMemoryCandidate(candidate: MemoryCandidate): void {
+      if (!candidate.sourceEvaluationId) {
+        throw new Error('MemoryCandidate requires a sourceEvaluationId');
+      }
       insertMemoryCandidateStmt.run({
         id: candidate.id,
         source_reasoning_result_id: candidate.sourceReasoningResultId,
@@ -1909,23 +1937,8 @@ WHERE id = @id;
     },
 
     getReasoningEvaluation(id: string): ReasoningEvaluation | undefined {
-      const row = getReasoningEvaluationStmt.get(id) as {
-        id: string;
-        reasoning_result_id: string;
-        evaluator_type: string;
-        score: number;
-        feedback: string;
-        created_at: string;
-      } | undefined;
-      if (!row) return undefined;
-      return {
-        id: row.id,
-        reasoningResultId: row.reasoning_result_id,
-        evaluatorType: row.evaluator_type,
-        score: row.score,
-        feedback: row.feedback,
-        createdAt: row.created_at,
-      };
+      const row = getReasoningEvaluationStmt.get(id) as EvaluationRow | undefined;
+      return row ? mapEvaluationRow(row) : undefined;
     },
 
     insertMemoryEntry(entry: MemoryEntry): void {

@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M15 completed
+
+- ReasoningEvaluation records confidenceScore and evidenceCoverageScore
+- MemoryCandidate requires an evaluation; both scores must meet the threshold
+- same evaluation path works for FakeReasoner, PiReasoner, and delegated results
+
 ## M14 lifecycle
 
 - DelegationTask tracks PENDING → SUBMITTED → COMPLETED without executing agents

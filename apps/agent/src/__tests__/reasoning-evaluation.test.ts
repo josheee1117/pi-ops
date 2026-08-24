@@ -78,6 +78,8 @@ describe('ReasoningEvaluationService', () => {
     });
     assert.equal(evaluation.reasoningResultId, result.id);
     assert.equal(evaluation.score, 0.9);
+    assert.equal(evaluation.confidenceScore, 0.9);
+    assert.equal(evaluation.evidenceCoverageScore, 0.9);
     assert.equal(evaluation.feedback, 'Confirmed by DBA');
     assert.equal(evaluation.evaluatorType, 'human');
     assert.equal(store.listReasoningEvaluations(result.id).length, 1);
@@ -176,6 +178,73 @@ describe('ReasoningEvaluationService', () => {
     const after = reasoner.reason(incident, evidence);
     assert.deepEqual(after, before);
     assert.deepEqual(after.hypotheses, [HYPOTHESIS_DATABASE_INVESTIGATION]);
+    store.close();
+  });
+
+  it('rejects invalid quality scores', () => {
+    const { store, result } = persistCompleteResult();
+    assert.throws(
+      () => createReasoningEvaluationService(store).evaluate({
+        reasoningResultId: result.id,
+        confidenceScore: 1.2,
+        evidenceCoverageScore: 0.9,
+        feedback: 'bad',
+      }),
+      /confidenceScore/,
+    );
+    assert.equal(store.listReasoningEvaluations(result.id).length, 0);
+    store.close();
+  });
+
+  it('evaluates a delegated ReasoningResult', () => {
+    const { store, incident } = persistCompleteResult();
+    const delegated = {
+      id: 'reason-delegated-eval',
+      incidentId: incident.id,
+      createdAt: incident.last_seen,
+      hypotheses: ['database side investigation required'],
+      missingEvidence: [],
+      confidence: 0.72,
+      status: 'complete' as const,
+      reasoningJobId: `rj-delegated-${incident.id}`,
+      reasonerType: 'delegated_analysis',
+      strategy: 'delegated_analysis',
+      investigationPlanId: 'iplan-eval',
+      reasoningSummary: 'database side investigation required',
+    };
+    store.insertReasoningResult(delegated);
+    const { evaluation, candidate } = createReasoningEvaluationService(store).evaluate({
+      reasoningResultId: delegated.id,
+      confidenceScore: 0.88,
+      evidenceCoverageScore: 0.91,
+      feedback: 'Delegated summary matches evidence',
+    });
+    assert.equal(evaluation.confidenceScore, 0.88);
+    assert.equal(evaluation.evidenceCoverageScore, 0.91);
+    assert.ok(candidate);
+    assert.equal(candidate.sourceEvaluationId, evaluation.id);
+    store.close();
+  });
+
+  it('requires an evaluation to create a MemoryCandidate', () => {
+    const { store, result } = persistCompleteResult();
+    assert.throws(
+      () => store.insertMemoryCandidate({
+        id: 'mem-orphan',
+        sourceReasoningResultId: result.id,
+        sourceEvaluationId: '',
+        incidentType: 'application.slow_sql',
+        pattern: 'orphan',
+        evidenceSummary: 'none',
+        conclusion: 'none',
+        resolution: 'none',
+        confidence: 0.9,
+        status: 'PENDING',
+        createdAt: '2026-08-21T01:00:00.000Z',
+      }),
+      /sourceEvaluationId/,
+    );
+    assert.equal(store.listMemoryCandidates(result.id).length, 0);
     store.close();
   });
 });
