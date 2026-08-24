@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M16 completed
+
+- MemoryFeedback records SUCCESS / FAILED / UNKNOWN against Memory + Incident + optional ReasoningResult
+- MemoryEntry content is not rewritten; later evolution reads feedback history
+- unknown memory is rejected; effectivenessScore stays in [0, 1]
+
 ## M15 completed
 
 - ReasoningEvaluation records confidenceScore and evidenceCoverageScore

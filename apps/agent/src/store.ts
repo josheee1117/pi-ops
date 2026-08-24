@@ -5,6 +5,7 @@ import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
+import type { MemoryFeedback } from './memory-feedback.js';
 import type { MemoryEntry } from './memory-governance.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
 import type { DelegationTask } from './delegation-task.js';
@@ -296,6 +297,20 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   approved_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_memory_entries_status ON memory_entries (status, created_at, id);
+`;
+
+const CREATE_MEMORY_FEEDBACKS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS memory_feedbacks (
+  id TEXT PRIMARY KEY,
+  memory_entry_id TEXT NOT NULL,
+  incident_id TEXT NOT NULL,
+  reasoning_result_id TEXT,
+  outcome TEXT NOT NULL,
+  effectiveness_score REAL NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_feedbacks_entry
+  ON memory_feedbacks (memory_entry_id, created_at, id);
 `;
 
 const CREATE_INVESTIGATION_PLANS_TABLE_SQL = `
@@ -723,6 +738,8 @@ export interface EventStore {
   getMemoryEntryByCandidateId(candidateId: string): MemoryEntry | undefined;
   listActiveMemoryEntries(): MemoryEntry[];
   updateMemoryEntryStatus(id: string, status: MemoryEntry['status']): void;
+  insertMemoryFeedback(feedback: MemoryFeedback): void;
+  listMemoryFeedbacks(memoryEntryId: string): MemoryFeedback[];
   insertInvestigationPlan(plan: InvestigationPlan): void;
   getInvestigationPlan(id: string): InvestigationPlan | undefined;
   listInvestigationPlansByJob(reasoningJobId: string): InvestigationPlan[];
@@ -851,6 +868,28 @@ function mapInvestigationPlanRow(row: InvestigationPlanRow): InvestigationPlan {
     strategy: row.strategy,
     objectives: JSON.parse(row.objectives_json) as string[],
     requestedCapabilities: JSON.parse(row.requested_capabilities_json) as string[],
+    createdAt: row.created_at,
+  };
+}
+
+interface MemoryFeedbackRow {
+  id: string;
+  memory_entry_id: string;
+  incident_id: string;
+  reasoning_result_id: string | null;
+  outcome: MemoryFeedback['outcome'];
+  effectiveness_score: number;
+  created_at: string;
+}
+
+function mapMemoryFeedbackRow(row: MemoryFeedbackRow): MemoryFeedback {
+  return {
+    id: row.id,
+    memoryEntryId: row.memory_entry_id,
+    incidentId: row.incident_id,
+    ...(row.reasoning_result_id ? { reasoningResultId: row.reasoning_result_id } : {}),
+    outcome: row.outcome,
+    effectivenessScore: row.effectiveness_score,
     createdAt: row.created_at,
   };
 }
@@ -1064,6 +1103,7 @@ export function createEventStore(dbPath: string): EventStore {
     }
     db.exec(CREATE_MEMORY_CANDIDATES_TABLE_SQL);
     db.exec(CREATE_MEMORY_ENTRIES_TABLE_SQL);
+    db.exec(CREATE_MEMORY_FEEDBACKS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_PLANS_TABLE_SQL);
     db.exec(CREATE_DELEGATION_TASKS_TABLE_SQL);
     const memoryCandidateColumns = new Set(
@@ -1210,6 +1250,18 @@ SELECT * FROM memory_entries WHERE status = 'ACTIVE' ORDER BY created_at, id;
 `);
   const updateMemoryEntryStatusStmt = db.prepare(`
 UPDATE memory_entries SET status = @status WHERE id = @id;
+`);
+  const insertMemoryFeedbackStmt = db.prepare(`
+INSERT INTO memory_feedbacks (
+  id, memory_entry_id, incident_id, reasoning_result_id, outcome, effectiveness_score, created_at
+) VALUES (
+  @id, @memory_entry_id, @incident_id, @reasoning_result_id, @outcome, @effectiveness_score, @created_at
+);
+`);
+  const listMemoryFeedbacksStmt = db.prepare(`
+SELECT * FROM memory_feedbacks
+WHERE memory_entry_id = ?
+ORDER BY created_at, id;
 `);
   const insertInvestigationPlanStmt = db.prepare(`
 INSERT INTO investigation_plans (
@@ -1973,6 +2025,22 @@ WHERE id = @id;
 
     updateMemoryEntryStatus(id: string, status: MemoryEntry['status']): void {
       updateMemoryEntryStatusStmt.run({ id, status });
+    },
+
+    insertMemoryFeedback(feedback: MemoryFeedback): void {
+      insertMemoryFeedbackStmt.run({
+        id: feedback.id,
+        memory_entry_id: feedback.memoryEntryId,
+        incident_id: feedback.incidentId,
+        reasoning_result_id: feedback.reasoningResultId ?? null,
+        outcome: feedback.outcome,
+        effectiveness_score: feedback.effectivenessScore,
+        created_at: feedback.createdAt,
+      });
+    },
+
+    listMemoryFeedbacks(memoryEntryId: string): MemoryFeedback[] {
+      return (listMemoryFeedbacksStmt.all(memoryEntryId) as MemoryFeedbackRow[]).map(mapMemoryFeedbackRow);
     },
 
     insertInvestigationPlan(plan: InvestigationPlan): void {

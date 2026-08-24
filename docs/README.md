@@ -12,8 +12,9 @@ The current implementation source of truth is:
 8. `adr/ADR-0013-delegated-result-ingestion.md`
 9. `adr/ADR-0014-delegation-lifecycle.md`
 10. `adr/ADR-0015-reasoning-quality-evaluation.md`
-11. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-12. `evolution/timeline.md`
+11. `adr/ADR-0016-memory-feedback-loop.md`
+12. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+13. `evolution/timeline.md`
 
 The architecture intentionally separates:
 
