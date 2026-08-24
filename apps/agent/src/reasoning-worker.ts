@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AgentConfig } from './config.js';
 import { buildIncidentContext } from './incident-context.js';
 import type { MemoryRetriever } from './memory-retriever.js';
+import { createNoopPiRuntimeClient, type PiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasonerRegistry, ReasoningResult } from './reasoner.js';
 import {
   buildInvestigationPlan,
@@ -46,6 +47,7 @@ export function createReasoningJobWorker(
   registry: ReasonerRegistry,
   strategies: ReasoningStrategyRegistry = createDefaultReasoningStrategies(),
   retriever?: MemoryRetriever,
+  runtime: PiRuntimeClient = createNoopPiRuntimeClient(),
 ): ReasoningJobWorker {
   let timer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
@@ -75,8 +77,16 @@ export function createReasoningJobWorker(
         return;
       }
       if (strategy.name === 'delegated_analysis') {
-        store.insertInvestigationPlan(buildInvestigationPlan(job.id, incident, strategy.name));
-        throw new Error('delegated_analysis is owned by Pi Runtime and is not implemented in Pi-Ops');
+        const plan = buildInvestigationPlan(job.id, incident, strategy.name);
+        if (!store.getInvestigationPlan(plan.id)) store.insertInvestigationPlan(plan);
+        try {
+          await runtime.submit(plan);
+        } catch {
+          // Plan is the durable handoff. Submit is best-effort for the no-op contract.
+        }
+        store.markReasoningJobWaitingDelegation(job.id);
+        stats.lastDurationMs = Date.now() - started;
+        return;
       }
       const reasoner = registry.get(job.reasonerType);
       if (!reasoner) throw new Error(`unknown reasoner type ${job.reasonerType}`);

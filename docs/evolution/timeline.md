@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## M13 completed
+
+- delegated_analysis persists InvestigationPlan and enters WAITING_DELEGATION
+- PiRuntimeClient submit/poll is a replaceable contract with a no-op adapter
+- delegated work is not marked FAILED; unknown strategies still fail closed
+
 ## M12 completed
 
 - InvestigationPlan is the durable handoff for delegated_analysis

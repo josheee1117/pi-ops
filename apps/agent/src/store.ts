@@ -109,7 +109,7 @@ interface EvidenceJobRow {
   updated_at: string;
 }
 
-export type ReasoningJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type ReasoningJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_DELEGATION';
 
 export interface ReasoningJob {
   id: string;
@@ -543,6 +543,12 @@ SET status = 'FAILED', last_error = @last_error, updated_at = @updated_at
 WHERE id = @id;
 `;
 
+const MARK_REASONING_JOB_WAITING_DELEGATION_SQL = `
+UPDATE reasoning_jobs
+SET status = 'WAITING_DELEGATION', last_error = NULL, updated_at = @updated_at
+WHERE id = @id;
+`;
+
 const RESET_RUNNING_REASONING_JOBS_SQL = `
 UPDATE reasoning_jobs SET status = 'PENDING', updated_at = ? WHERE status = 'RUNNING';
 `;
@@ -682,6 +688,7 @@ export interface EventStore {
   markReasoningJobRunning(id: string): boolean;
   markReasoningJobCompleted(id: string): void;
   markReasoningJobFailed(id: string, error: string): void;
+  markReasoningJobWaitingDelegation(id: string): void;
   resetRunningReasoningJobs(): number;
   getReasoningJob(id: string): ReasoningJob | undefined;
   insertReasoningResult(result: ReasoningResult): boolean;
@@ -1065,6 +1072,7 @@ SELECT * FROM reasoning_results WHERE incident_id = ? ORDER BY created_at, id;
   const markReasoningJobRunningStmt = db.prepare(MARK_REASONING_JOB_RUNNING_SQL);
   const markReasoningJobCompletedStmt = db.prepare(MARK_REASONING_JOB_COMPLETED_SQL);
   const markReasoningJobFailedStmt = db.prepare(MARK_REASONING_JOB_FAILED_SQL);
+  const markReasoningJobWaitingDelegationStmt = db.prepare(MARK_REASONING_JOB_WAITING_DELEGATION_SQL);
   const resetRunningReasoningJobsStmt = db.prepare(RESET_RUNNING_REASONING_JOBS_SQL);
   const getReasoningJobStmt = db.prepare('SELECT * FROM reasoning_jobs WHERE id = ?');
   const getReasoningResultByJobStmt = db.prepare(
@@ -1712,6 +1720,13 @@ SELECT * FROM investigation_plans WHERE reasoning_job_id = ? ORDER BY created_at
       markReasoningJobFailedStmt.run({
         id,
         last_error: error,
+        updated_at: new Date().toISOString(),
+      });
+    },
+
+    markReasoningJobWaitingDelegation(id: string): void {
+      markReasoningJobWaitingDelegationStmt.run({
+        id,
         updated_at: new Date().toISOString(),
       });
     },

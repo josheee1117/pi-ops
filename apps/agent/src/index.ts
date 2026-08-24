@@ -8,6 +8,7 @@ import { createFakeReasoner, createReasonerRegistry, type Reasoner } from './rea
 import { createPiReasoner, PI_REASONER_VERSION } from './pi-reasoner.js';
 import { createPiSdkClient } from './pi-sdk-client.js';
 import { createMemoryRetriever } from './memory-retriever.js';
+import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import { createReasoningJobWorker } from './reasoning-worker.js';
 import { createApp } from './app.js';
 
@@ -48,6 +49,7 @@ const reasoningWorker = createReasoningJobWorker(
   createReasonerRegistry(reasoners),
   undefined,
   createMemoryRetriever(store),
+  createNoopPiRuntimeClient(),
 );
 reasoningWorker.start();
 const app = createApp(config, store, incidentEngine, evidenceWorker);

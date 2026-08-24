@@ -9,6 +9,7 @@ import {
   HYPOTHESIS_DATABASE_INVESTIGATION,
   type Reasoner,
 } from '../reasoner.js';
+import type { PiRuntimeClient } from '../pi-runtime-client.js';
 import { createReasoningJobWorker, hashEvidenceSnapshot } from '../reasoning-worker.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 
@@ -304,19 +305,34 @@ describe('ReasoningJob worker', () => {
       reasonerVersion: '1',
       createdAt: incident.last_seen,
     });
+    const submitted: string[] = [];
+    const runtime: PiRuntimeClient = {
+      async submit(plan) {
+        submitted.push(plan.id);
+      },
+      async poll() {
+        return undefined;
+      },
+    };
     const worker = createReasoningJobWorker(
       makeConfig(),
       store,
       createReasonerRegistry([spy]),
+      undefined,
+      undefined,
+      runtime,
     );
     await worker.runOnce();
     const plans = store.listInvestigationPlansByJob(`rj-${incident.id}`);
     assert.equal(plans.length, 1);
     assert.equal(plans[0]?.strategy, 'delegated_analysis');
     assert.deepEqual(plans[0]?.requestedCapabilities, ['pi.runtime.delegated_analysis']);
+    assert.deepEqual(submitted, [plans[0]?.id]);
+    assert.equal(await runtime.poll(plans[0]!.id), undefined);
     assert.equal(executed, 0);
     assert.equal(store.listReasoningResults(incident.id).length, 0);
-    assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'FAILED');
+    assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'WAITING_DELEGATION');
+    assert.equal(store.listPendingReasoningJobs(10).length, 0);
     store.close();
   });
 
