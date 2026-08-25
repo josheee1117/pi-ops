@@ -1,4 +1,5 @@
 import type { InvestigationContext } from './investigation-context.js';
+import type { InvestigationReportInput } from './investigation-report.js';
 import type { InvestigationSession } from './investigation-session.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
 
@@ -16,6 +17,13 @@ export interface DelegatedReasoningResult {
  */
 export interface PiRuntimeSubmitAck {
   runtimeTaskId?: string;
+}
+
+export interface PiRuntimeResultCallback {
+  schemaVersion: number;
+  runtimeTaskId: string;
+  investigationSessionId: string;
+  report: InvestigationReportInput;
 }
 
 export interface PiRuntimeClient {
@@ -37,10 +45,10 @@ export function createNoopPiRuntimeClient(): PiRuntimeClient {
       return undefined;
     },
     async submitInvestigation(
-      _session: InvestigationSession,
+      session: InvestigationSession,
       _context: InvestigationContext,
     ): Promise<PiRuntimeSubmitAck | void> {
-      return undefined;
+      return { runtimeTaskId: `rt-${session.runtimeRequestId}` };
     },
   };
 }

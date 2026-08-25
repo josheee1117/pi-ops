@@ -13,9 +13,15 @@ export interface InvestigationSession {
   incidentId: string;
   contextSnapshotHash: string;
   delegationTaskId: string;
+  runtimeRequestId: string;
   status: InvestigationSessionStatus;
   createdAt: string;
+  submittedAt?: string;
   completedAt?: string;
+}
+
+export function runtimeRequestIdFor(incidentId: string, contextSnapshotHash: string): string {
+  return `rreq-${incidentId}-${contextSnapshotHash}`;
 }
 
 export function hashInvestigationContext(context: InvestigationContext): string {

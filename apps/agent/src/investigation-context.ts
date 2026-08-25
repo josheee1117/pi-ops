@@ -3,7 +3,10 @@ import type { MemoryIntelligence } from './memory-quality.js';
 import { createMemoryRetriever, type MemoryRetriever } from './memory-retriever.js';
 import type { EvidenceRecord, EventStore, IncidentRow } from './store.js';
 
+export const INVESTIGATION_SCHEMA_VERSION = 1;
+
 export interface InvestigationContext {
+  schemaVersion: number;
   incident: IncidentContext['incident'];
   evidence: readonly IncidentContext['evidence'][number][];
   relatedMemories: readonly MemoryIntelligence[];
@@ -34,6 +37,7 @@ export function buildInvestigationContext(
     ...retrieval.conflictingMemories,
   ]);
   return deepFreeze({
+    schemaVersion: INVESTIGATION_SCHEMA_VERSION,
     incident: incidentContext.incident,
     evidence: incidentContext.evidence,
     relatedMemories: retrieval.memories,

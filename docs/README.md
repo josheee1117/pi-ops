@@ -15,8 +15,9 @@ The current implementation source of truth is:
 11. `adr/ADR-0016-memory-feedback-loop.md`
 12. `adr/ADR-0017-memory-intelligence-phase.md`
 13. `adr/ADR-0018-pi-runtime-investigation-loop.md`
-14. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-15. `evolution/timeline.md`
+14. `adr/ADR-0019-pi-runtime-contract-hardening.md`
+15. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+16. `evolution/timeline.md`
 
 The architecture intentionally separates:
 

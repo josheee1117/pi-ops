@@ -1,6 +1,7 @@
 export interface InvestigationReport {
   id: string;
   sessionId: string;
+  schemaVersion: number;
   hypothesis: string;
   supportingEvidenceIds: string[];
   contradictingEvidenceIds: string[];
@@ -10,6 +11,7 @@ export interface InvestigationReport {
 }
 
 export interface InvestigationReportInput {
+  schemaVersion?: number;
   hypothesis: string;
   supportingEvidenceIds: string[];
   contradictingEvidenceIds: string[];

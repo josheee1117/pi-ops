@@ -336,6 +336,7 @@ CREATE TABLE IF NOT EXISTS delegation_tasks (
   submitted_at TEXT,
   completed_at TEXT,
   runtime_task_id TEXT,
+  runtime_request_id TEXT,
   last_error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_delegation_tasks_status ON delegation_tasks (status, id);
@@ -355,8 +356,10 @@ CREATE TABLE IF NOT EXISTS investigation_sessions (
   incident_id TEXT NOT NULL,
   context_snapshot_hash TEXT NOT NULL,
   delegation_task_id TEXT NOT NULL,
+  runtime_request_id TEXT,
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  submitted_at TEXT,
   completed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_investigation_sessions_incident
@@ -367,6 +370,7 @@ const CREATE_INVESTIGATION_REPORTS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS investigation_reports (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL UNIQUE,
+  schema_version INTEGER NOT NULL DEFAULT 1,
   hypothesis TEXT NOT NULL,
   supporting_evidence_ids_json TEXT NOT NULL,
   contradicting_evidence_ids_json TEXT NOT NULL,
@@ -791,10 +795,13 @@ export interface EventStore {
   getInvestigationContextSnapshot(hash: string): InvestigationContext | undefined;
   insertInvestigationSession(session: InvestigationSession): void;
   getInvestigationSession(id: string): InvestigationSession | undefined;
+  getOpenInvestigationSessionByRuntimeRequestId(runtimeRequestId: string): InvestigationSession | undefined;
+  listPendingInvestigationSessions(): InvestigationSession[];
   updateInvestigationSessionStatus(
     id: string,
     status: InvestigationSession['status'],
     completedAt?: string,
+    submittedAt?: string,
   ): void;
   insertInvestigationReport(report: InvestigationReport): void;
   getInvestigationReport(id: string): InvestigationReport | undefined;
@@ -896,6 +903,7 @@ interface DelegationTaskRow {
   submitted_at: string | null;
   completed_at: string | null;
   runtime_task_id: string | null;
+  runtime_request_id: string | null;
   last_error: string | null;
 }
 
@@ -904,14 +912,17 @@ interface InvestigationSessionRow {
   incident_id: string;
   context_snapshot_hash: string;
   delegation_task_id: string;
+  runtime_request_id: string | null;
   status: InvestigationSession['status'];
   created_at: string;
+  submitted_at: string | null;
   completed_at: string | null;
 }
 
 interface InvestigationReportRow {
   id: string;
   session_id: string;
+  schema_version: number | null;
   hypothesis: string;
   supporting_evidence_ids_json: string;
   contradicting_evidence_ids_json: string;
@@ -926,8 +937,10 @@ function mapInvestigationSessionRow(row: InvestigationSessionRow): Investigation
     incidentId: row.incident_id,
     contextSnapshotHash: row.context_snapshot_hash,
     delegationTaskId: row.delegation_task_id,
+    runtimeRequestId: row.runtime_request_id ?? '',
     status: row.status,
     createdAt: row.created_at,
+    ...(row.submitted_at ? { submittedAt: row.submitted_at } : {}),
     ...(row.completed_at ? { completedAt: row.completed_at } : {}),
   };
 }
@@ -936,6 +949,7 @@ function mapInvestigationReportRow(row: InvestigationReportRow): InvestigationRe
   return {
     id: row.id,
     sessionId: row.session_id,
+    schemaVersion: row.schema_version ?? 1,
     hypothesis: row.hypothesis,
     supportingEvidenceIds: JSON.parse(row.supporting_evidence_ids_json) as string[],
     contradictingEvidenceIds: JSON.parse(row.contradicting_evidence_ids_json) as string[],
@@ -961,6 +975,7 @@ function mapDelegationTaskRow(row: DelegationTaskRow): DelegationTask {
     ...(row.submitted_at ? { submittedAt: row.submitted_at } : {}),
     ...(row.completed_at ? { completedAt: row.completed_at } : {}),
     ...(row.runtime_task_id ? { runtimeTaskId: row.runtime_task_id } : {}),
+    ...(row.runtime_request_id ? { runtimeRequestId: row.runtime_request_id } : {}),
     ...(row.last_error ? { lastError: row.last_error } : {}),
   };
 }
@@ -1217,6 +1232,27 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_CONTEXT_SNAPSHOTS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_SESSIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
+    const delegationColumns = new Set(
+      (db.pragma('table_info(delegation_tasks)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!delegationColumns.has('runtime_request_id')) {
+      db.exec('ALTER TABLE delegation_tasks ADD COLUMN runtime_request_id TEXT');
+    }
+    const sessionColumns = new Set(
+      (db.pragma('table_info(investigation_sessions)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!sessionColumns.has('runtime_request_id')) {
+      db.exec('ALTER TABLE investigation_sessions ADD COLUMN runtime_request_id TEXT');
+    }
+    if (!sessionColumns.has('submitted_at')) {
+      db.exec('ALTER TABLE investigation_sessions ADD COLUMN submitted_at TEXT');
+    }
+    const reportColumns = new Set(
+      (db.pragma('table_info(investigation_reports)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!reportColumns.has('schema_version')) {
+      db.exec('ALTER TABLE investigation_reports ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1');
+    }
     const memoryCandidateColumns = new Set(
       (db.pragma('table_info(memory_candidates)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1387,9 +1423,9 @@ SELECT * FROM investigation_plans WHERE reasoning_job_id = ? ORDER BY created_at
 `);
   const insertDelegationTaskStmt = db.prepare(`
 INSERT INTO delegation_tasks (
-  id, investigation_plan_id, status, submitted_at, completed_at, runtime_task_id, last_error
+  id, investigation_plan_id, status, submitted_at, completed_at, runtime_task_id, runtime_request_id, last_error
 ) VALUES (
-  @id, @investigation_plan_id, @status, @submitted_at, @completed_at, @runtime_task_id, @last_error
+  @id, @investigation_plan_id, @status, @submitted_at, @completed_at, @runtime_task_id, @runtime_request_id, @last_error
 );
 `);
   const getDelegationTaskStmt = db.prepare('SELECT * FROM delegation_tasks WHERE id = ?');
@@ -1420,23 +1456,38 @@ VALUES (@hash, @context_json, @created_at);
   );
   const insertInvestigationSessionStmt = db.prepare(`
 INSERT INTO investigation_sessions (
-  id, incident_id, context_snapshot_hash, delegation_task_id, status, created_at, completed_at
+  id, incident_id, context_snapshot_hash, delegation_task_id, runtime_request_id,
+  status, created_at, submitted_at, completed_at
 ) VALUES (
-  @id, @incident_id, @context_snapshot_hash, @delegation_task_id, @status, @created_at, @completed_at
+  @id, @incident_id, @context_snapshot_hash, @delegation_task_id, @runtime_request_id,
+  @status, @created_at, @submitted_at, @completed_at
 );
 `);
   const getInvestigationSessionStmt = db.prepare('SELECT * FROM investigation_sessions WHERE id = ?');
+  const getOpenInvestigationSessionByRuntimeRequestStmt = db.prepare(`
+SELECT * FROM investigation_sessions
+WHERE runtime_request_id = ? AND status IN ('CREATED', 'SUBMITTED', 'RUNNING')
+ORDER BY created_at, id
+LIMIT 1;
+`);
+  const listPendingInvestigationSessionsStmt = db.prepare(`
+SELECT * FROM investigation_sessions
+WHERE status IN ('SUBMITTED', 'RUNNING')
+ORDER BY created_at, id;
+`);
   const updateInvestigationSessionStatusStmt = db.prepare(`
 UPDATE investigation_sessions
-SET status = @status, completed_at = COALESCE(@completed_at, completed_at)
+SET status = @status,
+    completed_at = COALESCE(@completed_at, completed_at),
+    submitted_at = COALESCE(@submitted_at, submitted_at)
 WHERE id = @id;
 `);
   const insertInvestigationReportStmt = db.prepare(`
 INSERT INTO investigation_reports (
-  id, session_id, hypothesis, supporting_evidence_ids_json, contradicting_evidence_ids_json,
+  id, session_id, schema_version, hypothesis, supporting_evidence_ids_json, contradicting_evidence_ids_json,
   confidence, recommendation, created_at
 ) VALUES (
-  @id, @session_id, @hypothesis, @supporting_evidence_ids_json, @contradicting_evidence_ids_json,
+  @id, @session_id, @schema_version, @hypothesis, @supporting_evidence_ids_json, @contradicting_evidence_ids_json,
   @confidence, @recommendation, @created_at
 );
 `);
@@ -2216,6 +2267,7 @@ INSERT INTO investigation_reports (
         submitted_at: task.submittedAt ?? null,
         completed_at: task.completedAt ?? null,
         runtime_task_id: task.runtimeTaskId ?? null,
+        runtime_request_id: task.runtimeRequestId ?? null,
         last_error: task.lastError ?? null,
       });
     },
@@ -2268,8 +2320,10 @@ INSERT INTO investigation_reports (
         incident_id: session.incidentId,
         context_snapshot_hash: session.contextSnapshotHash,
         delegation_task_id: session.delegationTaskId,
+        runtime_request_id: session.runtimeRequestId,
         status: session.status,
         created_at: session.createdAt,
+        submitted_at: session.submittedAt ?? null,
         completed_at: session.completedAt ?? null,
       });
     },
@@ -2279,15 +2333,26 @@ INSERT INTO investigation_reports (
       return row ? mapInvestigationSessionRow(row) : undefined;
     },
 
+    getOpenInvestigationSessionByRuntimeRequestId(runtimeRequestId: string): InvestigationSession | undefined {
+      const row = getOpenInvestigationSessionByRuntimeRequestStmt.get(runtimeRequestId) as InvestigationSessionRow | undefined;
+      return row ? mapInvestigationSessionRow(row) : undefined;
+    },
+
+    listPendingInvestigationSessions(): InvestigationSession[] {
+      return (listPendingInvestigationSessionsStmt.all() as InvestigationSessionRow[]).map(mapInvestigationSessionRow);
+    },
+
     updateInvestigationSessionStatus(
       id: string,
       status: InvestigationSession['status'],
       completedAt?: string,
+      submittedAt?: string,
     ): void {
       updateInvestigationSessionStatusStmt.run({
         id,
         status,
         completed_at: completedAt ?? null,
+        submitted_at: submittedAt ?? null,
       });
     },
 
@@ -2295,6 +2360,7 @@ INSERT INTO investigation_reports (
       insertInvestigationReportStmt.run({
         id: report.id,
         session_id: report.sessionId,
+        schema_version: report.schemaVersion,
         hypothesis: report.hypothesis,
         supporting_evidence_ids_json: JSON.stringify(report.supportingEvidenceIds),
         contradicting_evidence_ids_json: JSON.stringify(report.contradictingEvidenceIds),

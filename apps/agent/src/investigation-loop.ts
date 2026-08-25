@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { buildDelegationTask } from './delegation-task.js';
-import { buildInvestigationContext, type InvestigationContext } from './investigation-context.js';
+import {
+  buildInvestigationContext,
+  INVESTIGATION_SCHEMA_VERSION,
+  type InvestigationContext,
+} from './investigation-context.js';
 import type { InvestigationReport, InvestigationReportInput } from './investigation-report.js';
 import {
   hashInvestigationContext,
+  runtimeRequestIdFor,
   type InvestigationSession,
 } from './investigation-session.js';
-import type { PiRuntimeClient } from './pi-runtime-client.js';
+import type { PiRuntimeClient, PiRuntimeResultCallback } from './pi-runtime-client.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasoningResult } from './reasoner.js';
 import {
@@ -41,12 +46,16 @@ export function createInvestigationLoopService(
       const context = buildInvestigationContext(incident, evidence, store);
       const contextSnapshotHash = hashInvestigationContext(context);
       store.insertInvestigationContextSnapshot(contextSnapshotHash, context, now());
-      const taskId = ensureDelegationTask(store, incident.id, now());
+      const runtimeRequestId = runtimeRequestIdFor(incident.id, contextSnapshotHash);
+      const open = store.getOpenInvestigationSessionByRuntimeRequestId(runtimeRequestId);
+      if (open) return { session: open, context };
+      const taskId = ensureDelegationTask(store, incident.id, now(), runtimeRequestId);
       const session: InvestigationSession = {
         id: `isess-${randomUUID()}`,
         incidentId: incident.id,
         contextSnapshotHash,
         delegationTaskId: taskId,
+        runtimeRequestId,
         status: 'CREATED',
         createdAt: now(),
       };
@@ -56,6 +65,9 @@ export function createInvestigationLoopService(
 
     async submit(sessionId: string): Promise<InvestigationSession> {
       const session = requireSession(store, sessionId);
+      if (session.status === 'SUBMITTED' || session.status === 'RUNNING' || session.status === 'COMPLETED') {
+        return session;
+      }
       if (session.status !== 'CREATED') {
         throw new Error(`InvestigationSession ${sessionId} cannot be submitted`);
       }
@@ -72,8 +84,36 @@ export function createInvestigationLoopService(
           ack && 'runtimeTaskId' in ack ? ack.runtimeTaskId : undefined,
         );
       }
-      store.updateInvestigationSessionStatus(session.id, 'SUBMITTED');
+      store.updateInvestigationSessionStatus(session.id, 'SUBMITTED', undefined, now());
       return store.getInvestigationSession(session.id)!;
+    },
+
+    handleCallback(input: PiRuntimeResultCallback): InvestigationReport {
+      if (input.schemaVersion !== INVESTIGATION_SCHEMA_VERSION) {
+        throw new Error(`schemaVersion ${input.schemaVersion} does not match ${INVESTIGATION_SCHEMA_VERSION}`);
+      }
+      if (input.report.schemaVersion !== undefined && input.report.schemaVersion !== INVESTIGATION_SCHEMA_VERSION) {
+        throw new Error(`schemaVersion ${input.report.schemaVersion} does not match ${INVESTIGATION_SCHEMA_VERSION}`);
+      }
+      const session = requireSession(store, input.investigationSessionId);
+      const task = store.getDelegationTask(session.delegationTaskId);
+      if (!task) throw new Error(`DelegationTask ${session.delegationTaskId} does not exist`);
+      if (!input.runtimeTaskId?.trim() || task.runtimeTaskId !== input.runtimeTaskId) {
+        throw new Error(`runtimeTaskId ${input.runtimeTaskId} does not belong to InvestigationSession ${session.id}`);
+      }
+      return this.complete(session.id, input.report);
+    },
+
+    reconcile(options: { timeoutMs?: number } = {}): InvestigationSession[] {
+      const timeoutMs = options.timeoutMs ?? 15 * 60 * 1000;
+      const cutoff = Date.parse(now()) - timeoutMs;
+      const timedOut: InvestigationSession[] = [];
+      for (const session of store.listPendingInvestigationSessions()) {
+        const submittedAt = Date.parse(session.submittedAt ?? session.createdAt);
+        if (!Number.isFinite(submittedAt) || submittedAt > cutoff) continue;
+        timedOut.push(this.fail(session.id, 'runtime timeout'));
+      }
+      return timedOut;
     },
 
     markRunning(sessionId: string): InvestigationSession {
@@ -151,7 +191,12 @@ export function createInvestigationLoopService(
   };
 }
 
-function ensureDelegationTask(store: EventStore, incidentId: string, createdAt: string): string {
+function ensureDelegationTask(
+  store: EventStore,
+  incidentId: string,
+  createdAt: string,
+  runtimeRequestId: string,
+): string {
   const jobId = `rj-inv-${incidentId}`;
   if (!store.getReasoningJob(jobId)) {
     store.createReasoningJob({
@@ -168,7 +213,7 @@ function ensureDelegationTask(store: EventStore, incidentId: string, createdAt: 
   if (!existingPlans[0]) store.insertInvestigationPlan(plan);
   const existingTask = store.getDelegationTaskByPlanId(plan.id);
   if (existingTask) return existingTask.id;
-  const task = buildDelegationTask(plan);
+  const task = { ...buildDelegationTask(plan), runtimeRequestId };
   store.insertDelegationTask(task);
   store.markReasoningJobWaitingDelegation(jobId);
   return task.id;
@@ -194,6 +239,7 @@ function buildReport(
   return {
     id: `irpt-${session.id}`,
     sessionId: session.id,
+    schemaVersion: input.schemaVersion ?? INVESTIGATION_SCHEMA_VERSION,
     hypothesis: input.hypothesis,
     supportingEvidenceIds: [...input.supportingEvidenceIds],
     contradictingEvidenceIds: [...input.contradictingEvidenceIds],
@@ -208,6 +254,9 @@ function validateReport(
   session: InvestigationSession,
   report: InvestigationReport,
 ): void {
+  if (report.schemaVersion !== INVESTIGATION_SCHEMA_VERSION) {
+    throw new Error(`schemaVersion ${report.schemaVersion} does not match ${INVESTIGATION_SCHEMA_VERSION}`);
+  }
   if (typeof report.hypothesis !== 'string' || report.hypothesis.trim().length === 0) {
     throw new Error('hypothesis must be a non-empty string');
   }

@@ -9,6 +9,7 @@ export interface DelegationTask {
   submittedAt?: string;
   completedAt?: string;
   runtimeTaskId?: string;
+  runtimeRequestId?: string;
   lastError?: string;
 }
 
