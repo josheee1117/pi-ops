@@ -9,6 +9,7 @@ import type { MemoryFeedback } from './memory-feedback.js';
 import type { MemoryEntry } from './memory-governance.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
 import type { InvestigationHypothesis } from './investigation-hypothesis.js';
+import type { InvestigationRelation } from './investigation-relation.js';
 import type { InvestigationQualityEvaluation } from './investigation-quality.js';
 import type { InvestigationReport } from './investigation-report.js';
 import type { InvestigationContext } from './investigation-context.js';
@@ -408,6 +409,22 @@ CREATE TABLE IF NOT EXISTS investigation_quality_evaluations (
   quality_score REAL NOT NULL,
   created_at TEXT NOT NULL
 );
+`;
+
+const CREATE_INVESTIGATION_RELATIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_relations (
+  id TEXT PRIMARY KEY,
+  from_type TEXT NOT NULL,
+  from_id TEXT NOT NULL,
+  to_type TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  relation_type TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_investigation_relations_from
+  ON investigation_relations (from_type, from_id, relation_type);
+CREATE INDEX IF NOT EXISTS idx_investigation_relations_to
+  ON investigation_relations (to_type, to_id, relation_type);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -847,6 +864,18 @@ export interface EventStore {
     id: string,
     refs: { hypothesisIds?: string[]; investigationQualityEvaluationId?: string },
   ): void;
+  insertInvestigationRelation(relation: InvestigationRelation): void;
+  listInvestigationRelations(filter: {
+    fromType?: InvestigationRelation['fromType'];
+    fromId?: string;
+    toType?: InvestigationRelation['toType'];
+    toId?: string;
+    relationType?: InvestigationRelation['relationType'];
+  }): InvestigationRelation[];
+  listIncidents(): IncidentRow[];
+  listAllInvestigationHypotheses(): InvestigationHypothesis[];
+  listAllInvestigationSessions(): InvestigationSession[];
+  listAllInvestigationReports(): InvestigationReport[];
 
   /** Close the database connection. */
   close(): void;
@@ -995,6 +1024,28 @@ interface InvestigationHypothesisRow {
   supporting_evidence_ids_json: string;
   contradicting_evidence_ids_json: string;
   created_at: string;
+}
+
+interface InvestigationRelationRow {
+  id: string;
+  from_type: InvestigationRelation['fromType'];
+  from_id: string;
+  to_type: InvestigationRelation['toType'];
+  to_id: string;
+  relation_type: InvestigationRelation['relationType'];
+  created_at: string;
+}
+
+function mapInvestigationRelationRow(row: InvestigationRelationRow): InvestigationRelation {
+  return {
+    id: row.id,
+    fromType: row.from_type,
+    fromId: row.from_id,
+    toType: row.to_type,
+    toId: row.to_id,
+    relationType: row.relation_type,
+    createdAt: row.created_at,
+  };
 }
 
 interface InvestigationQualityEvaluationRow {
@@ -1339,6 +1390,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_RELATIONS_TABLE_SQL);
     const delegationColumns = new Set(
       (db.pragma('table_info(delegation_tasks)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1638,6 +1690,32 @@ INSERT INTO investigation_quality_evaluations (
   const updateReasoningResultMetadataStmt = db.prepare(`
 UPDATE reasoning_results SET metadata_json = @metadata_json WHERE id = @id;
 `);
+  const insertInvestigationRelationStmt = db.prepare(`
+INSERT INTO investigation_relations (
+  id, from_type, from_id, to_type, to_id, relation_type, created_at
+) VALUES (
+  @id, @from_type, @from_id, @to_type, @to_id, @relation_type, @created_at
+);
+`);
+  const listInvestigationRelationsStmt = db.prepare(`
+SELECT * FROM investigation_relations
+WHERE (@from_type IS NULL OR from_type = @from_type)
+  AND (@from_id IS NULL OR from_id = @from_id)
+  AND (@to_type IS NULL OR to_type = @to_type)
+  AND (@to_id IS NULL OR to_id = @to_id)
+  AND (@relation_type IS NULL OR relation_type = @relation_type)
+ORDER BY created_at, id;
+`);
+  const listIncidentsStmt = db.prepare('SELECT * FROM incidents ORDER BY first_seen, id;');
+  const listAllInvestigationHypothesesStmt = db.prepare(
+    'SELECT * FROM investigation_hypotheses ORDER BY created_at, id;',
+  );
+  const listAllInvestigationSessionsStmt = db.prepare(
+    'SELECT * FROM investigation_sessions ORDER BY created_at, id;',
+  );
+  const listAllInvestigationReportsStmt = db.prepare(
+    'SELECT * FROM investigation_reports ORDER BY created_at, id;',
+  );
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -2589,6 +2667,53 @@ UPDATE reasoning_results SET metadata_json = @metadata_json WHERE id = @id;
             : {}),
         }),
       });
+    },
+
+    insertInvestigationRelation(relation: InvestigationRelation): void {
+      insertInvestigationRelationStmt.run({
+        id: relation.id,
+        from_type: relation.fromType,
+        from_id: relation.fromId,
+        to_type: relation.toType,
+        to_id: relation.toId,
+        relation_type: relation.relationType,
+        created_at: relation.createdAt,
+      });
+    },
+
+    listInvestigationRelations(filter: {
+      fromType?: InvestigationRelation['fromType'];
+      fromId?: string;
+      toType?: InvestigationRelation['toType'];
+      toId?: string;
+      relationType?: InvestigationRelation['relationType'];
+    }): InvestigationRelation[] {
+      return (listInvestigationRelationsStmt.all({
+        from_type: filter.fromType ?? null,
+        from_id: filter.fromId ?? null,
+        to_type: filter.toType ?? null,
+        to_id: filter.toId ?? null,
+        relation_type: filter.relationType ?? null,
+      }) as InvestigationRelationRow[]).map(mapInvestigationRelationRow);
+    },
+
+    listIncidents(): IncidentRow[] {
+      return listIncidentsStmt.all() as IncidentRow[];
+    },
+
+    listAllInvestigationHypotheses(): InvestigationHypothesis[] {
+      return (listAllInvestigationHypothesesStmt.all() as InvestigationHypothesisRow[])
+        .map(mapInvestigationHypothesisRow);
+    },
+
+    listAllInvestigationSessions(): InvestigationSession[] {
+      return (listAllInvestigationSessionsStmt.all() as InvestigationSessionRow[])
+        .map(mapInvestigationSessionRow);
+    },
+
+    listAllInvestigationReports(): InvestigationReport[] {
+      return (listAllInvestigationReportsStmt.all() as InvestigationReportRow[])
+        .map(mapInvestigationReportRow);
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

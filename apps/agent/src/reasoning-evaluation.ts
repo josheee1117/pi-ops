@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isCpuHigh } from './reasoner.js';
 import type { ReasoningResult } from './reasoner.js';
+import { createInvestigationRelationService } from './investigation-relation.js';
 import type { EvidenceRecord, EventStore, IncidentRow } from './store.js';
 
 export const MEMORY_CANDIDATE_SCORE_THRESHOLD = 0.8;
@@ -56,6 +57,7 @@ export function createReasoningEvaluationService(
 ) {
   const scoreThreshold = options.scoreThreshold ?? MEMORY_CANDIDATE_SCORE_THRESHOLD;
   const now = options.now ?? (() => new Date().toISOString());
+  const relations = createInvestigationRelationService(store, { now });
 
   return {
     evaluate(input: EvaluateInput): EvaluateResult {
@@ -97,7 +99,16 @@ export function createReasoningEvaluationService(
         && (!result.investigationSessionId || (quality !== undefined && quality.qualityScore >= scoreThreshold))
         ? buildMemoryCandidate(result, evaluation, incident, evidence)
         : undefined;
-      if (candidate) store.insertMemoryCandidate(candidate);
+      if (candidate) {
+        store.insertMemoryCandidate(candidate);
+        relations.create({
+          fromType: 'MEMORY_CANDIDATE',
+          fromId: candidate.id,
+          toType: 'REASONING_RESULT',
+          toId: result.id,
+          relationType: 'DERIVED_FROM',
+        });
+      }
       return { evaluation, candidate };
     },
   };

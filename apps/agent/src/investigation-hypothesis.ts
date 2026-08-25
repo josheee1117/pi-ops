@@ -1,3 +1,4 @@
+import { createInvestigationRelationService } from './investigation-relation.js';
 import type { InvestigationReport } from './investigation-report.js';
 import type { EventStore } from './store.js';
 
@@ -27,6 +28,7 @@ export function createInvestigationHypothesisService(
   options: { now?: () => string } = {},
 ) {
   const now = options.now ?? (() => new Date().toISOString());
+  const relations = createInvestigationRelationService(store, { now });
 
   return {
     propose(input: ProposeHypothesisInput): InvestigationHypothesis {
@@ -56,6 +58,25 @@ export function createInvestigationHypothesisService(
         createdAt: now(),
       };
       store.insertInvestigationHypothesis(hypothesis);
+      const evidenceRelationService = relations;
+      for (const evidenceId of hypothesis.supportingEvidenceIds) {
+        evidenceRelationService.create({
+          fromType: 'HYPOTHESIS',
+          fromId: hypothesis.id,
+          toType: 'EVIDENCE',
+          toId: evidenceId,
+          relationType: 'SUPPORTED_BY',
+        });
+      }
+      for (const evidenceId of hypothesis.contradictingEvidenceIds) {
+        evidenceRelationService.create({
+          fromType: 'HYPOTHESIS',
+          fromId: hypothesis.id,
+          toType: 'EVIDENCE',
+          toId: evidenceId,
+          relationType: 'CONTRADICTED_BY',
+        });
+      }
       return hypothesis;
     },
 

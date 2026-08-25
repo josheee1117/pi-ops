@@ -2,6 +2,13 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 7 completed
+
+- InvestigationRelation links Hypothesis↔Evidence and Memory→ReasoningResult
+- IncidentSimilarityService finds structural matches without embeddings
+- InvestigationContext adds related incidents, historical resolutions, and similar hypotheses
+- graph lookup failures degrade to empty history without blocking reasoning
+
 ## Phase 6 completed
 
 - InvestigationHypothesis tracks PROPOSED → SUPPORTED / REJECTED with owned evidence ids
