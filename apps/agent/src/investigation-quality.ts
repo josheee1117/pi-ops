@@ -1,3 +1,8 @@
+import {
+  createEvidenceIntelligenceService,
+  evidenceWeight,
+  type EvidenceProfile,
+} from './evidence-intelligence.js';
 import type { InvestigationHypothesis } from './investigation-hypothesis.js';
 import type { EventStore } from './store.js';
 
@@ -13,16 +18,21 @@ export interface InvestigationQualityEvaluation {
 }
 
 export function computeInvestigationQuality(input: {
-  incidentEvidenceCount: number;
-  supportingCount: number;
-  contradictingCount: number;
+  incidentEvidenceCount?: number;
+  supportingCount?: number;
+  contradictingCount?: number;
+  incidentEvidenceWeight?: number;
+  supportingWeight?: number;
+  contradictingWeight?: number;
   confidence: number;
 }): Omit<InvestigationQualityEvaluation, 'id' | 'investigationReportId' | 'reasoningResultId' | 'createdAt'> {
-  const evidenceCoverageScore = clamp(
-    input.supportingCount / Math.max(input.incidentEvidenceCount, 1),
-  );
-  const cited = input.supportingCount + input.contradictingCount;
-  const contradictionRatio = cited === 0 ? 0 : input.contradictingCount / cited;
+  const supportingWeight = input.supportingWeight ?? input.supportingCount ?? 0;
+  const contradictingWeight = input.contradictingWeight ?? input.contradictingCount ?? 0;
+  const incidentEvidenceWeight = input.incidentEvidenceWeight ?? input.incidentEvidenceCount ?? 0;
+  const denominator = incidentEvidenceWeight > 0 ? incidentEvidenceWeight : 1;
+  const evidenceCoverageScore = clamp(supportingWeight / denominator);
+  const cited = supportingWeight + contradictingWeight;
+  const contradictionRatio = cited === 0 ? 0 : contradictingWeight / cited;
   const expectedConfidence = evidenceCoverageScore * (1 - contradictionRatio);
   const confidenceConsistencyScore = clamp(1 - Math.abs(input.confidence - expectedConfidence));
   const qualityScore = (
@@ -53,12 +63,20 @@ export function createInvestigationQualityService(
       const session = store.getInvestigationSession(report.sessionId);
       if (!session) throw new Error(`InvestigationSession ${report.sessionId} does not exist`);
       const incidentEvidence = store.listEvidence(session.incidentId);
+      const intelligence = createEvidenceIntelligenceService(store);
+      const profiles = new Map<string, EvidenceProfile>();
+      let incidentEvidenceWeight = 0;
+      for (const item of incidentEvidence) {
+        const profile = intelligence.profile(item.id);
+        profiles.set(item.id, profile);
+        incidentEvidenceWeight += evidenceWeight(profile);
+      }
       const hypotheses = store.listInvestigationHypotheses(report.id);
-      const snapshot = summarizeHypotheses(hypotheses, report);
+      const snapshot = summarizeHypotheses(hypotheses, report, profiles);
       const scores = computeInvestigationQuality({
-        incidentEvidenceCount: incidentEvidence.length,
-        supportingCount: snapshot.supportingCount,
-        contradictingCount: snapshot.contradictingCount,
+        incidentEvidenceWeight,
+        supportingWeight: snapshot.supportingWeight,
+        contradictingWeight: snapshot.contradictingWeight,
         confidence: snapshot.confidence,
       });
       const result = store.listReasoningResults(session.incidentId)
@@ -85,23 +103,32 @@ export function createInvestigationQualityService(
 function summarizeHypotheses(
   hypotheses: InvestigationHypothesis[],
   report: { supportingEvidenceIds: string[]; contradictingEvidenceIds: string[]; confidence: number },
-): { supportingCount: number; contradictingCount: number; confidence: number } {
+  profiles: Map<string, EvidenceProfile>,
+): { supportingWeight: number; contradictingWeight: number; confidence: number } {
   const active = hypotheses.filter((item) => item.status !== 'REJECTED');
-  if (active.length === 0) {
-    return {
-      supportingCount: report.supportingEvidenceIds.length,
-      contradictingCount: report.contradictingEvidenceIds.length,
-      confidence: report.confidence,
-    };
-  }
-  const supporting = new Set(active.flatMap((item) => item.supportingEvidenceIds));
-  const contradicting = new Set(active.flatMap((item) => item.contradictingEvidenceIds));
-  const confidence = active.reduce((sum, item) => sum + item.confidence, 0) / active.length;
+  const supportingIds = active.length === 0
+    ? report.supportingEvidenceIds
+    : [...new Set(active.flatMap((item) => item.supportingEvidenceIds))];
+  const contradictingIds = active.length === 0
+    ? report.contradictingEvidenceIds
+    : [...new Set(active.flatMap((item) => item.contradictingEvidenceIds))];
+  const confidence = active.length === 0
+    ? report.confidence
+    : active.reduce((sum, item) => sum + item.confidence, 0) / active.length;
   return {
-    supportingCount: supporting.size,
-    contradictingCount: contradicting.size,
+    supportingWeight: weightIds(supportingIds, profiles),
+    contradictingWeight: weightIds(contradictingIds, profiles),
     confidence,
   };
+}
+
+function weightIds(ids: string[], profiles: Map<string, EvidenceProfile>): number {
+  let total = 0;
+  for (const id of ids) {
+    const profile = profiles.get(id);
+    if (profile) total += evidenceWeight(profile);
+  }
+  return total;
 }
 
 function clamp(value: number): number {

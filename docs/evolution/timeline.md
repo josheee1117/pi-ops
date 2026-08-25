@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Evidence intelligence completed
+
+- EvidenceProfile classifies primary / supporting / weak signals with reliability and diagnostic weight
+- InvestigationQualityEvaluation uses weighted coverage instead of raw counts
+- Hypothesis records supporting and contradicting evidence contribution
+
 ## Phase 7 completed
 
 - InvestigationRelation links Hypothesis↔Evidence and Memory→ReasoningResult

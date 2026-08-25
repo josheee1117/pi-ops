@@ -8,6 +8,7 @@ import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluatio
 import type { MemoryFeedback } from './memory-feedback.js';
 import type { MemoryEntry } from './memory-governance.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
+import type { EvidenceProfile } from './evidence-intelligence.js';
 import type { InvestigationHypothesis } from './investigation-hypothesis.js';
 import type { InvestigationRelation } from './investigation-relation.js';
 import type { InvestigationQualityEvaluation } from './investigation-quality.js';
@@ -89,6 +90,21 @@ export interface EvidenceRow {
   data_json: string;
   error: string | null;
   failure_class: EvidenceFailureClass | null;
+}
+
+function mapEvidenceRow(row: EvidenceRow): EvidenceRecord {
+  return {
+    id: row.id,
+    incidentId: row.incident_id,
+    nodeId: row.node_id,
+    source: row.source,
+    kind: row.kind,
+    collectedAt: row.collected_at,
+    data: JSON.parse(row.data_json) as unknown,
+    status: row.status,
+    ...(row.error ? { error: row.error } : {}),
+    ...(row.failure_class ? { failureClass: row.failure_class } : {}),
+  };
 }
 
 // ── Evidence job types ───────────────────────────────────────────────────────
@@ -392,6 +408,8 @@ CREATE TABLE IF NOT EXISTS investigation_hypotheses (
   status TEXT NOT NULL,
   supporting_evidence_ids_json TEXT NOT NULL,
   contradicting_evidence_ids_json TEXT NOT NULL,
+  supporting_contribution REAL,
+  contradicting_contribution REAL,
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_investigation_hypotheses_report
@@ -425,6 +443,15 @@ CREATE INDEX IF NOT EXISTS idx_investigation_relations_from
   ON investigation_relations (from_type, from_id, relation_type);
 CREATE INDEX IF NOT EXISTS idx_investigation_relations_to
   ON investigation_relations (to_type, to_id, relation_type);
+`;
+
+const CREATE_EVIDENCE_PROFILES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS evidence_profiles (
+  evidence_id TEXT PRIMARY KEY,
+  category TEXT NOT NULL,
+  reliability_score REAL NOT NULL,
+  diagnostic_weight REAL NOT NULL
+);
 `;
 
 const INSERT_EVENT_SQL = `
@@ -579,6 +606,7 @@ ON CONFLICT(id) DO UPDATE SET
 const LIST_EVIDENCE_SQL = `
 SELECT * FROM evidence WHERE incident_id = ? ORDER BY collected_at, id;
 `;
+const GET_EVIDENCE_SQL = `SELECT * FROM evidence WHERE id = ?;`
 
 const COUNT_EVIDENCE_SQL = `SELECT COUNT(*) as count FROM evidence`;
 
@@ -780,6 +808,7 @@ export interface EventStore {
 
   /** List evidence records for one incident. */
   listEvidence(incidentId: string): EvidenceRecord[];
+  getEvidence(id: string): EvidenceRecord | undefined;
 
   /** Total evidence record count. */
   evidenceCount(): number;
@@ -854,6 +883,8 @@ export interface EventStore {
   getInvestigationReport(id: string): InvestigationReport | undefined;
   getInvestigationReportBySessionId(sessionId: string): InvestigationReport | undefined;
   insertInvestigationHypothesis(hypothesis: InvestigationHypothesis): void;
+  insertEvidenceProfile(profile: EvidenceProfile): void;
+  getEvidenceProfile(evidenceId: string): EvidenceProfile | undefined;
   getInvestigationHypothesis(id: string): InvestigationHypothesis | undefined;
   listInvestigationHypotheses(investigationReportId: string): InvestigationHypothesis[];
   updateInvestigationHypothesisStatus(id: string, status: InvestigationHypothesis['status']): void;
@@ -1023,6 +1054,8 @@ interface InvestigationHypothesisRow {
   status: InvestigationHypothesis['status'];
   supporting_evidence_ids_json: string;
   contradicting_evidence_ids_json: string;
+  supporting_contribution: number | null;
+  contradicting_contribution: number | null;
   created_at: string;
 }
 
@@ -1068,6 +1101,8 @@ function mapInvestigationHypothesisRow(row: InvestigationHypothesisRow): Investi
     status: row.status,
     supportingEvidenceIds: JSON.parse(row.supporting_evidence_ids_json) as string[],
     contradictingEvidenceIds: JSON.parse(row.contradicting_evidence_ids_json) as string[],
+    supportingContribution: row.supporting_contribution ?? 0,
+    contradictingContribution: row.contradicting_contribution ?? 0,
     createdAt: row.created_at,
   };
 }
@@ -1391,6 +1426,16 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RELATIONS_TABLE_SQL);
+    db.exec(CREATE_EVIDENCE_PROFILES_TABLE_SQL);
+    const hypothesisColumns = new Set(
+      (db.pragma('table_info(investigation_hypotheses)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!hypothesisColumns.has('supporting_contribution')) {
+      db.exec('ALTER TABLE investigation_hypotheses ADD COLUMN supporting_contribution REAL');
+    }
+    if (!hypothesisColumns.has('contradicting_contribution')) {
+      db.exec('ALTER TABLE investigation_hypotheses ADD COLUMN contradicting_contribution REAL');
+    }
     const delegationColumns = new Set(
       (db.pragma('table_info(delegation_tasks)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1472,6 +1517,7 @@ export function createEventStore(dbPath: string): EventStore {
   const countIncidentsStmt = db.prepare(COUNT_INCIDENTS_SQL);
   const insertEvidenceStmt = db.prepare(INSERT_EVIDENCE_SQL);
   const listEvidenceStmt = db.prepare(LIST_EVIDENCE_SQL);
+  const getEvidenceStmt = db.prepare(GET_EVIDENCE_SQL);
   const countEvidenceStmt = db.prepare(COUNT_EVIDENCE_SQL);
   const insertEvidenceJobStmt = db.prepare(INSERT_EVIDENCE_JOB_SQL);
   const listPendingEvidenceJobsStmt = db.prepare(LIST_PENDING_EVIDENCE_JOBS_SQL);
@@ -1657,10 +1703,12 @@ INSERT INTO investigation_reports (
   const insertInvestigationHypothesisStmt = db.prepare(`
 INSERT INTO investigation_hypotheses (
   id, investigation_report_id, statement, confidence, status,
-  supporting_evidence_ids_json, contradicting_evidence_ids_json, created_at
+  supporting_evidence_ids_json, contradicting_evidence_ids_json,
+  supporting_contribution, contradicting_contribution, created_at
 ) VALUES (
   @id, @investigation_report_id, @statement, @confidence, @status,
-  @supporting_evidence_ids_json, @contradicting_evidence_ids_json, @created_at
+  @supporting_evidence_ids_json, @contradicting_evidence_ids_json,
+  @supporting_contribution, @contradicting_contribution, @created_at
 );
 `);
   const getInvestigationHypothesisStmt = db.prepare('SELECT * FROM investigation_hypotheses WHERE id = ?');
@@ -1716,6 +1764,11 @@ ORDER BY created_at, id;
   const listAllInvestigationReportsStmt = db.prepare(
     'SELECT * FROM investigation_reports ORDER BY created_at, id;',
   );
+  const insertEvidenceProfileStmt = db.prepare(`
+INSERT INTO evidence_profiles (evidence_id, category, reliability_score, diagnostic_weight)
+VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
+`);
+  const getEvidenceProfileStmt = db.prepare('SELECT * FROM evidence_profiles WHERE evidence_id = ?');
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -2192,18 +2245,12 @@ ORDER BY created_at, id;
 
     listEvidence(incidentId: string): EvidenceRecord[] {
       const rows = listEvidenceStmt.all(incidentId) as EvidenceRow[];
-      return rows.map((row) => ({
-        id: row.id,
-        incidentId: row.incident_id,
-        nodeId: row.node_id,
-        source: row.source,
-        kind: row.kind,
-        collectedAt: row.collected_at,
-        data: JSON.parse(row.data_json) as unknown,
-        status: row.status,
-        ...(row.error ? { error: row.error } : {}),
-        ...(row.failure_class ? { failureClass: row.failure_class } : {}),
-      }));
+      return rows.map(mapEvidenceRow);
+    },
+
+    getEvidence(id: string): EvidenceRecord | undefined {
+      const row = getEvidenceStmt.get(id) as EvidenceRow | undefined;
+      return row ? mapEvidenceRow(row) : undefined;
     },
 
     evidenceCount(): number {
@@ -2601,6 +2648,31 @@ ORDER BY created_at, id;
       return row ? mapInvestigationReportRow(row) : undefined;
     },
 
+    insertEvidenceProfile(profile: EvidenceProfile): void {
+      insertEvidenceProfileStmt.run({
+        evidence_id: profile.evidenceId,
+        category: profile.category,
+        reliability_score: profile.reliabilityScore,
+        diagnostic_weight: profile.diagnosticWeight,
+      });
+    },
+
+    getEvidenceProfile(evidenceId: string): EvidenceProfile | undefined {
+      const row = getEvidenceProfileStmt.get(evidenceId) as {
+        evidence_id: string;
+        category: EvidenceProfile['category'];
+        reliability_score: number;
+        diagnostic_weight: number;
+      } | undefined;
+      if (!row) return undefined;
+      return {
+        evidenceId: row.evidence_id,
+        category: row.category,
+        reliabilityScore: row.reliability_score,
+        diagnosticWeight: row.diagnostic_weight,
+      };
+    },
+
     insertInvestigationHypothesis(hypothesis: InvestigationHypothesis): void {
       insertInvestigationHypothesisStmt.run({
         id: hypothesis.id,
@@ -2610,6 +2682,8 @@ ORDER BY created_at, id;
         status: hypothesis.status,
         supporting_evidence_ids_json: JSON.stringify(hypothesis.supportingEvidenceIds),
         contradicting_evidence_ids_json: JSON.stringify(hypothesis.contradictingEvidenceIds),
+        supporting_contribution: hypothesis.supportingContribution,
+        contradicting_contribution: hypothesis.contradictingContribution,
         created_at: hypothesis.createdAt,
       });
     },

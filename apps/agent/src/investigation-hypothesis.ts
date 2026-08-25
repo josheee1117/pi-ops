@@ -1,3 +1,4 @@
+import { createEvidenceIntelligenceService, evidenceWeight } from './evidence-intelligence.js';
 import { createInvestigationRelationService } from './investigation-relation.js';
 import type { InvestigationReport } from './investigation-report.js';
 import type { EventStore } from './store.js';
@@ -12,6 +13,8 @@ export interface InvestigationHypothesis {
   status: InvestigationHypothesisStatus;
   supportingEvidenceIds: string[];
   contradictingEvidenceIds: string[];
+  supportingContribution: number;
+  contradictingContribution: number;
   createdAt: string;
 }
 
@@ -29,6 +32,7 @@ export function createInvestigationHypothesisService(
 ) {
   const now = options.now ?? (() => new Date().toISOString());
   const relations = createInvestigationRelationService(store, { now });
+  const intelligence = createEvidenceIntelligenceService(store);
 
   return {
     propose(input: ProposeHypothesisInput): InvestigationHypothesis {
@@ -47,6 +51,8 @@ export function createInvestigationHypothesisService(
         ...input.supportingEvidenceIds,
         ...input.contradictingEvidenceIds,
       ]);
+      const supportingContribution = sumContribution(intelligence, input.supportingEvidenceIds);
+      const contradictingContribution = sumContribution(intelligence, input.contradictingEvidenceIds);
       const hypothesis: InvestigationHypothesis = {
         id: `ihyp-${report.id}-${store.listInvestigationHypotheses(report.id).length}`,
         investigationReportId: report.id,
@@ -55,6 +61,8 @@ export function createInvestigationHypothesisService(
         status: 'PROPOSED',
         supportingEvidenceIds: [...input.supportingEvidenceIds],
         contradictingEvidenceIds: [...input.contradictingEvidenceIds],
+        supportingContribution,
+        contradictingContribution,
         createdAt: now(),
       };
       store.insertInvestigationHypothesis(hypothesis);
@@ -118,6 +126,17 @@ function requireReport(store: EventStore, reportId: string): InvestigationReport
   const report = store.getInvestigationReport(reportId);
   if (!report) throw new Error(`InvestigationReport ${reportId} does not exist`);
   return report;
+}
+
+function sumContribution(
+  intelligence: ReturnType<typeof createEvidenceIntelligenceService>,
+  evidenceIds: string[],
+): number {
+  let total = 0;
+  for (const evidenceId of new Set(evidenceIds)) {
+    total += evidenceWeight(intelligence.profile(evidenceId));
+  }
+  return total;
 }
 
 export function validateEvidenceOwnership(

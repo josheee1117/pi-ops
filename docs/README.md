@@ -18,8 +18,9 @@ The current implementation source of truth is:
 14. `adr/ADR-0019-pi-runtime-production-contract.md`
 15. `adr/ADR-0020-investigation-quality-governance.md`
 16. `adr/ADR-0021-investigation-knowledge-graph.md`
-17. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-18. `evolution/timeline.md`
+17. `adr/ADR-0022-evidence-intelligence.md`
+18. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+19. `evolution/timeline.md`
 
 The architecture intentionally separates:
 
