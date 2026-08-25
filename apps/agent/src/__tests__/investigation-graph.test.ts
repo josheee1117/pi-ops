@@ -127,6 +127,13 @@ describe('investigation knowledge graph', () => {
     const score = incidentSimilarityScore(incident, other);
     assert.ok(score.score > 0);
     assert.deepEqual(score.sharedDimensions, ['deadbeef']);
+    const similar = store.listInvestigationRelations({
+      fromType: 'INCIDENT',
+      fromId: incident.id,
+      relationType: 'SIMILAR_TO',
+    });
+    assert.equal(similar.length, 1);
+    assert.equal(similar[0]?.toId, other.id);
     store.close();
   });
 
@@ -158,6 +165,49 @@ describe('investigation knowledge graph', () => {
     assert.deepEqual(context.relatedIncidents, []);
     assert.deepEqual(context.historicalResolutions, []);
     assert.equal(store.getIncident(incident.id)?.id, incident.id);
+    store.close();
+  });
+
+  it('queries relations by from/to and type', () => {
+    const store = createEventStore(':memory:');
+    const relations = createInvestigationRelationService(store);
+    relations.create({
+      fromType: 'HYPOTHESIS',
+      fromId: 'ihyp-q',
+      toType: 'EVIDENCE',
+      toId: 'evd-q',
+      relationType: 'SUPPORTED_BY',
+    });
+    relations.create({
+      fromType: 'HYPOTHESIS',
+      fromId: 'ihyp-q',
+      toType: 'EVIDENCE',
+      toId: 'evd-c',
+      relationType: 'CONTRADICTED_BY',
+    });
+    const supporting = relations.list({ fromId: 'ihyp-q', relationType: 'SUPPORTED_BY' });
+    assert.equal(supporting.length, 1);
+    assert.equal(supporting[0]?.toId, 'evd-q');
+    assert.equal(relations.list({ toId: 'evd-c' }).length, 1);
+    store.close();
+  });
+
+  it('preserves provenance when relations are created', async () => {
+    const { store, incident, evidence, report } = await completedReport();
+    const beforeIncident = structuredClone(store.getIncident(incident.id)!);
+    const beforeEvidence = structuredClone(store.listEvidence(incident.id));
+    const beforeHypothesis = structuredClone(store.listInvestigationHypotheses(report.id)[0]!);
+    const again = createInvestigationRelationService(store).create({
+      fromType: 'HYPOTHESIS',
+      fromId: beforeHypothesis.id,
+      toType: 'EVIDENCE',
+      toId: evidence.id,
+      relationType: 'SUPPORTED_BY',
+    });
+    assert.equal(again.fromId, beforeHypothesis.id);
+    assert.deepEqual(store.getIncident(incident.id), beforeIncident);
+    assert.deepEqual(store.listEvidence(incident.id), beforeEvidence);
+    assert.deepEqual(store.listInvestigationHypotheses(report.id)[0], beforeHypothesis);
     store.close();
   });
 

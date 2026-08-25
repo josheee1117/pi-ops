@@ -53,7 +53,7 @@ export function createInvestigationRelationService(
         createdAt: now(),
       };
       store.insertInvestigationRelation(relation);
-      return relation;
+      return store.getInvestigationRelation(relation.id) ?? relation;
     },
 
     list(filter: {

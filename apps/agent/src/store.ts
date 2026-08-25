@@ -896,6 +896,7 @@ export interface EventStore {
     refs: { hypothesisIds?: string[]; investigationQualityEvaluationId?: string },
   ): void;
   insertInvestigationRelation(relation: InvestigationRelation): void;
+  getInvestigationRelation(id: string): InvestigationRelation | undefined;
   listInvestigationRelations(filter: {
     fromType?: InvestigationRelation['fromType'];
     fromId?: string;
@@ -1739,12 +1740,13 @@ INSERT INTO investigation_quality_evaluations (
 UPDATE reasoning_results SET metadata_json = @metadata_json WHERE id = @id;
 `);
   const insertInvestigationRelationStmt = db.prepare(`
-INSERT INTO investigation_relations (
+INSERT OR IGNORE INTO investigation_relations (
   id, from_type, from_id, to_type, to_id, relation_type, created_at
 ) VALUES (
   @id, @from_type, @from_id, @to_type, @to_id, @relation_type, @created_at
 );
 `);
+  const getInvestigationRelationStmt = db.prepare('SELECT * FROM investigation_relations WHERE id = ?');
   const listInvestigationRelationsStmt = db.prepare(`
 SELECT * FROM investigation_relations
 WHERE (@from_type IS NULL OR from_type = @from_type)
@@ -2753,6 +2755,11 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         relation_type: relation.relationType,
         created_at: relation.createdAt,
       });
+    },
+
+    getInvestigationRelation(id: string): InvestigationRelation | undefined {
+      const row = getInvestigationRelationStmt.get(id) as InvestigationRelationRow | undefined;
+      return row ? mapInvestigationRelationRow(row) : undefined;
     },
 
     listInvestigationRelations(filter: {

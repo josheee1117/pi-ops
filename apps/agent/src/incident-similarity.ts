@@ -1,3 +1,4 @@
+import { createInvestigationRelationService } from './investigation-relation.js';
 import type { IncidentRow, EventStore } from './store.js';
 
 export interface SimilarIncident {
@@ -59,6 +60,7 @@ export function createIncidentSimilarityService(
   options: { limit?: number } = {},
 ) {
   const limit = options.limit ?? 5;
+  const relations = createInvestigationRelationService(store);
 
   return {
     findSimilar(incident: IncidentRow): SimilarIncident[] {
@@ -71,11 +73,23 @@ export function createIncidentSimilarityService(
         (left, right) => right.score - left.score
           || left.incident.id.localeCompare(right.incident.id),
       );
-      return scored.slice(0, limit).map((item) => ({
+      const similar = scored.slice(0, limit).map((item) => ({
         incident: item.incident,
         score: item.score,
         sharedDimensions: item.sharedDimensions,
       }));
+      for (const item of similar) {
+        relations.create({
+          fromType: 'INCIDENT',
+          fromId: incident.id,
+          toType: 'INCIDENT',
+          toId: item.incident.id,
+          relationType: 'SIMILAR_TO',
+        });
+      }
+      return similar;
     },
   };
 }
+
+export const createSimilarIncidentService = createIncidentSimilarityService;

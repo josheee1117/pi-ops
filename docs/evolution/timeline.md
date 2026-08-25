@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 8 completed
+
+- InvestigationRelation inserts are idempotent and queryable by from/to/type
+- similar incidents persist as SIMILAR_TO edges without embeddings
+- InvestigationContext stays frozen; Incident/Evidence provenance is unchanged
+
 ## Evidence intelligence completed
 
 - EvidenceProfile classifies primary / supporting / weak signals with reliability and diagnostic weight
