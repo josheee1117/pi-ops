@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 9 completed
+
+- InvestigationKnowledgeRetriever ranks similar incidents, hypotheses, resolutions, and memories
+- low-quality memory is filtered; each item carries source incident / relation / memory provenance
+- retrieval failure yields empty historicalKnowledge and does not block investigation
+
 ## Phase 8 completed
 
 - InvestigationRelation inserts are idempotent and queryable by from/to/type

@@ -20,8 +20,9 @@ The current implementation source of truth is:
 16. `adr/ADR-0021-investigation-knowledge-graph.md`
 17. `adr/ADR-0022-evidence-intelligence.md`
 18. `adr/ADR-0023-investigation-knowledge-graph.md`
-19. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-20. `evolution/timeline.md`
+19. `adr/ADR-0024-operational-knowledge-retrieval.md`
+20. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+21. `evolution/timeline.md`
 
 The architecture intentionally separates:
 

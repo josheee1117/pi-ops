@@ -1,6 +1,11 @@
 import { buildIncidentContext, type IncidentContext, type IncidentContextBounds } from './incident-context.js';
 import { createIncidentSimilarityService, type SimilarIncident } from './incident-similarity.js';
 import type { InvestigationHypothesis } from './investigation-hypothesis.js';
+import {
+  createInvestigationKnowledgeRetriever,
+  EMPTY_KNOWLEDGE_CONTEXT,
+  type KnowledgeContext,
+} from './investigation-knowledge.js';
 import type { MemoryIntelligence } from './memory-quality.js';
 import { createMemoryRetriever, type MemoryRetriever } from './memory-retriever.js';
 import type { EvidenceRecord, EventStore, IncidentRow } from './store.js';
@@ -25,6 +30,7 @@ export interface InvestigationContext {
   relatedIncidents: readonly SimilarIncident[];
   historicalResolutions: readonly string[];
   similarHypotheses: readonly SimilarHypothesis[];
+  historicalKnowledge: KnowledgeContext;
 }
 
 const DEFAULT_BOUNDS: IncidentContextBounds = {
@@ -44,12 +50,21 @@ export function buildInvestigationContext(
 ): InvestigationContext {
   const bounds = options.bounds ?? DEFAULT_BOUNDS;
   const incidentContext = buildIncidentContext(incident, evidence, bounds);
-  const retrieval = (options.retriever ?? createMemoryRetriever(store)).retrieve(incidentContext);
+  let retrieval: { memories: MemoryIntelligence[]; conflictingMemories: MemoryIntelligence[] } = {
+    memories: [],
+    conflictingMemories: [],
+  };
+  try {
+    retrieval = (options.retriever ?? createMemoryRetriever(store)).retrieve(incidentContext);
+  } catch {
+    retrieval = { memories: [], conflictingMemories: [] };
+  }
   const previousResolutions = uniqueResolutions([
     ...retrieval.memories,
     ...retrieval.conflictingMemories,
   ]);
   const history = historicalContext(incident, store);
+  const historicalKnowledge = retrieveKnowledge(incidentContext, store);
   return deepFreeze({
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
     incident: incidentContext.incident,
@@ -58,6 +73,7 @@ export function buildInvestigationContext(
     previousResolutions,
     conflictingMemories: retrieval.conflictingMemories,
     ...history,
+    historicalKnowledge,
   });
 }
 
@@ -114,6 +130,17 @@ function historicalContext(incident: IncidentRow, store: EventStore): {
     };
   } catch {
     return { relatedIncidents: [], historicalResolutions: [], similarHypotheses: [] };
+  }
+}
+
+function retrieveKnowledge(
+  context: IncidentContext,
+  store: EventStore,
+): KnowledgeContext {
+  try {
+    return createInvestigationKnowledgeRetriever(store).retrieve(context);
+  } catch {
+    return EMPTY_KNOWLEDGE_CONTEXT;
   }
 }
 
