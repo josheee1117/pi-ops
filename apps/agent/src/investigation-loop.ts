@@ -11,7 +11,7 @@ import {
   runtimeRequestIdFor,
   type InvestigationSession,
 } from './investigation-session.js';
-import type { PiRuntimeClient, PiRuntimeResultCallback } from './pi-runtime-client.js';
+import type { InvestigationReportCallback, PiRuntimeClient } from './pi-runtime-client.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasoningResult } from './reasoner.js';
 import {
@@ -76,7 +76,13 @@ export function createInvestigationLoopService(
       if (!task) throw new Error(`DelegationTask ${session.delegationTaskId} does not exist`);
       const plan = store.getInvestigationPlan(task.investigationPlanId);
       if (!plan) throw new Error(`InvestigationPlan ${task.investigationPlanId} does not exist`);
-      const ack = await runtime.submitInvestigation(session, context);
+      let ack: Awaited<ReturnType<PiRuntimeClient['submitInvestigation']>>;
+      try {
+        ack = await runtime.submitInvestigation(session, context);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return this.fail(session.id, message);
+      }
       if (task.status === 'PENDING') {
         store.markDelegationTaskSubmitted(
           task.id,
@@ -88,16 +94,19 @@ export function createInvestigationLoopService(
       return store.getInvestigationSession(session.id)!;
     },
 
-    handleCallback(input: PiRuntimeResultCallback): InvestigationReport {
+    handleCallback(input: InvestigationReportCallback): InvestigationReport {
       if (input.schemaVersion !== INVESTIGATION_SCHEMA_VERSION) {
         throw new Error(`schemaVersion ${input.schemaVersion} does not match ${INVESTIGATION_SCHEMA_VERSION}`);
       }
       if (input.report.schemaVersion !== undefined && input.report.schemaVersion !== INVESTIGATION_SCHEMA_VERSION) {
         throw new Error(`schemaVersion ${input.report.schemaVersion} does not match ${INVESTIGATION_SCHEMA_VERSION}`);
       }
-      const session = requireSession(store, input.investigationSessionId);
+      const session = requireSession(store, input.sessionId);
       const task = store.getDelegationTask(session.delegationTaskId);
       if (!task) throw new Error(`DelegationTask ${session.delegationTaskId} does not exist`);
+      if (!input.runtimeRequestId?.trim() || session.runtimeRequestId !== input.runtimeRequestId) {
+        throw new Error(`runtimeRequestId ${input.runtimeRequestId} does not belong to InvestigationSession ${session.id}`);
+      }
       if (!input.runtimeTaskId?.trim() || task.runtimeTaskId !== input.runtimeTaskId) {
         throw new Error(`runtimeTaskId ${input.runtimeTaskId} does not belong to InvestigationSession ${session.id}`);
       }
@@ -167,6 +176,8 @@ export function createInvestigationLoopService(
         delegationTaskId: task.id,
         investigationSessionId: session.id,
         investigationReportId: report.id,
+        ...(task.runtimeTaskId ? { runtimeTaskId: task.runtimeTaskId } : {}),
+        runtimeRequestId: session.runtimeRequestId,
       };
       store.insertInvestigationReport(report);
       store.insertReasoningResult(result);

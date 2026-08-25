@@ -5,8 +5,9 @@ Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a l
 ## Phase 5 completed
 
 - runtimeRequestId makes submit idempotent: one session, one DelegationTask, one runtime task
-- PiRuntimeResultCallback validates task/session ownership and schemaVersion
-- SUBMITTED/RUNNING timeout reconciliation does not mutate Incident or Evidence
+- InvestigationReportCallback validates request/task/session ownership, schemaVersion, and evidence
+- timeout and runtime-unavailable recovery do not mutate Incident or Evidence
+- ReasoningResult traces Incident, Evidence snapshot, InvestigationSession, and runtime task
 
 ## Phase 4 completed
 

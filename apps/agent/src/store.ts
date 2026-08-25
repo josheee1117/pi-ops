@@ -1050,6 +1050,8 @@ function serializeReasoningMetadata(result: ReasoningResult): string | null {
   if (result.delegationTaskId) metadata['delegationTaskId'] = result.delegationTaskId;
   if (result.investigationSessionId) metadata['investigationSessionId'] = result.investigationSessionId;
   if (result.investigationReportId) metadata['investigationReportId'] = result.investigationReportId;
+  if (result.runtimeTaskId) metadata['runtimeTaskId'] = result.runtimeTaskId;
+  if (result.runtimeRequestId) metadata['runtimeRequestId'] = result.runtimeRequestId;
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
@@ -1074,6 +1076,8 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
       ...(typeof parsed.delegationTaskId === 'string' ? { delegationTaskId: parsed.delegationTaskId } : {}),
       ...(typeof parsed.investigationSessionId === 'string' ? { investigationSessionId: parsed.investigationSessionId } : {}),
       ...(typeof parsed.investigationReportId === 'string' ? { investigationReportId: parsed.investigationReportId } : {}),
+      ...(typeof parsed.runtimeTaskId === 'string' ? { runtimeTaskId: parsed.runtimeTaskId } : {}),
+      ...(typeof parsed.runtimeRequestId === 'string' ? { runtimeRequestId: parsed.runtimeRequestId } : {}),
     };
   } catch {
     return {};

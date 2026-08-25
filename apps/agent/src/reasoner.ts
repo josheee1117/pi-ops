@@ -35,6 +35,8 @@ export interface ReasoningResult {
   delegationTaskId?: string;
   investigationSessionId?: string;
   investigationReportId?: string;
+  runtimeTaskId?: string;
+  runtimeRequestId?: string;
 }
 
 export interface Reasoner {

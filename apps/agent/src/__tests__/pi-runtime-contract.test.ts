@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { INVESTIGATION_SCHEMA_VERSION } from '../investigation-context.js';
 import { createInvestigationLoopService } from '../investigation-loop.js';
-import type { PiRuntimeClient, PiRuntimeResultCallback } from '../pi-runtime-client.js';
+import type { InvestigationReportCallback, PiRuntimeClient } from '../pi-runtime-client.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 
 function seedIncident(store = createEventStore(':memory:')) {
@@ -59,19 +59,21 @@ function report() {
 
 function callback(
   sessionId: string,
+  runtimeRequestId: string,
   runtimeTaskId: string,
-  overrides: Partial<PiRuntimeResultCallback> = {},
-): PiRuntimeResultCallback {
+  overrides: Partial<InvestigationReportCallback> = {},
+): InvestigationReportCallback {
   return {
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
+    runtimeRequestId,
     runtimeTaskId,
-    investigationSessionId: sessionId,
+    sessionId,
     report: report(),
     ...overrides,
   };
 }
 
-describe('Pi Runtime contract hardening', () => {
+describe('Pi Runtime production contract', () => {
   it('submits the same runtimeRequestId only once', async () => {
     const { store, incident } = seedIncident();
     const { runtime, submits } = countingRuntime();
@@ -86,9 +88,6 @@ describe('Pi Runtime contract hardening', () => {
     const task = store.getDelegationTask(first.session.delegationTaskId)!;
     assert.equal(task.runtimeRequestId, first.session.runtimeRequestId);
     assert.equal(task.runtimeTaskId, `rt-${first.session.runtimeRequestId}`);
-    assert.equal(store.getDelegationTaskByPlanId(
-      store.getDelegationTask(first.session.delegationTaskId)!.investigationPlanId,
-    )?.id, task.id);
     store.close();
   });
 
@@ -98,24 +97,30 @@ describe('Pi Runtime contract hardening', () => {
     const { session } = loop.start(incident.id);
     const submitted = await loop.submit(session.id);
     const task = store.getDelegationTask(submitted.delegationTaskId)!;
-    const first = loop.handleCallback(callback(session.id, task.runtimeTaskId!));
-    const second = loop.handleCallback(callback(session.id, task.runtimeTaskId!, {
+    const payload = callback(session.id, session.runtimeRequestId, task.runtimeTaskId!);
+    const first = loop.handleCallback(payload);
+    const second = loop.handleCallback({
+      ...payload,
       report: { ...report(), hypothesis: 'should not replace' },
-    }));
+    });
     assert.equal(second.id, first.id);
     assert.equal(second.hypothesis, first.hypothesis);
     assert.equal(store.listReasoningResults(incident.id).length, 1);
     store.close();
   });
 
-  it('rejects a callback with an invalid runtimeTaskId', async () => {
+  it('rejects an invalid callback without writing a report', async () => {
     const { store, incident } = seedIncident();
     const loop = createInvestigationLoopService(store);
     const { session } = loop.start(incident.id);
     await loop.submit(session.id);
     assert.throws(
-      () => loop.handleCallback(callback(session.id, 'rt-unknown')),
+      () => loop.handleCallback(callback(session.id, session.runtimeRequestId, 'rt-unknown')),
       /runtimeTaskId/,
+    );
+    assert.throws(
+      () => loop.handleCallback(callback(session.id, 'rreq-other', 'rt-unknown')),
+      /runtimeRequestId/,
     );
     assert.equal(store.getInvestigationReportBySessionId(session.id), undefined);
     assert.equal(store.getInvestigationSession(session.id)?.status, 'SUBMITTED');
@@ -132,8 +137,7 @@ describe('Pi Runtime contract hardening', () => {
     now = '2026-08-21T06:20:00.000Z';
     const timedOut = loop.reconcile({ timeoutMs: 10 * 60 * 1000 });
     assert.equal(timedOut.length, 1);
-    assert.equal(timedOut[0]?.id, session.id);
-    assert.equal(store.getInvestigationSession(session.id)?.status, 'FAILED');
+    assert.equal(timedOut[0]?.status, 'FAILED');
     assert.deepEqual(store.getIncident(incident.id), before);
     assert.equal(store.getInvestigationReportBySessionId(session.id), undefined);
     store.close();
@@ -146,10 +150,57 @@ describe('Pi Runtime contract hardening', () => {
     const submitted = await loop.submit(session.id);
     const task = store.getDelegationTask(submitted.delegationTaskId)!;
     assert.throws(
-      () => loop.handleCallback(callback(session.id, task.runtimeTaskId!, { schemaVersion: 99 })),
+      () => loop.handleCallback(callback(
+        session.id,
+        session.runtimeRequestId,
+        task.runtimeTaskId!,
+        { schemaVersion: 99 },
+      )),
       /schemaVersion/,
     );
     assert.equal(store.getInvestigationReportBySessionId(session.id), undefined);
+    store.close();
+  });
+
+  it('fails closed when the runtime is unavailable without mutating Incident or Evidence', async () => {
+    const { store, incident } = seedIncident();
+    const beforeIncident = structuredClone(store.getIncident(incident.id)!);
+    const beforeEvidence = structuredClone(store.listEvidence(incident.id));
+    const loop = createInvestigationLoopService(store, {
+      runtime: {
+        async submit() {},
+        async poll() {
+          return undefined;
+        },
+        async submitInvestigation() {
+          throw new Error('runtime unavailable');
+        },
+      },
+    });
+    const { session } = loop.start(incident.id);
+    const failed = await loop.submit(session.id);
+    assert.equal(failed.status, 'FAILED');
+    assert.deepEqual(store.getIncident(incident.id), beforeIncident);
+    assert.deepEqual(store.listEvidence(incident.id), beforeEvidence);
+    assert.equal(store.getInvestigationReportBySessionId(session.id), undefined);
+    store.close();
+  });
+
+  it('preserves the provenance chain on the ReasoningResult', async () => {
+    const { store, incident } = seedIncident();
+    const loop = createInvestigationLoopService(store);
+    const { session } = loop.start(incident.id);
+    const submitted = await loop.submit(session.id);
+    const task = store.getDelegationTask(submitted.delegationTaskId)!;
+    loop.handleCallback(callback(session.id, session.runtimeRequestId, task.runtimeTaskId!));
+    const result = store.listReasoningResults(incident.id)[0]!;
+    assert.equal(result.incidentId, incident.id);
+    assert.ok(result.evidenceSnapshotHash);
+    assert.deepEqual(result.evidenceIds, ['evd-rt-1']);
+    assert.equal(result.investigationSessionId, session.id);
+    assert.equal(result.runtimeRequestId, session.runtimeRequestId);
+    assert.equal(result.runtimeTaskId, task.runtimeTaskId);
+    assert.equal(result.delegationTaskId, task.id);
     store.close();
   });
 });

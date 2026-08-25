@@ -1,6 +1,6 @@
 # ADR-0019: Pi Runtime contract hardening
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0019-pi-runtime-production-contract
 - **Date**: 2026-08-21
 - **Scope**: Idempotent, versioned, asynchronous integration with Pi Runtime
 - **Supersedes**: none

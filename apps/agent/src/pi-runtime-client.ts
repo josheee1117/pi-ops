@@ -19,10 +19,11 @@ export interface PiRuntimeSubmitAck {
   runtimeTaskId?: string;
 }
 
-export interface PiRuntimeResultCallback {
+export interface InvestigationReportCallback {
   schemaVersion: number;
+  runtimeRequestId: string;
   runtimeTaskId: string;
-  investigationSessionId: string;
+  sessionId: string;
   report: InvestigationReportInput;
 }
 
