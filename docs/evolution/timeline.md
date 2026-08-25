@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 6 completed
+
+- InvestigationHypothesis tracks PROPOSED → SUPPORTED / REJECTED with owned evidence ids
+- InvestigationQualityEvaluation scores coverage, contradiction, and confidence consistency
+- investigation-loop MemoryCandidate also requires a quality evaluation
+
 ## Phase 5 completed
 
 - runtimeRequestId makes submit idempotent: one session, one DelegationTask, one runtime task

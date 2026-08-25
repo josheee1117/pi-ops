@@ -88,9 +88,13 @@ export function createReasoningEvaluationService(
       const report = result.investigationSessionId
         ? store.getInvestigationReportBySessionId(result.investigationSessionId)
         : undefined;
+      const quality = report
+        ? store.getInvestigationQualityEvaluationByReportId(report.id)
+        : undefined;
       const candidate = shouldCreateCandidate(result, evaluation, scoreThreshold)
         && incident
         && (!result.investigationSessionId || Boolean(report))
+        && (!result.investigationSessionId || (quality !== undefined && quality.qualityScore >= scoreThreshold))
         ? buildMemoryCandidate(result, evaluation, incident, evidence)
         : undefined;
       if (candidate) store.insertMemoryCandidate(candidate);

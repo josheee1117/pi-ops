@@ -37,6 +37,8 @@ export interface ReasoningResult {
   investigationReportId?: string;
   runtimeTaskId?: string;
   runtimeRequestId?: string;
+  hypothesisIds?: string[];
+  investigationQualityEvaluationId?: string;
 }
 
 export interface Reasoner {

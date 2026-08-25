@@ -8,6 +8,8 @@ import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluatio
 import type { MemoryFeedback } from './memory-feedback.js';
 import type { MemoryEntry } from './memory-governance.js';
 import type { InvestigationPlan } from './reasoning-strategy.js';
+import type { InvestigationHypothesis } from './investigation-hypothesis.js';
+import type { InvestigationQualityEvaluation } from './investigation-quality.js';
 import type { InvestigationReport } from './investigation-report.js';
 import type { InvestigationContext } from './investigation-context.js';
 import type { InvestigationSession } from './investigation-session.js';
@@ -376,6 +378,34 @@ CREATE TABLE IF NOT EXISTS investigation_reports (
   contradicting_evidence_ids_json TEXT NOT NULL,
   confidence REAL NOT NULL,
   recommendation TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
+const CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_hypotheses (
+  id TEXT PRIMARY KEY,
+  investigation_report_id TEXT NOT NULL,
+  statement TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  status TEXT NOT NULL,
+  supporting_evidence_ids_json TEXT NOT NULL,
+  contradicting_evidence_ids_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_investigation_hypotheses_report
+  ON investigation_hypotheses (investigation_report_id, created_at, id);
+`;
+
+const CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_quality_evaluations (
+  id TEXT PRIMARY KEY,
+  investigation_report_id TEXT NOT NULL UNIQUE,
+  reasoning_result_id TEXT,
+  evidence_coverage_score REAL NOT NULL,
+  contradiction_ratio REAL NOT NULL,
+  confidence_consistency_score REAL NOT NULL,
+  quality_score REAL NOT NULL,
   created_at TEXT NOT NULL
 );
 `;
@@ -806,6 +836,17 @@ export interface EventStore {
   insertInvestigationReport(report: InvestigationReport): void;
   getInvestigationReport(id: string): InvestigationReport | undefined;
   getInvestigationReportBySessionId(sessionId: string): InvestigationReport | undefined;
+  insertInvestigationHypothesis(hypothesis: InvestigationHypothesis): void;
+  getInvestigationHypothesis(id: string): InvestigationHypothesis | undefined;
+  listInvestigationHypotheses(investigationReportId: string): InvestigationHypothesis[];
+  updateInvestigationHypothesisStatus(id: string, status: InvestigationHypothesis['status']): void;
+  insertInvestigationQualityEvaluation(evaluation: InvestigationQualityEvaluation): void;
+  getInvestigationQualityEvaluation(id: string): InvestigationQualityEvaluation | undefined;
+  getInvestigationQualityEvaluationByReportId(reportId: string): InvestigationQualityEvaluation | undefined;
+  patchReasoningResultInvestigationRefs(
+    id: string,
+    refs: { hypothesisIds?: string[]; investigationQualityEvaluationId?: string },
+  ): void;
 
   /** Close the database connection. */
   close(): void;
@@ -945,6 +986,56 @@ function mapInvestigationSessionRow(row: InvestigationSessionRow): Investigation
   };
 }
 
+interface InvestigationHypothesisRow {
+  id: string;
+  investigation_report_id: string;
+  statement: string;
+  confidence: number;
+  status: InvestigationHypothesis['status'];
+  supporting_evidence_ids_json: string;
+  contradicting_evidence_ids_json: string;
+  created_at: string;
+}
+
+interface InvestigationQualityEvaluationRow {
+  id: string;
+  investigation_report_id: string;
+  reasoning_result_id: string | null;
+  evidence_coverage_score: number;
+  contradiction_ratio: number;
+  confidence_consistency_score: number;
+  quality_score: number;
+  created_at: string;
+}
+
+function mapInvestigationHypothesisRow(row: InvestigationHypothesisRow): InvestigationHypothesis {
+  return {
+    id: row.id,
+    investigationReportId: row.investigation_report_id,
+    statement: row.statement,
+    confidence: row.confidence,
+    status: row.status,
+    supportingEvidenceIds: JSON.parse(row.supporting_evidence_ids_json) as string[],
+    contradictingEvidenceIds: JSON.parse(row.contradicting_evidence_ids_json) as string[],
+    createdAt: row.created_at,
+  };
+}
+
+function mapInvestigationQualityEvaluationRow(
+  row: InvestigationQualityEvaluationRow,
+): InvestigationQualityEvaluation {
+  return {
+    id: row.id,
+    investigationReportId: row.investigation_report_id,
+    ...(row.reasoning_result_id ? { reasoningResultId: row.reasoning_result_id } : {}),
+    evidenceCoverageScore: row.evidence_coverage_score,
+    contradictionRatio: row.contradiction_ratio,
+    confidenceConsistencyScore: row.confidence_consistency_score,
+    qualityScore: row.quality_score,
+    createdAt: row.created_at,
+  };
+}
+
 function mapInvestigationReportRow(row: InvestigationReportRow): InvestigationReport {
   return {
     id: row.id,
@@ -1052,6 +1143,12 @@ function serializeReasoningMetadata(result: ReasoningResult): string | null {
   if (result.investigationReportId) metadata['investigationReportId'] = result.investigationReportId;
   if (result.runtimeTaskId) metadata['runtimeTaskId'] = result.runtimeTaskId;
   if (result.runtimeRequestId) metadata['runtimeRequestId'] = result.runtimeRequestId;
+  if (result.hypothesisIds && result.hypothesisIds.length > 0) {
+    metadata['hypothesisIds'] = result.hypothesisIds;
+  }
+  if (result.investigationQualityEvaluationId) {
+    metadata['investigationQualityEvaluationId'] = result.investigationQualityEvaluationId;
+  }
   return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
 }
 
@@ -1078,6 +1175,10 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
       ...(typeof parsed.investigationReportId === 'string' ? { investigationReportId: parsed.investigationReportId } : {}),
       ...(typeof parsed.runtimeTaskId === 'string' ? { runtimeTaskId: parsed.runtimeTaskId } : {}),
       ...(typeof parsed.runtimeRequestId === 'string' ? { runtimeRequestId: parsed.runtimeRequestId } : {}),
+      ...(Array.isArray(parsed.hypothesisIds) ? { hypothesisIds: parsed.hypothesisIds } : {}),
+      ...(typeof parsed.investigationQualityEvaluationId === 'string'
+        ? { investigationQualityEvaluationId: parsed.investigationQualityEvaluationId }
+        : {}),
     };
   } catch {
     return {};
@@ -1236,6 +1337,8 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_CONTEXT_SNAPSHOTS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_SESSIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
     const delegationColumns = new Set(
       (db.pragma('table_info(delegation_tasks)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1499,6 +1602,42 @@ INSERT INTO investigation_reports (
   const getInvestigationReportBySessionStmt = db.prepare(
     'SELECT * FROM investigation_reports WHERE session_id = ?',
   );
+  const insertInvestigationHypothesisStmt = db.prepare(`
+INSERT INTO investigation_hypotheses (
+  id, investigation_report_id, statement, confidence, status,
+  supporting_evidence_ids_json, contradicting_evidence_ids_json, created_at
+) VALUES (
+  @id, @investigation_report_id, @statement, @confidence, @status,
+  @supporting_evidence_ids_json, @contradicting_evidence_ids_json, @created_at
+);
+`);
+  const getInvestigationHypothesisStmt = db.prepare('SELECT * FROM investigation_hypotheses WHERE id = ?');
+  const listInvestigationHypothesesStmt = db.prepare(`
+SELECT * FROM investigation_hypotheses
+WHERE investigation_report_id = ?
+ORDER BY created_at, id;
+`);
+  const updateInvestigationHypothesisStatusStmt = db.prepare(`
+UPDATE investigation_hypotheses SET status = @status WHERE id = @id;
+`);
+  const insertInvestigationQualityEvaluationStmt = db.prepare(`
+INSERT INTO investigation_quality_evaluations (
+  id, investigation_report_id, reasoning_result_id, evidence_coverage_score,
+  contradiction_ratio, confidence_consistency_score, quality_score, created_at
+) VALUES (
+  @id, @investigation_report_id, @reasoning_result_id, @evidence_coverage_score,
+  @contradiction_ratio, @confidence_consistency_score, @quality_score, @created_at
+);
+`);
+  const getInvestigationQualityEvaluationStmt = db.prepare(
+    'SELECT * FROM investigation_quality_evaluations WHERE id = ?',
+  );
+  const getInvestigationQualityEvaluationByReportStmt = db.prepare(
+    'SELECT * FROM investigation_quality_evaluations WHERE investigation_report_id = ?',
+  );
+  const updateReasoningResultMetadataStmt = db.prepare(`
+UPDATE reasoning_results SET metadata_json = @metadata_json WHERE id = @id;
+`);
 
   function mapEvidenceJob(row: EvidenceJobRow): EvidenceJob {
     return {
@@ -2382,6 +2521,74 @@ INSERT INTO investigation_reports (
     getInvestigationReportBySessionId(sessionId: string): InvestigationReport | undefined {
       const row = getInvestigationReportBySessionStmt.get(sessionId) as InvestigationReportRow | undefined;
       return row ? mapInvestigationReportRow(row) : undefined;
+    },
+
+    insertInvestigationHypothesis(hypothesis: InvestigationHypothesis): void {
+      insertInvestigationHypothesisStmt.run({
+        id: hypothesis.id,
+        investigation_report_id: hypothesis.investigationReportId,
+        statement: hypothesis.statement,
+        confidence: hypothesis.confidence,
+        status: hypothesis.status,
+        supporting_evidence_ids_json: JSON.stringify(hypothesis.supportingEvidenceIds),
+        contradicting_evidence_ids_json: JSON.stringify(hypothesis.contradictingEvidenceIds),
+        created_at: hypothesis.createdAt,
+      });
+    },
+
+    getInvestigationHypothesis(id: string): InvestigationHypothesis | undefined {
+      const row = getInvestigationHypothesisStmt.get(id) as InvestigationHypothesisRow | undefined;
+      return row ? mapInvestigationHypothesisRow(row) : undefined;
+    },
+
+    listInvestigationHypotheses(investigationReportId: string): InvestigationHypothesis[] {
+      return (listInvestigationHypothesesStmt.all(investigationReportId) as InvestigationHypothesisRow[])
+        .map(mapInvestigationHypothesisRow);
+    },
+
+    updateInvestigationHypothesisStatus(id: string, status: InvestigationHypothesis['status']): void {
+      updateInvestigationHypothesisStatusStmt.run({ id, status });
+    },
+
+    insertInvestigationQualityEvaluation(evaluation: InvestigationQualityEvaluation): void {
+      insertInvestigationQualityEvaluationStmt.run({
+        id: evaluation.id,
+        investigation_report_id: evaluation.investigationReportId,
+        reasoning_result_id: evaluation.reasoningResultId ?? null,
+        evidence_coverage_score: evaluation.evidenceCoverageScore,
+        contradiction_ratio: evaluation.contradictionRatio,
+        confidence_consistency_score: evaluation.confidenceConsistencyScore,
+        quality_score: evaluation.qualityScore,
+        created_at: evaluation.createdAt,
+      });
+    },
+
+    getInvestigationQualityEvaluation(id: string): InvestigationQualityEvaluation | undefined {
+      const row = getInvestigationQualityEvaluationStmt.get(id) as InvestigationQualityEvaluationRow | undefined;
+      return row ? mapInvestigationQualityEvaluationRow(row) : undefined;
+    },
+
+    getInvestigationQualityEvaluationByReportId(reportId: string): InvestigationQualityEvaluation | undefined {
+      const row = getInvestigationQualityEvaluationByReportStmt.get(reportId) as InvestigationQualityEvaluationRow | undefined;
+      return row ? mapInvestigationQualityEvaluationRow(row) : undefined;
+    },
+
+    patchReasoningResultInvestigationRefs(
+      id: string,
+      refs: { hypothesisIds?: string[]; investigationQualityEvaluationId?: string },
+    ): void {
+      const result = store.getReasoningResult(id);
+      if (!result) throw new Error(`ReasoningResult ${id} does not exist`);
+      updateReasoningResultMetadataStmt.run({
+        id,
+        metadata_json: serializeReasoningMetadata({
+          ...result,
+          ...(refs.hypothesisIds ? { hypothesisIds: refs.hypothesisIds } : {}),
+          ...(refs.investigationQualityEvaluationId
+            ? { investigationQualityEvaluationId: refs.investigationQualityEvaluationId }
+            : {}),
+        }),
+      });
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

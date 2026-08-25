@@ -5,6 +5,7 @@ import {
   INVESTIGATION_SCHEMA_VERSION,
   type InvestigationContext,
 } from './investigation-context.js';
+import { createInvestigationHypothesisService } from './investigation-hypothesis.js';
 import type { InvestigationReport, InvestigationReportInput } from './investigation-report.js';
 import {
   hashInvestigationContext,
@@ -180,6 +181,8 @@ export function createInvestigationLoopService(
         runtimeRequestId: session.runtimeRequestId,
       };
       store.insertInvestigationReport(report);
+      const hypothesis = createInvestigationHypothesisService(store, { now }).proposeFromReport(report);
+      result.hypothesisIds = [hypothesis.id];
       store.insertReasoningResult(result);
       store.markDelegationTaskCompleted(task.id, report.createdAt);
       if (job.status !== 'COMPLETED') store.markReasoningJobCompleted(job.id);

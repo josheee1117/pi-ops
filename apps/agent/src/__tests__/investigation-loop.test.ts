@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInvestigationLoopService } from '../investigation-loop.js';
+import { createInvestigationQualityService } from '../investigation-quality.js';
 import { createReasoningEvaluationService } from '../reasoning-evaluation.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 
@@ -138,6 +139,7 @@ describe('InvestigationLoopService', () => {
     await loop.submit(session.id);
     const report = loop.complete(session.id, reportInput());
     assert.equal(store.listMemoryCandidates().length, 0);
+    createInvestigationQualityService(store).evaluate(report.id);
     const result = store.listReasoningResults(incident.id)[0]!;
     assert.equal(result.investigationReportId, report.id);
     const { candidate, evaluation } = createReasoningEvaluationService(store).evaluate({
