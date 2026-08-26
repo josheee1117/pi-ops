@@ -4,9 +4,10 @@ Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a l
 
 ## Phase 9 completed
 
-- InvestigationKnowledgeRetriever ranks similar incidents, hypotheses, resolutions, and memories
-- low-quality memory is filtered; each item carries source incident / relation / memory provenance
-- retrieval failure yields empty historicalKnowledge and does not block investigation
+- KnowledgeRetriever builds OperationalKnowledgeContext from similar incidents, hypotheses, resolutions, and memories
+- ranking uses similarity, memory effectiveness, and investigation quality; evidence quality fills gaps
+- each item keeps source incident, source relation, and confidence; low-quality memory is filtered
+- historical knowledge is context, never a replacement for Evidence; retrieval failure does not block investigation
 
 ## Phase 8 completed
 

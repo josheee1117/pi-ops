@@ -16,12 +16,14 @@ Pi-Ops owns retrieval, ranking, and provenance. Pi Runtime owns reasoning.
 
 ```text
 IncidentContext
-  → InvestigationKnowledgeRetriever
-  → KnowledgeContext (ranked, provenanced)
+  → KnowledgeRetriever
+  → OperationalKnowledgeContext (ranked, provenanced)
   → InvestigationContext.historicalKnowledge
 ```
 
-`KnowledgeContext` contains:
+Historical operational knowledge is retrieved as context, never as replacement for evidence.
+
+`OperationalKnowledgeContext` contains:
 
 - similar incidents
 - historical hypotheses
@@ -30,21 +32,21 @@ IncidentContext
 
 ### Ranking
 
-Deterministic, no embeddings:
+Deterministic, no embeddings. Rank by:
 
-1. structural similarity score
-2. resolution success from MemoryFeedback
-3. derived memory quality (effectiveness / success ratio)
+1. similarity score
+2. memory effectiveness
+3. investigation quality score
 
-Low-quality memory (only FAILED feedback, or effectiveness below 0.5 after use) is omitted.
+Evidence quality (weighted support vs contradiction) fills in when an InvestigationQualityEvaluation is absent. Low-quality memory (only FAILED feedback, or effectiveness below 0.5 after use) is omitted.
 
 ### Provenance
 
-Every retrieved item records `sourceRelationType` / optional `sourceRelationId`, `sourceIncidentId`, and/or `sourceMemoryEntryId`.
+Every retrieved item records `confidence`, `sourceRelationType` / optional `sourceRelationId`, `sourceIncidentId`, and/or `sourceMemoryEntryId`.
 
 ### Failure is optional
 
-A retriever exception yields an empty KnowledgeContext. Event ingest, Evidence collection, and InvestigationSession start continue. InvestigationContext remains frozen.
+A retriever exception yields an empty OperationalKnowledgeContext. Event ingest, Evidence collection, and InvestigationSession start continue. InvestigationContext remains frozen.
 
 This milestone does not add a vector database, embeddings, or GraphRAG.
 
@@ -61,4 +63,4 @@ Costs:
 
 ## Supersession rule
 
-Do not inject unbounded historical knowledge into InvestigationContext or treat retrieved items as observed Evidence.
+Do not treat retrieved operational knowledge as observed Evidence, and do not inject it unbounded into InvestigationContext.

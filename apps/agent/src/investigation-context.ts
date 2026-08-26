@@ -2,9 +2,9 @@ import { buildIncidentContext, type IncidentContext, type IncidentContextBounds 
 import { createIncidentSimilarityService, type SimilarIncident } from './incident-similarity.js';
 import type { InvestigationHypothesis } from './investigation-hypothesis.js';
 import {
-  createInvestigationKnowledgeRetriever,
-  EMPTY_KNOWLEDGE_CONTEXT,
-  type KnowledgeContext,
+  createKnowledgeRetriever,
+  EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT,
+  type OperationalKnowledgeContext,
 } from './investigation-knowledge.js';
 import type { MemoryIntelligence } from './memory-quality.js';
 import { createMemoryRetriever, type MemoryRetriever } from './memory-retriever.js';
@@ -30,7 +30,7 @@ export interface InvestigationContext {
   relatedIncidents: readonly SimilarIncident[];
   historicalResolutions: readonly string[];
   similarHypotheses: readonly SimilarHypothesis[];
-  historicalKnowledge: KnowledgeContext;
+  historicalKnowledge: OperationalKnowledgeContext;
 }
 
 const DEFAULT_BOUNDS: IncidentContextBounds = {
@@ -136,11 +136,11 @@ function historicalContext(incident: IncidentRow, store: EventStore): {
 function retrieveKnowledge(
   context: IncidentContext,
   store: EventStore,
-): KnowledgeContext {
+): OperationalKnowledgeContext {
   try {
-    return createInvestigationKnowledgeRetriever(store).retrieve(context);
+    return createKnowledgeRetriever(store).retrieve(context);
   } catch {
-    return EMPTY_KNOWLEDGE_CONTEXT;
+    return EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT;
   }
 }
 

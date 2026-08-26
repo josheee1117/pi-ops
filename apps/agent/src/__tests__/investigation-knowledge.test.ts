@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildIncidentContext } from '../incident-context.js';
 import { buildInvestigationContext } from '../investigation-context.js';
-import { createInvestigationKnowledgeRetriever } from '../investigation-knowledge.js';
+import { createKnowledgeRetriever } from '../investigation-knowledge.js';
 import { createMemoryFeedbackService } from '../memory-feedback.js';
 import { createMemoryGovernanceService } from '../memory-governance.js';
 import { createFakeReasoner } from '../reasoner.js';
@@ -73,7 +73,7 @@ describe('operational knowledge retrieval', () => {
       fingerprint: SHARED_FP,
     });
     const context = buildIncidentContext(second.incident, [second.evidence], BOUNDS);
-    const knowledge = createInvestigationKnowledgeRetriever(first.store).retrieve(context);
+    const knowledge = createKnowledgeRetriever(first.store).retrieve(context);
     const ids = knowledge.similarIncidents.map((item) => item.incident.id);
     assert.ok(ids.includes(first.incident.id));
     assert.ok(!ids.includes(second.incident.id));
@@ -92,7 +92,7 @@ describe('operational knowledge retrieval', () => {
     });
     const query = seedIncident(good.store);
     const context = buildIncidentContext(query.incident, [query.evidence], BOUNDS);
-    const knowledge = createInvestigationKnowledgeRetriever(good.store).retrieve(context);
+    const knowledge = createKnowledgeRetriever(good.store).retrieve(context);
     const ids = knowledge.relatedMemories.map((item) => item.memory.id);
     assert.ok(ids.includes(good.entry.id));
     assert.ok(!ids.includes(bad.entry.id));
@@ -103,15 +103,17 @@ describe('operational knowledge retrieval', () => {
     const historical = seedApprovedMemory();
     const query = seedIncident(historical.store);
     const context = buildIncidentContext(query.incident, [query.evidence], BOUNDS);
-    const knowledge = createInvestigationKnowledgeRetriever(historical.store).retrieve(context);
+    const knowledge = createKnowledgeRetriever(historical.store).retrieve(context);
     assert.ok(knowledge.similarIncidents.length > 0);
     for (const item of knowledge.similarIncidents) {
       assert.equal(item.provenance.sourceIncidentId, item.incident.id);
       assert.equal(item.provenance.sourceRelationType, 'SIMILAR_TO');
+      assert.ok(item.confidence >= 0 && item.confidence <= 1);
     }
     for (const item of knowledge.relatedMemories) {
       assert.equal(item.provenance.sourceMemoryEntryId, item.memory.id);
       assert.ok(item.provenance.sourceIncidentId);
+      assert.equal(item.confidence, item.memory.confidence);
     }
     historical.store.close();
   });
@@ -137,5 +139,22 @@ describe('operational knowledge retrieval', () => {
     assert.deepEqual(context.historicalKnowledge.relatedMemories, []);
     assert.ok(Object.isFrozen(context.historicalKnowledge));
     store.close();
+  });
+
+  it('keeps investigation context immutable', () => {
+    const first = seedIncident();
+    const query = seedIncident(first.store);
+    const context = buildInvestigationContext(query.incident, [query.evidence], first.store);
+    assert.ok(context.historicalKnowledge.similarIncidents.length > 0);
+    assert.ok(Object.isFrozen(context));
+    assert.ok(Object.isFrozen(context.historicalKnowledge));
+    assert.ok(Object.isFrozen(context.historicalKnowledge.similarIncidents));
+    assert.throws(() => {
+      (context as { incident: { id: string } }).incident.id = 'mutated';
+    });
+    assert.throws(() => {
+      (context.historicalKnowledge.similarIncidents as unknown[]).push({});
+    });
+    first.store.close();
   });
 });
