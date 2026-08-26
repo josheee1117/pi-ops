@@ -21,7 +21,7 @@ import {
   REASONING_STRATEGY_VERSION,
 } from './reasoning-strategy.js';
 import { hashEvidenceSnapshot } from './reasoning-worker.js';
-import type { EventStore } from './store.js';
+import type { EventStore, IncidentRow } from './store.js';
 
 const MAX_TEXT_CHARS = 2000;
 
@@ -48,18 +48,24 @@ export function createInvestigationLoopService(
       const context = buildInvestigationContext(incident, evidence, store);
       const contextSnapshotHash = hashInvestigationContext(context);
       store.insertInvestigationContextSnapshot(contextSnapshotHash, context, now());
-      const runtimeRequestId = runtimeRequestIdFor(incident.id, contextSnapshotHash);
-      const open = store.getOpenInvestigationSessionByRuntimeRequestId(runtimeRequestId);
+      const open = store.listAllInvestigationSessions().find((session) => (
+        session.incidentId === incident.id
+        && session.contextSnapshotHash === contextSnapshotHash
+        && (session.status === 'CREATED' || session.status === 'SUBMITTED' || session.status === 'RUNNING')
+      ));
       if (open) return { session: open, context };
-      const taskId = ensureDelegationTask(store, incident.id, now(), runtimeRequestId);
+      const createdAt = now();
+      const sessionId = `isess-${randomUUID()}`;
+      const runtimeRequestId = runtimeRequestIdFor(sessionId);
+      const taskId = createAttemptGraph(store, incident, sessionId, runtimeRequestId, createdAt);
       const session: InvestigationSession = {
-        id: `isess-${randomUUID()}`,
+        id: sessionId,
         incidentId: incident.id,
         contextSnapshotHash,
         delegationTaskId: taskId,
         runtimeRequestId,
         status: 'CREATED',
-        createdAt: now(),
+        createdAt,
       };
       store.insertInvestigationSession(session);
       return { session, context };
@@ -193,7 +199,7 @@ export function createInvestigationLoopService(
         ...report.contradictingEvidenceIds,
       ]);
       const result: ReasoningResult = {
-        id: `reason-${job.id}`,
+        id: `reason-${session.id}`,
         incidentId: incident.id,
         createdAt: report.createdAt,
         hypotheses: [report.hypothesis],
@@ -242,28 +248,27 @@ export function createInvestigationLoopService(
   };
 }
 
-function ensureDelegationTask(
+function createAttemptGraph(
   store: EventStore,
-  incidentId: string,
-  createdAt: string,
+  incident: IncidentRow,
+  sessionId: string,
   runtimeRequestId: string,
+  createdAt: string,
 ): string {
-  const jobId = `rj-inv-${incidentId}`;
-  if (!store.getReasoningJob(jobId)) {
+  const existing = store.getReasoningJob(`rj-${incident.id}`) ?? store.getReasoningJob(`rj-inv-${incident.id}`);
+  const jobId = existing?.id ?? `rj-inv-${incident.id}`;
+  if (!existing) {
     store.createReasoningJob({
       id: jobId,
-      incidentId,
+      incidentId: incident.id,
       reasonerType: 'delegated_analysis',
       reasonerVersion: '1',
       createdAt,
     });
   }
-  const incident = store.getIncident(incidentId)!;
-  const existingPlans = store.listInvestigationPlansByJob(jobId);
-  const plan = existingPlans[0] ?? buildInvestigationPlan(jobId, incident, 'delegated_analysis', createdAt);
-  if (!existingPlans[0]) store.insertInvestigationPlan(plan);
-  const existingTask = store.getDelegationTaskByPlanId(plan.id);
-  if (existingTask) return existingTask.id;
+  const planned = buildInvestigationPlan(jobId, incident, 'delegated_analysis', createdAt);
+  const plan = { ...planned, id: `iplan-${sessionId}` };
+  store.insertInvestigationPlan(plan);
   const task = { ...buildDelegationTask(plan), runtimeRequestId };
   store.insertDelegationTask(task);
   store.markReasoningJobWaitingDelegation(jobId);

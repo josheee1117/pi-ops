@@ -12,6 +12,7 @@ import { investigate } from '../coordinator.js';
 import { createFakeRuntimeModel } from '../model.js';
 import { selectSpecialists } from '../specialists.js';
 import type { RuntimeInvestigationContext } from '@pi-ops/protocol';
+import type { RuntimeModel } from '../model.js';
 
 function context(overrides: Partial<RuntimeInvestigationContext> = {}): RuntimeInvestigationContext {
   return {
@@ -29,19 +30,19 @@ function context(overrides: Partial<RuntimeInvestigationContext> = {}): RuntimeI
   };
 }
 
-const validFinding = (role: 'jvm' | 'database' | 'container_host' | 'application_business', ids: string[]) => JSON.stringify({
+const validFinding = (role: 'jvm' | 'database' | 'container_host' | 'application_business', ids: string[], missing: string[] = []) => JSON.stringify({
   role,
   hypotheses: [`${role} injected finding on the current incident`],
   supportingEvidenceIds: ids,
   contradictingEvidenceIds: [],
-  missingEvidence: [],
+  missingEvidence: missing,
   confidence: 0.91,
   summary: `${role} used injected model output`,
   status: 'completed',
 });
 
 describe('bounded multi-agent coordinator', () => {
-  it('selects at most three specialists', () => {
+  it('does not select database for jvm.gc_pressure', () => {
     const selected = selectSpecialists(context({
       incident: { id: 'inc-1', type: 'jvm.gc_pressure', service: 'data-asset-service' },
       evidence: [
@@ -51,14 +52,13 @@ describe('bounded multi-agent coordinator', () => {
     }));
     assert.ok(selected.length <= MAX_SPECIALISTS_PER_INVESTIGATION);
     assert.ok(selected.includes('jvm'));
-    assert.ok(selected.includes('database') || selected.includes('container_host'));
+    assert.equal(selected.includes('database'), false);
   });
 
   it('uses an injected RuntimeModel', async () => {
     const model = createFakeRuntimeModel({
       specialistText: {
         database: validFinding('database', ['evd-now']),
-        container_host: validFinding('container_host', ['evd-now']),
         application_business: validFinding('application_business', ['evd-now']),
       },
     });
@@ -93,7 +93,6 @@ describe('bounded multi-agent coordinator', () => {
     const model = createFakeRuntimeModel({
       specialistText: {
         database: validFinding('database', ['evd-foreign']),
-        container_host: validFinding('container_host', ['evd-now']),
         application_business: validFinding('application_business', ['evd-now']),
       },
     });
@@ -155,11 +154,108 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(outcome.error, 'context_too_large');
   });
 
-  it('aborts when execution times out', async () => {
-    const model = createFakeRuntimeModel({ delayMs: 40 });
-    const outcome = await investigate(context(), { model, executionTimeoutMs: 5 });
+  it('returns execution timeout even when the model ignores AbortSignal', async () => {
+    const model: RuntimeModel = {
+      provider: 'fake',
+      model: 'stuck',
+      networkCalls: 0,
+      async invoke() {
+        return new Promise(() => undefined);
+      },
+    };
+    const started = Date.now();
+    const outcome = await investigate(context(), { model, executionTimeoutMs: 40 });
+    assert.ok(Date.now() - started < 500);
     assert.equal(outcome.status, 'failed');
     assert.equal(outcome.error, 'execution timeout');
+  });
+
+  it('does not apply a late model result after timeout', async () => {
+    let finished = false;
+    const model: RuntimeModel = {
+      provider: 'fake',
+      model: 'late',
+      networkCalls: 0,
+      async invoke() {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        finished = true;
+        return { text: validFinding('database', ['evd-now']), provider: 'late', model: 'late' };
+      },
+    };
+    const outcome = await investigate(context(), { model, executionTimeoutMs: 20 });
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.report, undefined);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(outcome.status, 'failed');
+    assert.equal(finished, true);
+  });
+
+  it('reruns only specialists that requested newly collected evidence', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const rerunRoles: string[] = [];
+    const original = model.invoke.bind(model);
+    model.invoke = async (request) => {
+      if (request.system.includes('SPECIALIST_ROLE=database') && request.user.includes('evd-mem')) {
+        rerunRoles.push('database');
+        return {
+          text: validFinding('database', ['evd-now', 'evd-mem']),
+          provider: 'fake',
+          model: 'deterministic',
+        };
+      }
+      return original(request);
+    };
+    const outcome = await investigate(context(), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-1',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'evd-mem',
+              evidence: { id: 'evd-mem', kind: 'host.memory' },
+            }],
+          };
+        },
+      },
+    });
+    assert.equal(outcome.status, 'completed');
+    assert.deepEqual(rerunRoles, ['database']);
+    assert.ok(outcome.report?.supportingEvidenceIds.includes('evd-mem'));
+  });
+
+  it('keeps the investigation when enrichment is unavailable', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const outcome = await investigate(context(), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          throw new Error('node agent down');
+        },
+      },
+    });
+    assert.equal(outcome.status, 'completed');
+    assert.deepEqual(outcome.report?.supportingEvidenceIds, ['evd-now']);
   });
 
   it('performs zero external model calls in the fake CI runtime', async () => {

@@ -18,17 +18,17 @@ export function selectSpecialists(context: RuntimeInvestigationContext): Special
     selected.push(role);
   };
   const type = context.incident.type;
-  if (type.startsWith('jvm.')) add('jvm');
-  if (type.includes('sql') || type.includes('gc')) add('database');
-  if (
-    type.startsWith('container.')
-    || type.startsWith('health.')
-    || type.startsWith('jvm.')
-    || context.evidence.some((item) => item.kind.startsWith('docker.') || item.kind.startsWith('host.'))
-  ) {
+  if (type.startsWith('jvm.')) {
+    add('jvm');
     add('container_host');
+  } else if (type === 'application.slow_sql' || type.includes('sql')) {
+    add('database');
+    add('application_business');
+  } else if (type.startsWith('container.') || type.startsWith('health.')) {
+    add('container_host');
+  } else if (type.startsWith('application.') || type.startsWith('business.')) {
+    add('application_business');
   }
-  if (type.startsWith('application.') || type.startsWith('business.')) add('application_business');
   if (selected.length === 0) add('application_business');
   return selected;
 }
@@ -44,8 +44,11 @@ export async function runSpecialist(
     system: [
       `SPECIALIST_ROLE=${role}`,
       'Return JSON SpecialistFinding only. Do not persist chain-of-thought.',
-      'Evidence describes the current incident.',
+      'You are investigating CURRENT Evidence.',
       'Historical knowledge is advisory and cannot override current Evidence.',
+      'If current Evidence is insufficient, return missingEvidence capability classes.',
+      'Do not fabricate Evidence. Do not claim requested Evidence already exists.',
+      'Do not treat historical memory as proof of the current incident.',
       `Allowed missingEvidence types: ${RUNTIME_ALLOWED_EVIDENCE_TYPES.join(', ')}`,
     ].join('\n'),
     user: JSON.stringify({

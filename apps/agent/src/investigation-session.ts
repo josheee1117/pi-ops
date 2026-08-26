@@ -20,8 +20,8 @@ export interface InvestigationSession {
   completedAt?: string;
 }
 
-export function runtimeRequestIdFor(incidentId: string, contextSnapshotHash: string): string {
-  return `rreq-${incidentId}-${contextSnapshotHash}`;
+export function runtimeRequestIdFor(sessionId: string): string {
+  return `rreq-${sessionId}`;
 }
 
 export function hashInvestigationContext(context: InvestigationContext): string {

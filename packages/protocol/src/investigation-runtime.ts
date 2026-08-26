@@ -32,6 +32,10 @@ export const RUNTIME_FORBIDDEN_CAPABILITIES = [
   'edit',
 ] as const;
 
+export const MAX_EVIDENCE_ENRICHMENT_ROUNDS = 1;
+export const MAX_EVIDENCE_TYPES_PER_SPECIALIST = 2;
+export const MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION = 4;
+
 export type HistoricalKnowledgeStatus = 'available' | 'unavailable';
 
 export const specialistFindingSchema = z.object({
@@ -112,6 +116,40 @@ export const runtimeEvidenceRequestSchema = z.object({
   incidentId: z.string().min(1),
 }).passthrough();
 
+export const runtimeEvidenceItemSchema = z.object({
+  requestId: z.string().min(1),
+  type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
+});
+
+export const runtimeEvidenceRequestBatchSchema = z.object({
+  schemaVersion: z.literal(INVESTIGATION_RUNTIME_SCHEMA_VERSION),
+  runtimeRequestId: z.string().min(1),
+  runtimeTaskId: z.string().min(1),
+  sessionId: z.string().min(1),
+  requests: z.array(runtimeEvidenceItemSchema).min(1).max(MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION),
+});
+
+export type RuntimeEvidenceRequestBatch = z.infer<typeof runtimeEvidenceRequestBatchSchema>;
+
+export const runtimeEvidenceResultSchema = z.object({
+  requestId: z.string().min(1),
+  type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
+  status: z.enum(['collected', 'unavailable', 'rejected']),
+  evidenceId: z.string().min(1).optional(),
+  evidence: z.unknown().optional(),
+  error: z.string().max(2000).optional(),
+});
+
+export type RuntimeEvidenceResult = z.infer<typeof runtimeEvidenceResultSchema>;
+
+export const runtimeEvidenceResponseSchema = z.object({
+  schemaVersion: z.literal(INVESTIGATION_RUNTIME_SCHEMA_VERSION),
+  runtimeRequestId: z.string().min(1),
+  results: z.array(runtimeEvidenceResultSchema),
+});
+
+export type RuntimeEvidenceResponse = z.infer<typeof runtimeEvidenceResponseSchema>;
+
 const runtimeContextSchema = z.object({
   schemaVersion: z.literal(INVESTIGATION_RUNTIME_SCHEMA_VERSION),
   incident: z.object({
@@ -163,6 +201,12 @@ export function validateRuntimeInvestigationContext(
 
 export function validateSpecialistFinding(data: unknown): ValidationOutcome<SpecialistFinding> {
   return validate(specialistFindingSchema, data);
+}
+
+export function validateRuntimeEvidenceRequestBatch(
+  data: unknown,
+): ValidationOutcome<RuntimeEvidenceRequestBatch> {
+  return validate(runtimeEvidenceRequestBatchSchema, data);
 }
 
 function validate<T>(schema: z.ZodSchema<T>, data: unknown): ValidationOutcome<T> {

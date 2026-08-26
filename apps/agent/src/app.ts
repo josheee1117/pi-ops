@@ -3,8 +3,13 @@ import type { AgentConfig } from './config.js';
 import { DuplicateEventConflictError, type EventStore } from './store.js';
 import type { IncidentEngine } from './incident.js';
 import type { EvidenceJobWorker } from './evidence-worker.js';
-import { validateEventBatch, validateInvestigationRuntimeResult } from '@pi-ops/protocol';
+import {
+  validateEventBatch,
+  validateInvestigationRuntimeResult,
+  validateRuntimeEvidenceRequestBatch,
+} from '@pi-ops/protocol';
 import type { createInvestigationLoopService } from './investigation-loop.js';
+import type { createInvestigationEvidenceService } from './investigation-evidence.js';
 
 class RequestBodyTooLargeError extends Error {}
 
@@ -36,10 +41,10 @@ export function createApp(
   incidentEngine: IncidentEngine,
   evidenceWorker?: EvidenceJobWorker,
   investigationLoop?: ReturnType<typeof createInvestigationLoopService>,
+  investigationEvidence?: ReturnType<typeof createInvestigationEvidenceService>,
 ): Hono {
   const app = new Hono();
 
-  // Logger — token value is never printed.
   app.use('*', async (c, next) => {
     const start = Date.now();
     const method = c.req.method;
@@ -50,24 +55,17 @@ export function createApp(
     console.log(`[agent] ${method} ${path} → ${status} (${duration}ms)`);
   });
 
-  // ── GET /health ──────────────────────────────────────────────────────────
-
   app.get('/health', (c) => {
     return c.json({ status: 'ok', nodeId: config.nodeId });
   });
 
-  // ── POST /v1/events ──────────────────────────────────────────────────────
-
   app.post('/v1/events', async (c) => {
-    // Auth
     const auth = c.req.header('Authorization');
     const expected = `Bearer ${config.ingestToken}`;
     if (!auth || auth !== expected) {
       return c.json({ error: 'unauthorized' }, 401);
     }
 
-    // Parse with a streaming cap. Content-Length is only an early rejection;
-    // the byte counter remains authoritative for chunked/false headers.
     let body: unknown;
     try {
       body = await readJsonBody(c.req.raw, config.maxBodySize);
@@ -91,10 +89,6 @@ export function createApp(
     }
 
     const batch = validation.value;
-
-    // Persist immutable Events, Incident updates/links, and newly scheduled
-    // evidence jobs in one transaction. The request is accepted only after the
-    // complete synchronous state transition commits.
     const receiveTime = new Date().toISOString();
     let createdIncidents = 0;
     try {
@@ -116,7 +110,6 @@ export function createApp(
       throw error;
     }
 
-    // Node Agent I/O stays asynchronous and never blocks event ingestion.
     if (createdIncidents > 0) evidenceWorker?.wake();
 
     return c.json({
@@ -146,6 +139,33 @@ export function createApp(
     try {
       const result = investigationLoop.handleRuntimeResult(parsed.value);
       return c.json({ ok: true, status: parsed.value.status, id: result.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, 400);
+    }
+  });
+
+  app.post('/v1/investigation-evidence', async (c) => {
+    if (!investigationEvidence) return c.json({ error: 'investigation evidence unavailable' }, 503);
+    const expectedToken = config.piRuntimeToken;
+    const auth = c.req.header('Authorization');
+    if (!expectedToken || !auth || auth !== `Bearer ${expectedToken}`) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(c.req.raw, config.maxBodySize);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) {
+        return c.json({ error: 'payload too large' }, 413);
+      }
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    const parsed = validateRuntimeEvidenceRequestBatch(body);
+    if (!parsed.success) return c.json({ error: parsed.message }, 400);
+    try {
+      const result = await investigationEvidence.handle(parsed.value);
+      return c.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return c.json({ error: message }, 400);

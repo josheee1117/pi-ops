@@ -74,7 +74,7 @@ SELECT * FROM runtime_tasks
 WHERE execution_status IN ('queued', 'running')
    OR (
      execution_status IN ('completed', 'failed')
-     AND delivery_status IN ('pending', 'failed')
+     AND delivery_status IN ('pending', 'delivering', 'failed')
      AND delivery_attempts < @max_attempts
    )
 ORDER BY created_at, runtime_request_id;

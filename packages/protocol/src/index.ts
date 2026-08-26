@@ -215,6 +215,9 @@ export {
   MAX_SPECIALISTS_PER_INVESTIGATION,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
+  MAX_EVIDENCE_ENRICHMENT_ROUNDS,
+  MAX_EVIDENCE_TYPES_PER_SPECIALIST,
+  MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   specialistFindingSchema,
   investigationReportInputSchema,
   investigationRuntimeMetadataSchema,
@@ -222,10 +225,13 @@ export {
   investigationSubmitAckSchema,
   investigationRuntimeResultSchema,
   runtimeEvidenceRequestSchema,
+  runtimeEvidenceRequestBatchSchema,
+  runtimeEvidenceResponseSchema,
   validateInvestigationSubmitRequest,
   validateInvestigationRuntimeResult,
   validateRuntimeInvestigationContext,
   validateSpecialistFinding,
+  validateRuntimeEvidenceRequestBatch,
 } from './investigation-runtime.js';
 export type {
   SpecialistRole,
@@ -237,4 +243,7 @@ export type {
   InvestigationSubmitAck,
   InvestigationRuntimeResult,
   RuntimeInvestigationContext,
+  RuntimeEvidenceRequestBatch,
+  RuntimeEvidenceResult,
+  RuntimeEvidenceResponse,
 } from './investigation-runtime.js';

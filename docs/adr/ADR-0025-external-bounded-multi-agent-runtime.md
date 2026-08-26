@@ -4,11 +4,11 @@
 - **Date**: 2026-08-26
 - **Scope**: How Pi-Ops submits a frozen InvestigationContext to an external Pi Runtime that may run a bounded coordinator/specialist investigation
 - **Supersedes**: none
-- **Related**: ADR-0008, ADR-0018, ADR-0019, ADR-0024
+- **Related**: ADR-0008, ADR-0018, ADR-0019, ADR-0024, ADR-0026
 
 ## Context
 
-ADR-0008 forbids agent orchestration inside `apps/agent`. ADR-0018/0019 define an asynchronous InvestigationSession and callback, but HTTP transport was still a no-op. Historical knowledge is now retrieved as context (ADR-0024) and must not be treated as current Evidence.
+ADR-0008 forbids agent orchestration inside `apps/agent`. ADR-0018/0019 define an asynchronous InvestigationSession and callback. Historical knowledge is retrieved as context (ADR-0024) and must not be treated as current Evidence.
 
 Pi-Ops remains the control plane. Pi Runtime owns coordinator execution, specialist delegation, model calls, and synthesis.
 
@@ -29,6 +29,12 @@ InvestigationRuntimeResult callback
 Pi-Ops governance (InvestigationReport → ReasoningResult)
 ```
 
+### Investigation attempts
+
+`InvestigationSession` is the attempt boundary. One session owns exactly one ReasoningJob, InvestigationPlan, DelegationTask, runtimeRequestId, RuntimeTask, InvestigationReport, and ReasoningResult.
+
+Open sessions with the same Incident + contextSnapshotHash are reused. COMPLETED or FAILED sessions do not block a new attempt. `runtimeRequestId` is `rreq-${sessionId}` so a new attempt is a new runtime identity even when the context hash matches.
+
 ### Ownership
 
 Pi-Ops owns facts, Evidence, lifecycle, governance, and retrieval.
@@ -37,42 +43,29 @@ Pi Runtime owns the coordinator, specialist delegation, model execution, and syn
 
 `apps/agent` does not add AgentManager, Planner, or sub-agent implementations.
 
-### Transport
+### Transport and delivery
 
-Submit is `POST /v1/investigations` with `schemaVersion`, `runtimeRequestId`, session identity, and the frozen context. Duplicate `runtimeRequestId` returns the same `runtimeTaskId` and does not start another investigation. Authentication is a bearer token from the environment. Timeouts are bounded. Secrets are not stored in source.
+Submit is `POST /v1/investigations`. Duplicate `runtimeRequestId` returns the same `runtimeTaskId`. Callbacks authenticate with a dedicated runtime token and only to the configured Pi-Ops URL.
 
-Completion uses `POST /v1/investigation-results` on Pi-Ops. Duplicate completed callbacks remain idempotent. A failed runtime task fails the InvestigationSession and does not mutate Incident, Evidence, or MemoryEntry.
+Execution and delivery are separate SQLite statuses. `DELIVERING` is uncertain: a crash retries the callback (at-least-once). Pi-Ops callbacks are idempotent. Lost delivery is not acceptable.
 
-### Bounded multi-agent
+### Deadlines
 
-The coordinator selects at most three specialists from `{jvm, database, container_host, application_business}` based on InvestigationContext. One specialist failure does not fail the investigation if another completed finding remains. All specialists failing, or coordinator failure, fails the runtime task.
-
-Specialists return `SpecialistFinding`. Only the coordinator emits `InvestigationReport`. There is no recursive unbounded spawning, no shell, and no remediation.
+HTTP submit timeout, model execution timeout, and callback timeout are separate. Execution uses an orchestration `withDeadline` Promise race plus AbortController. A late model result cannot overwrite an already-failed RuntimeTask.
 
 ### Knowledge vs Evidence
 
-Current Evidence and historical operational knowledge are labeled separately. Evidence describes the current incident. Historical knowledge is advisory and cannot override current Evidence. Conflicting history is surfaced, not merged. Retrieval failure stays non-blocking and sets `historicalKnowledgeStatus=unavailable`.
+Current Evidence and historical operational knowledge are labeled separately. Retrieval failure stays non-blocking and sets `historicalKnowledgeStatus=unavailable`.
 
-### Tools
-
-Pi Runtime may request only the existing typed read-only evidence classes. Collection stays on Pi-Ops / Node Agent. This phase defines that allowlist; it does not add arbitrary tools.
-
-Coordinator and specialists depend on an injected `RuntimeModel`. CI uses a deterministic fake model with zero network calls. Production with `PI_OPS_PI_PROVIDER` and `PI_OPS_PI_MODEL` uses `createAgentSession({ noTools: 'all' })` from `@earendil-works/pi-coding-agent` 0.84.x. Invalid specialist JSON or foreign Evidence ids fail only that specialist.
-
-Runtime tasks persist in SQLite with separate `executionStatus` and `deliveryStatus`. A completed report is not lost if the callback fails; delivery retries with backoff and resumes after restart. Duplicate `runtimeRequestId` after execution does not rerun the model.
-
-HTTP submit timeout, callback timeout, and model execution timeout are separate settings. If current Incident + Evidence alone exceed `maxContextBytes`, the task fails with `context_too_large` instead of truncating Evidence.
-
-Callbacks authenticate with a dedicated runtime token (never the ingest token) and only to the configured Pi-Ops callback URL.
-
-Runtime metadata (specialists, provider/model, tokens, latency) is persisted on Pi-Ops as an investigation runtime audit and copied onto the ReasoningResult.
+Coordinator and specialists depend on an injected `RuntimeModel`. CI uses a deterministic fake model with zero network calls. Production with `PI_OPS_PI_PROVIDER` and `PI_OPS_PI_MODEL` uses `createAgentSession({ noTools: 'all' })`.
 
 ## Consequences
 
 Benefits:
 
-- multi-agent investigation can run without leaking orchestration into Pi-Ops
-- runtimeRequestId idempotency and fail-closed callbacks stay the production contract
+- the same Incident can be re-investigated after completion or failure
+- completed reports survive callback crashes
+- non-cooperative models cannot hang the runtime
 
 Costs:
 

@@ -9,6 +9,7 @@ import { createPiReasoner, PI_REASONER_VERSION } from './pi-reasoner.js';
 import { createPiSdkClient } from './pi-sdk-client.js';
 import { createMemoryRetriever } from './memory-retriever.js';
 import { createHttpPiRuntimeClient } from './http-pi-runtime-client.js';
+import { createInvestigationEvidenceService } from './investigation-evidence.js';
 import { createInvestigationLoopService } from './investigation-loop.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import { createReasoningJobWorker } from './reasoning-worker.js';
@@ -54,6 +55,7 @@ const runtimeClient = config.piRuntimeUrl && config.piRuntimeToken && config.piR
   })
   : createNoopPiRuntimeClient();
 const investigationLoop = createInvestigationLoopService(store, { runtime: runtimeClient });
+const investigationEvidence = createInvestigationEvidenceService(store, config, evidenceOrchestrator);
 const reasoningWorker = createReasoningJobWorker(
   config,
   store,
@@ -63,7 +65,14 @@ const reasoningWorker = createReasoningJobWorker(
   runtimeClient,
 );
 reasoningWorker.start();
-const app = createApp(config, store, incidentEngine, evidenceWorker, investigationLoop);
+const app = createApp(
+  config,
+  store,
+  incidentEngine,
+  evidenceWorker,
+  investigationLoop,
+  investigationEvidence,
+);
 
 console.log(`[pi-ops-agent] starting on :${config.port}, db=${config.sqlitePath}`);
 

@@ -10,6 +10,8 @@ import {
 import { postRuntimeResult } from './callback.js';
 import { callbackUrlAllowed, type PiRuntimeConfig } from './config.js';
 import { investigate, type CoordinatorOptions } from './coordinator.js';
+import { ExecutionTimeoutError } from './deadline.js';
+import type { RuntimeEvidenceClient } from './evidence-client.js';
 import { createFakeRuntimeModel, type RuntimeModel } from './model.js';
 import { createRuntimeTaskStore, type RuntimeTaskRecord, type RuntimeTaskStore } from './store.js';
 
@@ -28,6 +30,7 @@ export function createPiRuntimeApp(
     fetch?: typeof fetch;
     model?: RuntimeModel;
     coordinator?: CoordinatorOptions;
+    evidenceClient?: RuntimeEvidenceClient;
     now?: () => string;
   } = {},
 ): PiRuntimeApp {
@@ -90,6 +93,9 @@ export function createPiRuntimeApp(
       if (task.executionStatus === 'queued' || task.executionStatus === 'running') {
         enqueue(() => executeTask(task.runtimeRequestId));
       } else {
+        if (task.deliveryStatus === 'delivering') {
+          tasks.update(task.runtimeRequestId, { deliveryStatus: 'pending' });
+        }
         enqueue(() => deliverTask(task.runtimeRequestId));
       }
     }
@@ -107,12 +113,37 @@ export function createPiRuntimeApp(
       startedAt: now(),
     });
     const context = JSON.parse(task.contextJson) as RuntimeInvestigationContext;
-    const outcome = await investigate(context, {
-      ...options.coordinator,
-      model,
-      maxContextBytes: config.maxContextBytes,
-      executionTimeoutMs: config.executionTimeoutMs,
-    });
+    let outcome;
+    try {
+      outcome = await investigate(context, {
+        ...options.coordinator,
+        model,
+        maxContextBytes: config.maxContextBytes,
+        executionTimeoutMs: config.executionTimeoutMs,
+        evidenceClient: options.evidenceClient,
+        runtimeRequestId: task.runtimeRequestId,
+        runtimeTaskId: task.runtimeTaskId,
+        sessionId: task.sessionId,
+      });
+    } catch (error) {
+      const timedOut = error instanceof ExecutionTimeoutError || (error instanceof Error && error.message === 'execution timeout');
+      outcome = {
+        status: 'failed' as const,
+        error: timedOut ? 'execution timeout' : error instanceof Error ? error.message : String(error),
+        selectedSpecialists: [],
+        findings: [],
+        specialistStatus: {},
+        latencyMs: 0,
+        provider: model.provider,
+        model: model.model,
+        inputTokens: 0,
+        outputTokens: 0,
+      };
+    }
+    const current = tasks.getByRequestId(runtimeRequestId);
+    if (current && (current.executionStatus === 'completed' || current.executionStatus === 'failed') && current.result) {
+      return;
+    }
     const metadata: InvestigationRuntimeMetadata = {
       runtimeRequestId: task.runtimeRequestId,
       runtimeTaskId: task.runtimeTaskId,
@@ -166,6 +197,10 @@ export function createPiRuntimeApp(
         fetchImpl,
         config.callbackTimeoutMs,
       );
+      const latest = tasks.getByRequestId(runtimeRequestId);
+      if (latest?.executionStatus === 'failed' && latest.result?.status === 'failed' && task.result.status === 'completed') {
+        return;
+      }
       tasks.update(runtimeRequestId, { deliveryStatus: 'delivered', lastError: undefined });
     } catch (error) {
       const lastError = error instanceof Error ? error.message : String(error);
