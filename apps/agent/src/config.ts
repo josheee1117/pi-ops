@@ -58,6 +58,12 @@ export interface AgentConfig {
   reasoningMaxLogLines: number;
   /** Maximum model output bytes accepted as structured JSON. */
   reasoningMaxOutputBytes: number;
+  /** External Pi Runtime base URL. When unset, investigation submit stays local/no-op. */
+  piRuntimeUrl?: string;
+  /** Bearer token shared with Pi Runtime. Never logged. */
+  piRuntimeToken?: string;
+  piRuntimeTimeoutMs?: number;
+  piRuntimeCallbackUrl?: string;
 }
 
 function requireEnv(key: string): string {
@@ -223,6 +229,18 @@ export function loadConfig(): AgentConfig {
       min: 256,
       max: 100_000,
     }),
+    ...(process.env['PI_OPS_PI_RUNTIME_URL']
+      ? { piRuntimeUrl: process.env['PI_OPS_PI_RUNTIME_URL'] }
+      : {}),
+    ...(process.env['PI_OPS_PI_RUNTIME_TOKEN']
+      ? { piRuntimeToken: process.env['PI_OPS_PI_RUNTIME_TOKEN'] }
+      : {}),
+    piRuntimeTimeoutMs: integerEnv('PI_OPS_PI_RUNTIME_TIMEOUT_MS', 5000, {
+      max: 10 * 60 * 1000,
+    }),
+    ...(process.env['PI_OPS_PI_RUNTIME_CALLBACK_URL']
+      ? { piRuntimeCallbackUrl: process.env['PI_OPS_PI_RUNTIME_CALLBACK_URL'] }
+      : {}),
   };
 }
 

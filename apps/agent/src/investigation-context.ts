@@ -20,6 +20,8 @@ export interface SimilarHypothesis {
   status: InvestigationHypothesis['status'];
 }
 
+export type HistoricalKnowledgeStatus = 'available' | 'unavailable';
+
 export interface InvestigationContext {
   schemaVersion: number;
   incident: IncidentContext['incident'];
@@ -31,6 +33,7 @@ export interface InvestigationContext {
   historicalResolutions: readonly string[];
   similarHypotheses: readonly SimilarHypothesis[];
   historicalKnowledge: OperationalKnowledgeContext;
+  historicalKnowledgeStatus: HistoricalKnowledgeStatus;
 }
 
 const DEFAULT_BOUNDS: IncidentContextBounds = {
@@ -64,7 +67,7 @@ export function buildInvestigationContext(
     ...retrieval.conflictingMemories,
   ]);
   const history = historicalContext(incident, store);
-  const historicalKnowledge = retrieveKnowledge(incidentContext, store);
+  const knowledge = retrieveKnowledge(incidentContext, store);
   return deepFreeze({
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
     incident: incidentContext.incident,
@@ -73,7 +76,8 @@ export function buildInvestigationContext(
     previousResolutions,
     conflictingMemories: retrieval.conflictingMemories,
     ...history,
-    historicalKnowledge,
+    historicalKnowledge: knowledge.context,
+    historicalKnowledgeStatus: knowledge.status,
   });
 }
 
@@ -136,11 +140,17 @@ function historicalContext(incident: IncidentRow, store: EventStore): {
 function retrieveKnowledge(
   context: IncidentContext,
   store: EventStore,
-): OperationalKnowledgeContext {
+): { context: OperationalKnowledgeContext; status: HistoricalKnowledgeStatus } {
   try {
-    return createKnowledgeRetriever(store).retrieve(context);
+    return {
+      context: createKnowledgeRetriever(store).retrieve(context),
+      status: 'available',
+    };
   } catch {
-    return EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT;
+    return {
+      context: EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT,
+      status: 'unavailable',
+    };
   }
 }
 

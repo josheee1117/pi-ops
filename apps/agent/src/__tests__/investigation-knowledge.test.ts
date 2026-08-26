@@ -2,7 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildIncidentContext } from '../incident-context.js';
 import { buildInvestigationContext } from '../investigation-context.js';
-import { createKnowledgeRetriever } from '../investigation-knowledge.js';
+import { createInvestigationHypothesisService } from '../investigation-hypothesis.js';
+import {
+  createKnowledgeRetriever,
+  KNOWLEDGE_RANK_WEIGHTS,
+} from '../investigation-knowledge.js';
+import { createInvestigationLoopService } from '../investigation-loop.js';
+import { createInvestigationRelationService } from '../investigation-relation.js';
 import { createMemoryFeedbackService } from '../memory-feedback.js';
 import { createMemoryGovernanceService } from '../memory-governance.js';
 import { createFakeReasoner } from '../reasoner.js';
@@ -138,6 +144,7 @@ describe('operational knowledge retrieval', () => {
     assert.deepEqual(context.historicalKnowledge.similarIncidents, []);
     assert.deepEqual(context.historicalKnowledge.relatedMemories, []);
     assert.ok(Object.isFrozen(context.historicalKnowledge));
+    assert.equal(context.historicalKnowledgeStatus, 'unavailable');
     store.close();
   });
 
@@ -155,6 +162,119 @@ describe('operational knowledge retrieval', () => {
     assert.throws(() => {
       (context.historicalKnowledge.similarIncidents as unknown[]).push({});
     });
+    assert.equal(context.historicalKnowledgeStatus, 'available');
     first.store.close();
   });
+
+  it('does not replace an explicit quality score of 0 with evidence quality',
+    async () => {
+      const store = createEventStore(':memory:');
+      await seedInvestigated(store, SHARED_FP, 'zero-quality root cause', 0);
+      await seedInvestigated(store, SHARED_FP, 'high-quality root cause', 0.9);
+      const query = seedIncident(store);
+      const knowledge = createKnowledgeRetriever(store).retrieve(
+        buildIncidentContext(query.incident, [query.evidence], BOUNDS),
+      );
+      const zero = knowledge.historicalHypotheses.find((item) => item.statement === 'zero-quality root cause');
+      const high = knowledge.historicalHypotheses.find((item) => item.statement === 'high-quality root cause');
+      assert.ok(zero);
+      assert.ok(high);
+      assert.ok((zero.provenance.sourceIncidentId ? 1 : 0) > 0);
+      assert.ok(high.rankScore > zero.rankScore);
+      store.close();
+    });
+
+  it('does not treat a supported hypothesis as a previous resolution', async () => {
+    const store = createEventStore(':memory:');
+    const historical = await seedInvestigated(store, SHARED_FP, 'supported root cause', 0.8);
+    const hypothesis = store.listInvestigationHypotheses(historical.report.id)[0]!;
+    createInvestigationHypothesisService(store).support(hypothesis.id);
+    const query = seedIncident(store);
+    const before = createKnowledgeRetriever(store).retrieve(
+      buildIncidentContext(query.incident, [query.evidence], BOUNDS),
+    );
+    assert.equal(before.previousResolutions.some((item) => item.text === 'supported root cause'), false);
+    createInvestigationRelationService(store).create({
+      fromType: 'INCIDENT',
+      fromId: historical.incident.id,
+      toType: 'HYPOTHESIS',
+      toId: hypothesis.id,
+      relationType: 'RESOLVED_BY',
+    });
+    const after = createKnowledgeRetriever(store).retrieve(
+      buildIncidentContext(query.incident, [query.evidence], BOUNDS),
+    );
+    assert.equal(after.previousResolutions.some((item) => item.text === 'supported root cause'), true);
+    store.close();
+  });
+
+  it('binds similarity provenance to the query and historical incident pair', () => {
+    const historical = seedIncident();
+    const query = seedIncident(historical.store);
+    const unrelated = seedIncident(historical.store, {
+      service: 'other-service',
+      fingerprint: '["application","n1","other-service","application.slow_sql","nope"]',
+    });
+    createInvestigationRelationService(historical.store).create({
+      fromType: 'INCIDENT',
+      fromId: unrelated.incident.id,
+      toType: 'INCIDENT',
+      toId: historical.incident.id,
+      relationType: 'SIMILAR_TO',
+    });
+    const knowledge = createKnowledgeRetriever(historical.store).retrieve(
+      buildIncidentContext(query.incident, [query.evidence], BOUNDS),
+    );
+    const item = knowledge.similarIncidents.find((entry) => entry.incident.id === historical.incident.id);
+    assert.ok(item?.provenance.sourceRelationId);
+    const relation = historical.store.getInvestigationRelation(item.provenance.sourceRelationId)!;
+    const pair = new Set([relation.fromId, relation.toId]);
+    assert.equal(pair.has(query.incident.id), true);
+    assert.equal(pair.has(historical.incident.id), true);
+    assert.equal(pair.has(unrelated.incident.id), false);
+    historical.store.close();
+  });
+
+  it('does not invent a similarity score when no structural match exists', () => {
+    const seeded = seedApprovedMemory();
+    const knowledge = createKnowledgeRetriever(seeded.store).retrieve(
+      buildIncidentContext(seeded.incident, [seeded.evidence], BOUNDS),
+    );
+    const item = knowledge.relatedMemories.find((entry) => entry.memory.id === seeded.entry.id);
+    assert.ok(item);
+    assert.equal(
+      item.rankScore,
+      KNOWLEDGE_RANK_WEIGHTS.effectiveness * item.memory.effectivenessScore,
+    );
+    seeded.store.close();
+  });
 });
+
+async function seedInvestigated(
+  store: ReturnType<typeof createEventStore>,
+  fingerprint: string,
+  hypothesis: string,
+  qualityScore: number,
+) {
+  const { incident, evidence } = seedIncident(store, { fingerprint });
+  const loop = createInvestigationLoopService(store);
+  const { session } = loop.start(incident.id);
+  await loop.submit(session.id);
+  const report = loop.complete(session.id, {
+    hypothesis,
+    supportingEvidenceIds: [evidence.id],
+    contradictingEvidenceIds: [],
+    confidence: 0.8,
+    recommendation: 'inspect SQL and indexes',
+  });
+  store.insertInvestigationQualityEvaluation({
+    id: `iqe-${report.id}`,
+    investigationReportId: report.id,
+    evidenceCoverageScore: qualityScore,
+    contradictionRatio: 0,
+    confidenceConsistencyScore: qualityScore,
+    qualityScore,
+    createdAt: '2026-08-20T12:00:02.000Z',
+  });
+  return { incident, evidence, report };
+}

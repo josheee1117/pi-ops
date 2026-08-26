@@ -208,3 +208,33 @@ function formatZodError(error: ZodError): string {
 // ── Re-exports ───────────────────────────────────────────────────────────────
 
 export { z, ZodError };
+
+export {
+  INVESTIGATION_RUNTIME_SCHEMA_VERSION,
+  SPECIALIST_ROLES,
+  MAX_SPECIALISTS_PER_INVESTIGATION,
+  RUNTIME_ALLOWED_EVIDENCE_TYPES,
+  RUNTIME_FORBIDDEN_CAPABILITIES,
+  specialistFindingSchema,
+  investigationReportInputSchema,
+  investigationRuntimeMetadataSchema,
+  investigationSubmitRequestSchema,
+  investigationSubmitAckSchema,
+  investigationRuntimeResultSchema,
+  runtimeEvidenceRequestSchema,
+  validateInvestigationSubmitRequest,
+  validateInvestigationRuntimeResult,
+  validateRuntimeInvestigationContext,
+  validateSpecialistFinding,
+} from './investigation-runtime.js';
+export type {
+  SpecialistRole,
+  HistoricalKnowledgeStatus,
+  SpecialistFinding,
+  InvestigationReportInput as RuntimeInvestigationReportInput,
+  InvestigationRuntimeMetadata,
+  InvestigationSubmitRequest,
+  InvestigationSubmitAck,
+  InvestigationRuntimeResult,
+  RuntimeInvestigationContext,
+} from './investigation-runtime.js';

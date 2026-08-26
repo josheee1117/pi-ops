@@ -16,9 +16,11 @@ import type { EventStore, IncidentRow } from './store.js';
 export const KNOWLEDGE_RETRIEVAL_LIMIT = 5;
 export const LOW_QUALITY_EFFECTIVENESS = 0.5;
 
-const SIMILARITY_WEIGHT = 0.4;
-const EFFECTIVENESS_WEIGHT = 0.3;
-const QUALITY_WEIGHT = 0.3;
+export const KNOWLEDGE_RANK_WEIGHTS = {
+  similarity: 0.4,
+  effectiveness: 0.3,
+  quality: 0.3,
+} as const;
 
 export interface KnowledgeProvenance {
   sourceRelationId?: string;
@@ -100,24 +102,23 @@ export function createKnowledgeRetriever(
       const incident = store.getIncident(context.incident.id);
       if (!incident) return EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT;
       const similar = similarity.findSimilar(incident);
-      const similarById = new Map(similar.map((item) => [item.incident.id, item]));
-      const similarIds = new Set(similarById.keys());
+      const index = buildRetrievalIndex(store, incident.id, similar, memories.retrieve(context).memories);
 
       const rankedSimilar = similar
-        .map((item) => rankSimilarIncident(store, item))
+        .map((item) => rankSimilarIncident(index, item))
         .sort(byRankThenId)
         .slice(0, limit);
 
-      const hypotheses = collectHypotheses(store, similarIds, similarById)
+      const hypotheses = collectHypotheses(index)
         .sort(byRankThenId)
         .slice(0, limit);
 
-      const resolutions = collectResolutions(store, similarIds, similarById, hypotheses)
+      const resolutions = collectResolutions(index)
         .sort(byRankThenId)
         .slice(0, limit);
 
-      const relatedMemories = memories.retrieve(context).memories
-        .map((memory) => withProvenanceMemory(store, memory, similarById))
+      const relatedMemories = index.retrievedMemories
+        .map((memory) => withProvenanceMemory(index, memory))
         .filter((item) => !isLowQualityMemory(item.memory))
         .sort(byRankThenId)
         .slice(0, limit);
@@ -134,32 +135,155 @@ export function createKnowledgeRetriever(
 
 export const createInvestigationKnowledgeRetriever = createKnowledgeRetriever;
 
-function rankScore(similarity: number, effectiveness: number, quality: number): number {
-  return SIMILARITY_WEIGHT * similarity
-    + EFFECTIVENESS_WEIGHT * effectiveness
-    + QUALITY_WEIGHT * quality;
+interface RetrievalIndex {
+  queryIncidentId: string;
+  similarById: Map<string, SimilarIncident>;
+  similarIds: Set<string>;
+  incidentIdByReportId: Map<string, string>;
+  qualityByReportId: Map<string, number>;
+  qualityByIncidentId: Map<string, number>;
+  effectivenessByIncidentId: Map<string, number>;
+  originByMemoryId: Map<string, string>;
+  pairRelationByHistoricalId: Map<string, InvestigationRelation>;
+  derivedByCandidateId: Map<string, InvestigationRelation>;
+  hypotheses: InvestigationHypothesis[];
+  resolvedBy: InvestigationRelation[];
+  retrievedMemories: MemoryIntelligence[];
+  memoryById: Map<string, MemoryIntelligence>;
 }
 
-function rankSimilarIncident(store: EventStore, item: SimilarIncident): RetrievedSimilarIncident {
-  const effectiveness = memoryEffectiveness(store, item.incident.id);
-  const quality = investigationQualityForIncident(store, item.incident.id);
-  const relation = store.listInvestigationRelations({
+function buildRetrievalIndex(
+  store: EventStore,
+  queryIncidentId: string,
+  similar: SimilarIncident[],
+  retrievedMemories: MemoryIntelligence[],
+): RetrievalIndex {
+  const similarById = new Map(similar.map((item) => [item.incident.id, item]));
+  const similarIds = new Set(similarById.keys());
+
+  const sessions = store.listAllInvestigationSessions();
+  const reports = store.listAllInvestigationReports();
+  const hypotheses = store.listAllInvestigationHypotheses();
+  const activeMemories = store.listActiveMemoryEntries();
+
+  const incidentIdBySessionId = new Map(sessions.map((session) => [session.id, session.incidentId] as const));
+  const incidentIdByReportId = new Map<string, string>();
+  for (const report of reports) {
+    const incidentId = incidentIdBySessionId.get(report.sessionId);
+    if (incidentId) incidentIdByReportId.set(report.id, incidentId);
+  }
+
+  const qualityByReportId = new Map<string, number>();
+  const qualityByIncidentId = new Map<string, number>();
+  for (const report of reports) {
+    const evaluation = store.getInvestigationQualityEvaluationByReportId(report.id);
+    if (!evaluation) continue;
+    qualityByReportId.set(report.id, evaluation.qualityScore);
+    const incidentId = incidentIdByReportId.get(report.id);
+    if (!incidentId) continue;
+    const previous = qualityByIncidentId.get(incidentId);
+    if (previous === undefined || evaluation.qualityScore > previous) {
+      qualityByIncidentId.set(incidentId, evaluation.qualityScore);
+    }
+  }
+
+  const originByMemoryId = new Map<string, string>();
+  const memoryById = new Map<string, MemoryIntelligence>();
+  const effectivenessAcc = new Map<string, { effectiveness: number; uses: number; success: number; failed: number }>();
+  for (const entry of activeMemories) {
+    const origin = originIncident(store, entry.id);
+    if (origin) originByMemoryId.set(entry.id, origin.incidentId);
+    const feedbacks = store.listMemoryFeedbacks(entry.id);
+    const quality = deriveMemoryQuality(feedbacks, entry.confidence);
+    const memory = withMemoryQuality(entry, quality);
+    memoryById.set(entry.id, memory);
+    if (!origin) continue;
+    const acc = effectivenessAcc.get(origin.incidentId) ?? {
+      effectiveness: 0,
+      uses: 0,
+      success: 0,
+      failed: 0,
+    };
+    acc.effectiveness += quality.effectivenessScore;
+    acc.uses += 1;
+    acc.success += quality.successCount;
+    acc.failed += quality.failedCount;
+    effectivenessAcc.set(origin.incidentId, acc);
+  }
+
+  const effectivenessByIncidentId = new Map<string, number>();
+  for (const [incidentId, acc] of effectivenessAcc) {
+    const decided = acc.success + acc.failed;
+    const ratio = decided === 0 ? 0.5 : acc.success / decided;
+    effectivenessByIncidentId.set(incidentId, 0.5 * (acc.effectiveness / acc.uses) + 0.5 * ratio);
+  }
+
+  const pairRelationByHistoricalId = new Map<string, InvestigationRelation>();
+  for (const relation of store.listInvestigationRelations({
     fromType: 'INCIDENT',
-    fromId: item.incident.id,
+    fromId: queryIncidentId,
     toType: 'INCIDENT',
     relationType: 'SIMILAR_TO',
-  })[0] ?? store.listInvestigationRelations({
+  })) {
+    pairRelationByHistoricalId.set(relation.toId, relation);
+  }
+  for (const relation of store.listInvestigationRelations({
     fromType: 'INCIDENT',
-    toId: item.incident.id,
+    toId: queryIncidentId,
     toType: 'INCIDENT',
     relationType: 'SIMILAR_TO',
-  })[0];
+  })) {
+    if (!pairRelationByHistoricalId.has(relation.fromId)) {
+      pairRelationByHistoricalId.set(relation.fromId, relation);
+    }
+  }
+
+  const derivedByCandidateId = new Map<string, InvestigationRelation>();
+  for (const relation of store.listInvestigationRelations({
+    fromType: 'MEMORY_CANDIDATE',
+    relationType: 'DERIVED_FROM',
+  })) {
+    derivedByCandidateId.set(relation.fromId, relation);
+  }
+
+  return {
+    queryIncidentId,
+    similarById,
+    similarIds,
+    incidentIdByReportId,
+    qualityByReportId,
+    qualityByIncidentId,
+    effectivenessByIncidentId,
+    originByMemoryId,
+    pairRelationByHistoricalId,
+    derivedByCandidateId,
+    hypotheses,
+    resolvedBy: store.listInvestigationRelations({
+      fromType: 'INCIDENT',
+      toType: 'HYPOTHESIS',
+      relationType: 'RESOLVED_BY',
+    }),
+    retrievedMemories,
+    memoryById,
+  };
+}
+
+function rankScore(similarity: number, effectiveness: number, quality: number): number {
+  return KNOWLEDGE_RANK_WEIGHTS.similarity * similarity
+    + KNOWLEDGE_RANK_WEIGHTS.effectiveness * effectiveness
+    + KNOWLEDGE_RANK_WEIGHTS.quality * quality;
+}
+
+function rankSimilarIncident(index: RetrievalIndex, item: SimilarIncident): RetrievedSimilarIncident {
+  const quality = index.qualityByIncidentId.get(item.incident.id);
+  const effectiveness = index.effectivenessByIncidentId.get(item.incident.id) ?? 0.5;
+  const relation = index.pairRelationByHistoricalId.get(item.incident.id);
   return {
     incident: item.incident,
     score: item.score,
     sharedDimensions: item.sharedDimensions,
-    confidence: quality > 0 ? quality : item.score,
-    rankScore: rankScore(item.score, effectiveness, quality),
+    confidence: quality !== undefined ? quality : item.score,
+    rankScore: rankScore(item.score, effectiveness, quality ?? 0),
     provenance: {
       sourceIncidentId: item.incident.id,
       ...(relation ? {
@@ -170,33 +294,20 @@ function rankSimilarIncident(store: EventStore, item: SimilarIncident): Retrieve
   };
 }
 
-function collectHypotheses(
-  store: EventStore,
-  similarIds: Set<string>,
-  similarById: Map<string, SimilarIncident>,
-): RetrievedHypothesis[] {
-  const sessionIncident = new Map(
-    store.listAllInvestigationSessions().map((session) => [session.id, session.incidentId] as const),
-  );
-  const reportIncident = new Map<string, string>();
-  for (const report of store.listAllInvestigationReports()) {
-    const incidentId = sessionIncident.get(report.sessionId);
-    if (incidentId && similarIds.has(incidentId)) reportIncident.set(report.id, incidentId);
-  }
+function collectHypotheses(index: RetrievalIndex): RetrievedHypothesis[] {
   const items: RetrievedHypothesis[] = [];
-  for (const hypothesis of store.listAllInvestigationHypotheses()) {
-    const incidentId = reportIncident.get(hypothesis.investigationReportId);
-    if (!incidentId) continue;
-    const similarity = similarById.get(incidentId)?.score ?? 0;
-    const quality = investigationQualityForReport(store, hypothesis.investigationReportId)
-      || evidenceQuality(hypothesis);
+  for (const hypothesis of index.hypotheses) {
+    const incidentId = index.incidentIdByReportId.get(hypothesis.investigationReportId);
+    if (!incidentId || !index.similarIds.has(incidentId)) continue;
+    const similarity = index.similarById.get(incidentId)?.score ?? 0;
+    const quality = qualityForHypothesis(index, hypothesis);
     items.push({
       id: hypothesis.id,
       incidentId,
       statement: hypothesis.statement,
       confidence: hypothesis.confidence,
       status: hypothesis.status,
-      rankScore: rankScore(similarity, memoryEffectiveness(store, incidentId), quality),
+      rankScore: rankScore(similarity, index.effectivenessByIncidentId.get(incidentId) ?? 0.5, quality),
       provenance: {
         sourceIncidentId: incidentId,
         sourceRelationType: 'SIMILAR_TO',
@@ -206,30 +317,23 @@ function collectHypotheses(
   return items;
 }
 
-function collectResolutions(
-  store: EventStore,
-  similarIds: Set<string>,
-  similarById: Map<string, SimilarIncident>,
-  hypotheses: RetrievedHypothesis[],
-): RetrievedResolution[] {
+function collectResolutions(index: RetrievalIndex): RetrievedResolution[] {
   const seen = new Set<string>();
   const items: RetrievedResolution[] = [];
 
-  for (const relation of store.listInvestigationRelations({
-    fromType: 'INCIDENT',
-    toType: 'HYPOTHESIS',
-    relationType: 'RESOLVED_BY',
-  })) {
-    if (!similarIds.has(relation.fromId)) continue;
-    const hypothesis = store.getInvestigationHypothesis(relation.toId);
+  for (const relation of index.resolvedBy) {
+    if (!index.similarIds.has(relation.fromId)) continue;
+    const hypothesis = index.hypotheses.find((item) => item.id === relation.toId);
     if (!hypothesis) continue;
-    const similarity = similarById.get(relation.fromId)?.score ?? 0;
-    const quality = investigationQualityForReport(store, hypothesis.investigationReportId)
-      || evidenceQuality(hypothesis);
+    const similarity = index.similarById.get(relation.fromId)?.score ?? 0;
     pushResolution(items, seen, {
       text: hypothesis.statement,
       confidence: hypothesis.confidence,
-      rankScore: rankScore(similarity, memoryEffectiveness(store, relation.fromId), quality),
+      rankScore: rankScore(
+        similarity,
+        index.effectivenessByIncidentId.get(relation.fromId) ?? 0.5,
+        qualityForHypothesis(index, hypothesis),
+      ),
       provenance: {
         sourceIncidentId: relation.fromId,
         sourceRelationId: relation.id,
@@ -238,31 +342,22 @@ function collectResolutions(
     });
   }
 
-  for (const hypothesis of hypotheses) {
-    if (hypothesis.status !== 'SUPPORTED') continue;
-    pushResolution(items, seen, {
-      text: hypothesis.statement,
-      confidence: hypothesis.confidence,
-      rankScore: hypothesis.rankScore,
-      provenance: hypothesis.provenance,
-    });
-  }
-
-  for (const entry of store.listActiveMemoryEntries()) {
-    const origin = originIncident(store, entry.id);
-    if (!origin || !similarIds.has(origin.incidentId)) continue;
-    const feedbacks = store.listMemoryFeedbacks(entry.id);
-    const quality = deriveMemoryQuality(feedbacks, entry.confidence);
-    const memory = withMemoryQuality(entry, quality);
+  for (const memory of index.memoryById.values()) {
+    const originId = index.originByMemoryId.get(memory.id);
+    if (!originId || !index.similarIds.has(originId)) continue;
     if (isLowQualityMemory(memory)) continue;
-    const similarity = similarById.get(origin.incidentId)?.score ?? 0;
+    const similarity = index.similarById.get(originId)?.score ?? 0;
     pushResolution(items, seen, {
-      text: entry.resolution,
-      confidence: entry.confidence,
-      rankScore: rankScore(similarity, memory.effectivenessScore, investigationQualityForIncident(store, origin.incidentId)),
+      text: memory.resolution,
+      confidence: memory.confidence,
+      rankScore: rankScore(
+        similarity,
+        memory.effectivenessScore,
+        index.qualityByIncidentId.get(originId) ?? 0,
+      ),
       provenance: {
-        sourceIncidentId: origin.incidentId,
-        sourceMemoryEntryId: entry.id,
+        sourceIncidentId: originId,
+        sourceMemoryEntryId: memory.id,
         sourceRelationType: 'DERIVED_FROM',
       },
     });
@@ -281,32 +376,31 @@ function pushResolution(
   items.push({ ...item, text });
 }
 
-function withProvenanceMemory(
-  store: EventStore,
-  memory: MemoryIntelligence,
-  similarById: Map<string, SimilarIncident>,
-): RetrievedMemory {
-  const origin = originIncident(store, memory.id);
-  const derived = store.listInvestigationRelations({
-    fromType: 'MEMORY_CANDIDATE',
-    fromId: memory.sourceMemoryCandidateId,
-    relationType: 'DERIVED_FROM',
-  })[0];
-  const similarity = origin ? similarById.get(origin.incidentId)?.score ?? 0.4 : 0.4;
-  const quality = origin ? investigationQualityForIncident(store, origin.incidentId) : 0;
+function withProvenanceMemory(index: RetrievalIndex, memory: MemoryIntelligence): RetrievedMemory {
+  const originId = index.originByMemoryId.get(memory.id);
+  const derived = index.derivedByCandidateId.get(memory.sourceMemoryCandidateId);
+  const similarity = originId ? index.similarById.get(originId)?.score ?? 0 : 0;
+  const quality = originId ? index.qualityByIncidentId.get(originId) ?? 0 : 0;
   return {
     memory,
     confidence: memory.confidence,
     rankScore: rankScore(similarity, memory.effectivenessScore, quality),
     provenance: {
       sourceMemoryEntryId: memory.id,
-      ...(origin ? { sourceIncidentId: origin.incidentId } : {}),
+      ...(originId ? { sourceIncidentId: originId } : {}),
       ...(derived ? {
         sourceRelationId: derived.id,
         sourceRelationType: derived.relationType,
       } : {}),
     },
   };
+}
+
+function qualityForHypothesis(index: RetrievalIndex, hypothesis: InvestigationHypothesis): number {
+  if (index.qualityByReportId.has(hypothesis.investigationReportId)) {
+    return index.qualityByReportId.get(hypothesis.investigationReportId)!;
+  }
+  return evidenceQuality(hypothesis);
 }
 
 function originIncident(store: EventStore, memoryEntryId: string): { incidentId: string } | undefined {
@@ -317,47 +411,6 @@ function originIncident(store: EventStore, memoryEntryId: string): { incidentId:
   const result = store.getReasoningResult(candidate.sourceReasoningResultId);
   if (!result) return undefined;
   return { incidentId: result.incidentId };
-}
-
-function memoryEffectiveness(store: EventStore, incidentId: string): number {
-  let success = 0;
-  let failed = 0;
-  let effectiveness = 0;
-  let uses = 0;
-  for (const entry of store.listActiveMemoryEntries()) {
-    const origin = originIncident(store, entry.id);
-    if (origin?.incidentId !== incidentId) continue;
-    const feedbacks = store.listMemoryFeedbacks(entry.id);
-    const quality = deriveMemoryQuality(feedbacks, entry.confidence);
-    effectiveness += quality.effectivenessScore;
-    uses += 1;
-    success += quality.successCount;
-    failed += quality.failedCount;
-  }
-  if (uses === 0) return 0.5;
-  const decided = success + failed;
-  const ratio = decided === 0 ? 0.5 : success / decided;
-  return 0.5 * (effectiveness / uses) + 0.5 * ratio;
-}
-
-function investigationQualityForIncident(store: EventStore, incidentId: string): number {
-  const sessionIds = new Set(
-    store.listAllInvestigationSessions()
-      .filter((session) => session.incidentId === incidentId)
-      .map((session) => session.id),
-  );
-  if (sessionIds.size === 0) return 0;
-  let best = 0;
-  for (const report of store.listAllInvestigationReports()) {
-    if (!sessionIds.has(report.sessionId)) continue;
-    const score = investigationQualityForReport(store, report.id);
-    if (score > best) best = score;
-  }
-  return best;
-}
-
-function investigationQualityForReport(store: EventStore, reportId: string): number {
-  return store.getInvestigationQualityEvaluationByReportId(reportId)?.qualityScore ?? 0;
 }
 
 function evidenceQuality(hypothesis: InvestigationHypothesis): number {

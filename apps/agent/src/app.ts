@@ -3,7 +3,8 @@ import type { AgentConfig } from './config.js';
 import { DuplicateEventConflictError, type EventStore } from './store.js';
 import type { IncidentEngine } from './incident.js';
 import type { EvidenceJobWorker } from './evidence-worker.js';
-import { validateEventBatch } from '@pi-ops/protocol';
+import { validateEventBatch, validateInvestigationRuntimeResult } from '@pi-ops/protocol';
+import type { createInvestigationLoopService } from './investigation-loop.js';
 
 class RequestBodyTooLargeError extends Error {}
 
@@ -34,6 +35,7 @@ export function createApp(
   store: EventStore,
   incidentEngine: IncidentEngine,
   evidenceWorker?: EvidenceJobWorker,
+  investigationLoop?: ReturnType<typeof createInvestigationLoopService>,
 ): Hono {
   const app = new Hono();
 
@@ -121,6 +123,33 @@ export function createApp(
       accepted: batch.events.length,
       rejected: 0,
     });
+  });
+
+  app.post('/v1/investigation-results', async (c) => {
+    if (!investigationLoop) return c.json({ error: 'investigation loop unavailable' }, 503);
+    const expectedToken = config.piRuntimeToken ?? config.ingestToken;
+    const auth = c.req.header('Authorization');
+    if (!auth || auth !== `Bearer ${expectedToken}`) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    let body: unknown;
+    try {
+      body = await readJsonBody(c.req.raw, config.maxBodySize);
+    } catch (err) {
+      if (err instanceof RequestBodyTooLargeError) {
+        return c.json({ error: 'payload too large' }, 413);
+      }
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    const parsed = validateInvestigationRuntimeResult(body);
+    if (!parsed.success) return c.json({ error: parsed.message }, 400);
+    try {
+      const result = investigationLoop.handleRuntimeResult(parsed.value);
+      return c.json({ ok: true, status: parsed.value.status, id: result.id });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, 400);
+    }
   });
 
   return app;

@@ -21,13 +21,15 @@ The current implementation source of truth is:
 17. `adr/ADR-0022-evidence-intelligence.md`
 18. `adr/ADR-0023-investigation-knowledge-graph.md`
 19. `adr/ADR-0024-operational-knowledge-retrieval.md`
-20. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-21. `evolution/timeline.md`
+20. `adr/ADR-0025-external-bounded-multi-agent-runtime.md`
+21. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+22. `evolution/timeline.md`
 
 The architecture intentionally separates:
 
 - `pi-ops-agent`: event/incident/evidence/reasoning/notification/audit.
 - `pi-ops-node-agent`: deterministic per-host observation and typed read-only evidence.
-- `@pi-ops/protocol`: the one shared contract for events and evidence.
+- `pi-runtime`: external bounded coordinator/specialist investigation.
+- `@pi-ops/protocol`: the one shared contract for events, evidence, and the investigation runtime.
 
 Implementation must proceed milestone-by-milestone. Do not skip ahead to Pi SDK integration before deterministic event, incident, and evidence flows are working.

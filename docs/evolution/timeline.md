@@ -2,6 +2,13 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 10 completed
+
+- External `apps/pi-runtime` runs a bounded coordinator and allowlisted specialists
+- Pi-Ops submits frozen InvestigationContext over HTTP and governs the callback
+- historical knowledge stays advisory; `historicalKnowledgeStatus` distinguishes empty history from retrieval failure
+- CI uses a deterministic fake runtime; Pi SDK `createAgentSession({ noTools: 'all' })` is opt-in
+
 ## Phase 9 completed
 
 - KnowledgeRetriever builds OperationalKnowledgeContext from similar incidents, hypotheses, resolutions, and memories

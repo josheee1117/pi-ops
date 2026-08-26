@@ -8,6 +8,8 @@ import { createFakeReasoner, createReasonerRegistry, type Reasoner } from './rea
 import { createPiReasoner, PI_REASONER_VERSION } from './pi-reasoner.js';
 import { createPiSdkClient } from './pi-sdk-client.js';
 import { createMemoryRetriever } from './memory-retriever.js';
+import { createHttpPiRuntimeClient } from './http-pi-runtime-client.js';
+import { createInvestigationLoopService } from './investigation-loop.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import { createReasoningJobWorker } from './reasoning-worker.js';
 import { createApp } from './app.js';
@@ -43,16 +45,25 @@ if (config.reasonerType === 'pi') {
     client: await createPiSdkClient(config),
   }));
 }
+const runtimeClient = config.piRuntimeUrl && config.piRuntimeToken && config.piRuntimeCallbackUrl
+  ? createHttpPiRuntimeClient({
+    baseUrl: config.piRuntimeUrl,
+    token: config.piRuntimeToken,
+    callbackUrl: config.piRuntimeCallbackUrl,
+    timeoutMs: config.piRuntimeTimeoutMs,
+  })
+  : createNoopPiRuntimeClient();
+const investigationLoop = createInvestigationLoopService(store, { runtime: runtimeClient });
 const reasoningWorker = createReasoningJobWorker(
   config,
   store,
   createReasonerRegistry(reasoners),
   undefined,
   createMemoryRetriever(store),
-  createNoopPiRuntimeClient(),
+  runtimeClient,
 );
 reasoningWorker.start();
-const app = createApp(config, store, incidentEngine, evidenceWorker);
+const app = createApp(config, store, incidentEngine, evidenceWorker, investigationLoop);
 
 console.log(`[pi-ops-agent] starting on :${config.port}, db=${config.sqlitePath}`);
 

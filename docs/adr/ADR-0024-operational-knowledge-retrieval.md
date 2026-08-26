@@ -38,7 +38,13 @@ Deterministic, no embeddings. Rank by:
 2. memory effectiveness
 3. investigation quality score
 
-Evidence quality (weighted support vs contradiction) fills in when an InvestigationQualityEvaluation is absent. Low-quality memory (only FAILED feedback, or effectiveness below 0.5 after use) is omitted.
+Evidence quality (weighted support vs contradiction) fills in only when no InvestigationQualityEvaluation exists. An explicit quality score of 0 stays 0.
+
+Memory ranking uses structural similarity when the origin incident is in the similar set; otherwise similarity is 0. There is no synthetic similarity constant.
+
+`previousResolutions` come only from explicit `RESOLVED_BY` relations or approved `MemoryEntry.resolution`. A SUPPORTED hypothesis is not a resolution.
+
+Low-quality memory (only FAILED feedback, or effectiveness below 0.5 after use) is omitted.
 
 ### Provenance
 

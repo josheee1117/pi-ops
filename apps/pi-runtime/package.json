@@ -1,0 +1,22 @@
+{
+  "name": "@pi-ops/pi-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "lint": "echo 'lint not configured yet'"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@hono/node-server": "^2.1.1",
+    "@pi-ops/protocol": "workspace:*",
+    "hono": "^4.13.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.2"
+  }
+}

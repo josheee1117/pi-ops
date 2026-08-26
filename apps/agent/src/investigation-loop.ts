@@ -12,6 +12,7 @@ import {
   runtimeRequestIdFor,
   type InvestigationSession,
 } from './investigation-session.js';
+import type { InvestigationRuntimeResult } from '@pi-ops/protocol';
 import type { InvestigationReportCallback, PiRuntimeClient } from './pi-runtime-client.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasoningResult } from './reasoner.js';
@@ -112,6 +113,37 @@ export function createInvestigationLoopService(
         throw new Error(`runtimeTaskId ${input.runtimeTaskId} does not belong to InvestigationSession ${session.id}`);
       }
       return this.complete(session.id, input.report);
+    },
+
+    handleRuntimeResult(input: InvestigationRuntimeResult): InvestigationReport | InvestigationSession {
+      if (input.schemaVersion !== INVESTIGATION_SCHEMA_VERSION) {
+        throw new Error(`schemaVersion ${input.schemaVersion} does not match ${INVESTIGATION_SCHEMA_VERSION}`);
+      }
+      const session = requireSession(store, input.sessionId);
+      const task = store.getDelegationTask(session.delegationTaskId);
+      if (!task) throw new Error(`DelegationTask ${session.delegationTaskId} does not exist`);
+      if (!input.runtimeRequestId?.trim() || session.runtimeRequestId !== input.runtimeRequestId) {
+        throw new Error(`runtimeRequestId ${input.runtimeRequestId} does not belong to InvestigationSession ${session.id}`);
+      }
+      if (!input.runtimeTaskId?.trim() || task.runtimeTaskId !== input.runtimeTaskId) {
+        throw new Error(`runtimeTaskId ${input.runtimeTaskId} does not belong to InvestigationSession ${session.id}`);
+      }
+      if (input.metadata) {
+        console.log(
+          `[agent] investigation runtime metadata request=${input.runtimeRequestId} task=${input.runtimeTaskId} specialists=${input.metadata.selectedSpecialists.join(',')} status=${input.status}`,
+        );
+      }
+      if (input.status === 'failed') {
+        return this.fail(session.id, input.error ?? 'runtime failed');
+      }
+      if (!input.report) throw new Error('completed runtime result requires a report');
+      return this.handleCallback({
+        schemaVersion: input.schemaVersion,
+        runtimeRequestId: input.runtimeRequestId,
+        runtimeTaskId: input.runtimeTaskId,
+        sessionId: input.sessionId,
+        report: input.report,
+      });
     },
 
     reconcile(options: { timeoutMs?: number } = {}): InvestigationSession[] {
