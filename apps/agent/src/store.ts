@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import type { OpsEvent, EventBatch, Evidence } from '@pi-ops/protocol';
+import type { OpsEvent, EventBatch, Evidence, InvestigationRuntimeMetadata } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
@@ -383,6 +383,16 @@ CREATE TABLE IF NOT EXISTS investigation_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_investigation_sessions_incident
   ON investigation_sessions (incident_id, created_at, id);
+`;
+
+const CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_runtime_audits (
+  runtime_request_id TEXT PRIMARY KEY,
+  runtime_task_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;
 
 const CREATE_INVESTIGATION_REPORTS_TABLE_SQL = `
@@ -908,6 +918,20 @@ export interface EventStore {
   listAllInvestigationHypotheses(): InvestigationHypothesis[];
   listAllInvestigationSessions(): InvestigationSession[];
   listAllInvestigationReports(): InvestigationReport[];
+  insertInvestigationRuntimeAudit(audit: {
+    runtimeRequestId: string;
+    runtimeTaskId: string;
+    sessionId: string;
+    metadata: InvestigationRuntimeMetadata;
+    createdAt: string;
+  }): void;
+  getInvestigationRuntimeAudit(runtimeRequestId: string): {
+    runtimeRequestId: string;
+    runtimeTaskId: string;
+    sessionId: string;
+    metadata: InvestigationRuntimeMetadata;
+    createdAt: string;
+  } | undefined;
 
   /** Close the database connection. */
   close(): void;
@@ -1424,6 +1448,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_CONTEXT_SNAPSHOTS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_SESSIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RELATIONS_TABLE_SQL);
@@ -1765,6 +1790,16 @@ ORDER BY created_at, id;
   );
   const listAllInvestigationReportsStmt = db.prepare(
     'SELECT * FROM investigation_reports ORDER BY created_at, id;',
+  );
+  const insertInvestigationRuntimeAuditStmt = db.prepare(`
+INSERT OR REPLACE INTO investigation_runtime_audits (
+  runtime_request_id, runtime_task_id, session_id, metadata_json, created_at
+) VALUES (
+  @runtime_request_id, @runtime_task_id, @session_id, @metadata_json, @created_at
+);
+`);
+  const getInvestigationRuntimeAuditStmt = db.prepare(
+    'SELECT * FROM investigation_runtime_audits WHERE runtime_request_id = ?',
   );
   const insertEvidenceProfileStmt = db.prepare(`
 INSERT INTO evidence_profiles (evidence_id, category, reliability_score, diagnostic_weight)
@@ -2795,6 +2830,40 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     listAllInvestigationReports(): InvestigationReport[] {
       return (listAllInvestigationReportsStmt.all() as InvestigationReportRow[])
         .map(mapInvestigationReportRow);
+    },
+
+    insertInvestigationRuntimeAudit(audit: {
+      runtimeRequestId: string;
+      runtimeTaskId: string;
+      sessionId: string;
+      metadata: InvestigationRuntimeMetadata;
+      createdAt: string;
+    }): void {
+      insertInvestigationRuntimeAuditStmt.run({
+        runtime_request_id: audit.runtimeRequestId,
+        runtime_task_id: audit.runtimeTaskId,
+        session_id: audit.sessionId,
+        metadata_json: JSON.stringify(audit.metadata),
+        created_at: audit.createdAt,
+      });
+    },
+
+    getInvestigationRuntimeAudit(runtimeRequestId: string) {
+      const row = getInvestigationRuntimeAuditStmt.get(runtimeRequestId) as {
+        runtime_request_id: string;
+        runtime_task_id: string;
+        session_id: string;
+        metadata_json: string;
+        created_at: string;
+      } | undefined;
+      if (!row) return undefined;
+      return {
+        runtimeRequestId: row.runtime_request_id,
+        runtimeTaskId: row.runtime_task_id,
+        sessionId: row.session_id,
+        metadata: JSON.parse(row.metadata_json) as InvestigationRuntimeMetadata,
+        createdAt: row.created_at,
+      };
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

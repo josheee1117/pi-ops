@@ -9,13 +9,26 @@ const KNOWLEDGE_KEYS = [
   'relatedMemories',
 ] as const;
 
+export class ContextTooLargeError extends Error {
+  readonly code = 'context_too_large';
+
+  constructor() {
+    super('context_too_large');
+    this.name = 'ContextTooLargeError';
+  }
+}
+
 export function boundInvestigationContext(
   context: RuntimeInvestigationContext,
   maxBytes = DEFAULT_MAX_RUNTIME_CONTEXT_BYTES,
 ): RuntimeInvestigationContext {
   const clone = structuredClone(context) as RuntimeInvestigationContext & {
     historicalKnowledge?: Record<string, unknown>;
+    conflictingMemories?: unknown[];
   };
+  const factsOnly = factsOnlyContext(clone);
+  if (jsonSize(factsOnly) > maxBytes) throw new ContextTooLargeError();
+
   trimKnowledge(clone, 5);
   while (jsonSize(clone) > maxBytes) {
     const knowledge = clone.historicalKnowledge;
@@ -26,15 +39,30 @@ export function boundInvestigationContext(
         previousResolutions: [],
         relatedMemories: [],
       };
+      clone.conflictingMemories = [];
       break;
     }
     shrinkKnowledge(knowledge);
   }
+  if (jsonSize(clone) > maxBytes) throw new ContextTooLargeError();
   return clone;
 }
 
 export function jsonSize(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
+
+function factsOnlyContext(context: RuntimeInvestigationContext): RuntimeInvestigationContext {
+  return {
+    ...context,
+    historicalKnowledge: {
+      similarIncidents: [],
+      historicalHypotheses: [],
+      previousResolutions: [],
+      relatedMemories: [],
+    },
+    conflictingMemories: [],
+  };
 }
 
 function trimKnowledge(

@@ -160,6 +160,9 @@ describe('external Pi Runtime E2E', () => {
     assert.ok(report);
     assert.equal(results.length, 1);
     assert.equal(results[0]?.runtimeRequestId, session.runtimeRequestId);
+    assert.equal(results[0]?.provider, 'fake');
+    assert.equal(results[0]?.model, 'deterministic');
+    assert.ok(store.getInvestigationRuntimeAudit(session.runtimeRequestId));
     assert.equal(report.supportingEvidenceIds[0], 'evd-e2e-1');
     assert.deepEqual(store.getIncident(incident.id), before);
     store.close();

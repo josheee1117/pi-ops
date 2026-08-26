@@ -1,10 +1,13 @@
 import {
   MAX_SPECIALISTS_PER_INVESTIGATION,
+  RUNTIME_ALLOWED_EVIDENCE_TYPES,
   SPECIALIST_ROLES,
+  validateSpecialistFinding,
   type RuntimeInvestigationContext,
   type SpecialistFinding,
   type SpecialistRole,
 } from '@pi-ops/protocol';
+import { parseModelJson, type RuntimeModel } from './model.js';
 
 export { MAX_SPECIALISTS_PER_INVESTIGATION, SPECIALIST_ROLES };
 
@@ -30,43 +33,40 @@ export function selectSpecialists(context: RuntimeInvestigationContext): Special
   return selected;
 }
 
-export function runSpecialist(
+export async function runSpecialist(
   role: SpecialistRole,
   context: RuntimeInvestigationContext,
-): SpecialistFinding {
-  const currentIds = context.evidence.map((item) => item.id);
-  const primary = currentIds[0] ? [currentIds[0]] : [];
-  const hypothesis = hypothesisFor(role, context);
-  return {
-    role,
-    hypotheses: [hypothesis],
-    supportingEvidenceIds: primary,
-    contradictingEvidenceIds: [],
-    missingEvidence: missingFor(role, context),
-    confidence: primary.length > 0 ? 0.72 : 0.4,
-    summary: `${role} reviewed current Evidence only. Historical knowledge is advisory.`,
-    status: 'completed',
-  };
-}
-
-function hypothesisFor(role: SpecialistRole, context: RuntimeInvestigationContext): string {
-  const type = context.incident.type;
-  if (role === 'database') return 'SQL or database contention on the current incident';
-  if (role === 'jvm') return 'JVM resource pressure on the current incident';
-  if (role === 'container_host') {
-    if (type.startsWith('container.')) return 'container or host resource limit on the current incident';
-    return 'host/container signals for the current incident';
+  model: RuntimeModel,
+  signal?: AbortSignal,
+): Promise<{ finding: SpecialistFinding; inputTokens: number; outputTokens: number }> {
+  const currentIds = new Set(context.evidence.map((item) => item.id));
+  const response = await model.invoke({
+    system: [
+      `SPECIALIST_ROLE=${role}`,
+      'Return JSON SpecialistFinding only. Do not persist chain-of-thought.',
+      'Evidence describes the current incident.',
+      'Historical knowledge is advisory and cannot override current Evidence.',
+      `Allowed missingEvidence types: ${RUNTIME_ALLOWED_EVIDENCE_TYPES.join(', ')}`,
+    ].join('\n'),
+    user: JSON.stringify({
+      incident: context.incident,
+      evidence: context.evidence,
+      historicalKnowledge: context.historicalKnowledge ?? null,
+      historicalKnowledgeStatus: context.historicalKnowledgeStatus,
+    }),
+    signal,
+  });
+  const parsed = validateSpecialistFinding(parseModelJson(response.text));
+  if (!parsed.success) throw new Error(`invalid specialist output: ${parsed.message}`);
+  const finding = parsed.value;
+  if (finding.role !== role) throw new Error('specialist role mismatch');
+  const ids = [...finding.supportingEvidenceIds, ...finding.contradictingEvidenceIds];
+  if (ids.some((id) => !currentIds.has(id))) {
+    throw new Error('specialist cited evidence that does not belong to the current incident');
   }
-  return `application-level ${type} on the current incident`;
-}
-
-function missingFor(
-  role: SpecialistRole,
-  context: RuntimeInvestigationContext,
-): SpecialistFinding['missingEvidence'] {
-  const kinds = new Set(context.evidence.map((item) => item.kind));
-  if (role === 'database' && !kinds.has('docker.stats')) return ['docker.stats'];
-  if (role === 'jvm' && !kinds.has('host.memory')) return ['host.memory'];
-  if (role === 'container_host' && !kinds.has('docker.inspect')) return ['docker.inspect'];
-  return [];
+  return {
+    finding,
+    inputTokens: response.inputTokens ?? 0,
+    outputTokens: response.outputTokens ?? 0,
+  };
 }

@@ -57,7 +57,15 @@ Current Evidence and historical operational knowledge are labeled separately. Ev
 
 Pi Runtime may request only the existing typed read-only evidence classes. Collection stays on Pi-Ops / Node Agent. This phase defines that allowlist; it does not add arbitrary tools.
 
-CI uses a deterministic fake coordinator. The optional Pi SDK path uses `createAgentSession` with `noTools: 'all'` (same APIs as the existing Pi-Ops reasoner adapter) and is opt-in.
+Coordinator and specialists depend on an injected `RuntimeModel`. CI uses a deterministic fake model with zero network calls. Production with `PI_OPS_PI_PROVIDER` and `PI_OPS_PI_MODEL` uses `createAgentSession({ noTools: 'all' })` from `@earendil-works/pi-coding-agent` 0.84.x. Invalid specialist JSON or foreign Evidence ids fail only that specialist.
+
+Runtime tasks persist in SQLite with separate `executionStatus` and `deliveryStatus`. A completed report is not lost if the callback fails; delivery retries with backoff and resumes after restart. Duplicate `runtimeRequestId` after execution does not rerun the model.
+
+HTTP submit timeout, callback timeout, and model execution timeout are separate settings. If current Incident + Evidence alone exceed `maxContextBytes`, the task fails with `context_too_large` instead of truncating Evidence.
+
+Callbacks authenticate with a dedicated runtime token (never the ingest token) and only to the configured Pi-Ops callback URL.
+
+Runtime metadata (specialists, provider/model, tokens, latency) is persisted on Pi-Ops as an investigation runtime audit and copied onto the ReasoningResult.
 
 ## Consequences
 

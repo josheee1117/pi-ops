@@ -7,7 +7,9 @@ Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a l
 - External `apps/pi-runtime` runs a bounded coordinator and allowlisted specialists
 - Pi-Ops submits frozen InvestigationContext over HTTP and governs the callback
 - historical knowledge stays advisory; `historicalKnowledgeStatus` distinguishes empty history from retrieval failure
-- CI uses a deterministic fake runtime; Pi SDK `createAgentSession({ noTools: 'all' })` is opt-in
+- CI uses a deterministic fake RuntimeModel; production uses `createAgentSession({ noTools: 'all' })`
+- runtime tasks and callback outbox are durable SQLite; execution and delivery are separate statuses
+- current Evidence over the byte budget fails with context_too_large; runtime metadata is persisted on Pi-Ops
 
 ## Phase 9 completed
 

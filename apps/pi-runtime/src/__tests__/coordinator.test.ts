@@ -9,6 +9,7 @@ import {
 import { boundInvestigationContext, jsonSize } from '../bound-context.js';
 import { runtimeCapabilities } from '../capabilities.js';
 import { investigate } from '../coordinator.js';
+import { createFakeRuntimeModel } from '../model.js';
 import { selectSpecialists } from '../specialists.js';
 import type { RuntimeInvestigationContext } from '@pi-ops/protocol';
 
@@ -28,6 +29,17 @@ function context(overrides: Partial<RuntimeInvestigationContext> = {}): RuntimeI
   };
 }
 
+const validFinding = (role: 'jvm' | 'database' | 'container_host' | 'application_business', ids: string[]) => JSON.stringify({
+  role,
+  hypotheses: [`${role} injected finding on the current incident`],
+  supportingEvidenceIds: ids,
+  contradictingEvidenceIds: [],
+  missingEvidence: [],
+  confidence: 0.91,
+  summary: `${role} used injected model output`,
+  status: 'completed',
+});
+
 describe('bounded multi-agent coordinator', () => {
   it('selects at most three specialists', () => {
     const selected = selectSpecialists(context({
@@ -42,8 +54,23 @@ describe('bounded multi-agent coordinator', () => {
     assert.ok(selected.includes('database') || selected.includes('container_host'));
   });
 
-  it('isolates a specialist failure', () => {
-    const outcome = investigate(context(), { failRoles: ['database'] });
+  it('uses an injected RuntimeModel', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now']),
+        container_host: validFinding('container_host', ['evd-now']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const outcome = await investigate(context(), { model });
+    assert.equal(outcome.status, 'completed');
+    assert.match(outcome.report?.hypothesis ?? '', /injected finding/);
+    assert.ok(model.invocations > 0);
+    assert.equal(model.networkCalls, 0);
+  });
+
+  it('isolates a specialist failure', async () => {
+    const outcome = await investigate(context(), { failRoles: ['database'] });
     assert.equal(outcome.status, 'completed');
     assert.equal(outcome.specialistStatus['database'], 'failed');
     assert.ok(Object.values(outcome.specialistStatus).includes('completed'));
@@ -51,16 +78,41 @@ describe('bounded multi-agent coordinator', () => {
     assert.deepEqual(outcome.report.supportingEvidenceIds, ['evd-now']);
   });
 
-  it('fails the runtime task when every specialist fails', () => {
-    const outcome = investigate(context(), {
+  it('fails only the specialist with invalid structured output', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: 'not-json',
+      },
+    });
+    const outcome = await investigate(context(), { model });
+    assert.equal(outcome.specialistStatus['database'], 'failed');
+    assert.equal(outcome.status, 'completed');
+  });
+
+  it('rejects specialist evidence that does not belong to the current incident', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-foreign']),
+        container_host: validFinding('container_host', ['evd-now']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const outcome = await investigate(context(), { model });
+    assert.equal(outcome.specialistStatus['database'], 'failed');
+    assert.equal(outcome.status, 'completed');
+    assert.deepEqual(outcome.report?.supportingEvidenceIds, ['evd-now']);
+  });
+
+  it('fails the runtime task when every specialist fails', async () => {
+    const outcome = await investigate(context(), {
       failRoles: ['database', 'container_host', 'application_business', 'jvm'],
     });
     assert.equal(outcome.status, 'failed');
     assert.equal(outcome.report, undefined);
   });
 
-  it('does not let historical knowledge replace current Evidence', () => {
-    const outcome = investigate(context({
+  it('does not let historical knowledge replace current Evidence', async () => {
+    const outcome = await investigate(context({
       historicalKnowledge: {
         similarIncidents: [{ incident: { id: 'inc-old' } }],
         historicalHypotheses: [],
@@ -77,15 +129,7 @@ describe('bounded multi-agent coordinator', () => {
     assert.match(outcome.report?.recommendation ?? '', /Evidence describes the current incident/);
   });
 
-  it('drops evidence ids that are not on the current incident', () => {
-    const outcome = investigate(context());
-    assert.ok(outcome.report);
-    for (const id of outcome.report.supportingEvidenceIds) {
-      assert.equal(id, 'evd-now');
-    }
-  });
-
-  it('keeps runtime context bounded', () => {
+  it('keeps runtime context bounded', async () => {
     const huge = context({
       historicalKnowledge: {
         similarIncidents: Array.from({ length: 40 }, (_, index) => ({ padding: 'x'.repeat(800), index })),
@@ -98,8 +142,33 @@ describe('bounded multi-agent coordinator', () => {
     assert.ok(jsonSize(huge) > 4096);
     assert.ok(jsonSize(bounded) <= 4096);
     assert.equal(bounded.evidence[0]?.id, 'evd-now');
-    const outcome = investigate(huge, { maxContextBytes: 4096 });
+    const outcome = await investigate(huge, { maxContextBytes: 4096 });
     assert.equal(outcome.status, 'completed');
+  });
+
+  it('fails explicitly when current Evidence alone exceeds the context limit', async () => {
+    const oversized = context({
+      evidence: [{ id: 'evd-now', kind: 'host.load', blob: 'x'.repeat(20_000) }],
+    });
+    const outcome = await investigate(oversized, { maxContextBytes: 4096 });
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.error, 'context_too_large');
+  });
+
+  it('aborts when execution times out', async () => {
+    const model = createFakeRuntimeModel({ delayMs: 40 });
+    const outcome = await investigate(context(), { model, executionTimeoutMs: 5 });
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.error, 'execution timeout');
+  });
+
+  it('performs zero external model calls in the fake CI runtime', async () => {
+    const model = createFakeRuntimeModel();
+    const outcome = await investigate(context(), { model });
+    assert.equal(outcome.status, 'completed');
+    assert.equal(model.networkCalls, 0);
+    assert.equal(outcome.provider, 'fake');
+    assert.equal(outcome.model, 'deterministic');
   });
 
   it('exposes no shell or remediation capability', () => {

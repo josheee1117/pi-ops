@@ -127,9 +127,9 @@ export function createApp(
 
   app.post('/v1/investigation-results', async (c) => {
     if (!investigationLoop) return c.json({ error: 'investigation loop unavailable' }, 503);
-    const expectedToken = config.piRuntimeToken ?? config.ingestToken;
+    const expectedToken = config.piRuntimeToken;
     const auth = c.req.header('Authorization');
-    if (!auth || auth !== `Bearer ${expectedToken}`) {
+    if (!expectedToken || !auth || auth !== `Bearer ${expectedToken}`) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     let body: unknown;

@@ -72,10 +72,16 @@ importers:
       '@pi-ops/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
       hono:
         specifier: ^4.13.3
         version: 4.13.3
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
       tsx:
         specifier: ^4.23.12
         version: 4.23.12

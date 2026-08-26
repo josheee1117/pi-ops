@@ -7,10 +7,11 @@ import {
   type InvestigationRuntimeResult,
   type RuntimeInvestigationContext,
 } from '@pi-ops/protocol';
-import { investigate, type CoordinatorOptions } from './coordinator.js';
-import { createRuntimeTaskStore, type RuntimeTaskStore } from './tasks.js';
 import { postRuntimeResult } from './callback.js';
-import type { PiRuntimeConfig } from './config.js';
+import { callbackUrlAllowed, type PiRuntimeConfig } from './config.js';
+import { investigate, type CoordinatorOptions } from './coordinator.js';
+import { createFakeRuntimeModel, type RuntimeModel } from './model.js';
+import { createRuntimeTaskStore, type RuntimeTaskRecord, type RuntimeTaskStore } from './store.js';
 
 class RequestBodyTooLargeError extends Error {}
 
@@ -18,19 +19,23 @@ export interface PiRuntimeApp {
   app: Hono;
   tasks: RuntimeTaskStore;
   drain(): Promise<void>;
+  close(): void;
 }
 
 export function createPiRuntimeApp(
   config: PiRuntimeConfig,
   options: {
     fetch?: typeof fetch;
+    model?: RuntimeModel;
     coordinator?: CoordinatorOptions;
     now?: () => string;
   } = {},
 ): PiRuntimeApp {
-  const tasks = createRuntimeTaskStore();
+  const tasks = createRuntimeTaskStore(config.sqlitePath);
   const pending = new Set<Promise<void>>();
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   const fetchImpl = options.fetch ?? fetch;
+  const model = options.model ?? createFakeRuntimeModel();
   const now = options.now ?? (() => new Date().toISOString());
   const app = new Hono();
 
@@ -54,6 +59,9 @@ export function createPiRuntimeApp(
     const parsed = validateInvestigationSubmitRequest(body);
     if (!parsed.success) return c.json({ error: parsed.message }, 400);
     const request = parsed.value;
+    if (!callbackUrlAllowed(request.callbackUrl, config.callbackBaseUrl)) {
+      return c.json({ error: 'callback url is not allowed' }, 400);
+    }
     const context = validateRuntimeInvestigationContext(request.context);
     if (!context.success) return c.json({ error: context.message }, 400);
 
@@ -61,10 +69,13 @@ export function createPiRuntimeApp(
       runtimeRequestId: request.runtimeRequestId,
       sessionId: request.sessionId,
       incidentId: request.incidentId,
+      contextJson: JSON.stringify(context.value),
       now: now(),
     });
     if (!created.duplicate) {
-      enqueue(() => runTask(created.task.runtimeRequestId, request.callbackUrl, context.value));
+      enqueue(() => executeTask(created.task.runtimeRequestId));
+    } else if (needsDelivery(created.task, config.maxDeliveryAttempts)) {
+      enqueue(() => deliverTask(created.task.runtimeRequestId));
     }
     return c.json({
       schemaVersion: INVESTIGATION_RUNTIME_SCHEMA_VERSION,
@@ -74,17 +85,33 @@ export function createPiRuntimeApp(
     });
   });
 
-  async function runTask(
-    runtimeRequestId: string,
-    callbackUrl: string,
-    context: RuntimeInvestigationContext,
-  ): Promise<void> {
+  function recover(): void {
+    for (const task of tasks.listResumable(config.maxDeliveryAttempts)) {
+      if (task.executionStatus === 'queued' || task.executionStatus === 'running') {
+        enqueue(() => executeTask(task.runtimeRequestId));
+      } else {
+        enqueue(() => deliverTask(task.runtimeRequestId));
+      }
+    }
+  }
+
+  async function executeTask(runtimeRequestId: string): Promise<void> {
     const task = tasks.getByRequestId(runtimeRequestId);
-    if (!task || task.status === 'completed' || task.status === 'failed') return;
-    tasks.update(runtimeRequestId, { status: 'running' });
-    const outcome = investigate(context, {
+    if (!task) return;
+    if (task.executionStatus === 'completed' || task.executionStatus === 'failed') {
+      await deliverTask(runtimeRequestId);
+      return;
+    }
+    tasks.update(runtimeRequestId, {
+      executionStatus: 'running',
+      startedAt: now(),
+    });
+    const context = JSON.parse(task.contextJson) as RuntimeInvestigationContext;
+    const outcome = await investigate(context, {
       ...options.coordinator,
+      model,
       maxContextBytes: config.maxContextBytes,
+      executionTimeoutMs: config.executionTimeoutMs,
     });
     const metadata: InvestigationRuntimeMetadata = {
       runtimeRequestId: task.runtimeRequestId,
@@ -92,8 +119,10 @@ export function createPiRuntimeApp(
       selectedSpecialists: outcome.selectedSpecialists,
       specialistStatus: outcome.specialistStatus,
       latencyMs: outcome.latencyMs,
-      provider: 'fake',
-      model: 'deterministic',
+      provider: outcome.provider,
+      model: outcome.model,
+      inputTokens: outcome.inputTokens,
+      outputTokens: outcome.outputTokens,
       reportStatus: outcome.status,
       ...(outcome.historicalKnowledgeStatus
         ? { historicalKnowledgeStatus: outcome.historicalKnowledgeStatus }
@@ -110,25 +139,61 @@ export function createPiRuntimeApp(
       metadata,
     };
     tasks.update(runtimeRequestId, {
-      status: outcome.status,
+      executionStatus: outcome.status,
+      deliveryStatus: 'pending',
+      completedAt: now(),
       metadata,
       result,
+      lastError: outcome.error,
     });
-    await postRuntimeResult(callbackUrl, config.token, result, fetchImpl, config.timeoutMs);
+    await deliverTask(runtimeRequestId);
   }
 
-  function enqueue(work: () => Promise<void>): void {
+  async function deliverTask(runtimeRequestId: string): Promise<void> {
+    const task = tasks.getByRequestId(runtimeRequestId);
+    if (!task?.result) return;
+    if (task.deliveryStatus === 'delivered') return;
+    if (task.deliveryAttempts >= config.maxDeliveryAttempts) {
+      tasks.update(runtimeRequestId, { deliveryStatus: 'failed' });
+      return;
+    }
+    tasks.update(runtimeRequestId, { deliveryStatus: 'delivering' });
+    try {
+      await postRuntimeResult(
+        config.callbackBaseUrl,
+        config.token,
+        task.result,
+        fetchImpl,
+        config.callbackTimeoutMs,
+      );
+      tasks.update(runtimeRequestId, { deliveryStatus: 'delivered', lastError: undefined });
+    } catch (error) {
+      const lastError = error instanceof Error ? error.message : String(error);
+      const deliveryAttempts = task.deliveryAttempts + 1;
+      const deliveryStatus = deliveryAttempts >= config.maxDeliveryAttempts ? 'failed' : 'pending';
+      tasks.update(runtimeRequestId, { deliveryStatus, lastError, deliveryAttempts });
+      if (deliveryStatus === 'pending') {
+        enqueue(() => deliverTask(runtimeRequestId), config.deliveryBackoffMs * deliveryAttempts);
+      }
+    }
+  }
+
+  function enqueue(work: () => Promise<void>, delayMs = 0): void {
     const job = new Promise<void>((resolve) => {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
         work().then(resolve, (error) => {
-          console.error('[pi-runtime] investigation failed', error instanceof Error ? error.message : error);
+          console.error('[pi-runtime] background work failed', error instanceof Error ? error.message : error);
           resolve();
         });
-      }, 0);
+      }, delayMs);
+      timers.add(timer);
     });
     pending.add(job);
     void job.finally(() => pending.delete(job));
   }
+
+  recover();
 
   return {
     app,
@@ -138,7 +203,18 @@ export function createPiRuntimeApp(
         await Promise.all([...pending]);
       }
     },
+    close: () => {
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+      tasks.close();
+    },
   };
+}
+
+function needsDelivery(task: RuntimeTaskRecord, maxAttempts: number): boolean {
+  return (task.executionStatus === 'completed' || task.executionStatus === 'failed')
+    && task.deliveryStatus !== 'delivered'
+    && task.deliveryAttempts < maxAttempts;
 }
 
 async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {

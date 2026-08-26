@@ -129,9 +129,13 @@ export function createInvestigationLoopService(
         throw new Error(`runtimeTaskId ${input.runtimeTaskId} does not belong to InvestigationSession ${session.id}`);
       }
       if (input.metadata) {
-        console.log(
-          `[agent] investigation runtime metadata request=${input.runtimeRequestId} task=${input.runtimeTaskId} specialists=${input.metadata.selectedSpecialists.join(',')} status=${input.status}`,
-        );
+        store.insertInvestigationRuntimeAudit({
+          runtimeRequestId: input.runtimeRequestId,
+          runtimeTaskId: input.runtimeTaskId,
+          sessionId: session.id,
+          metadata: input.metadata,
+          createdAt: now(),
+        });
       }
       if (input.status === 'failed') {
         return this.fail(session.id, input.error ?? 'runtime failed');
@@ -211,6 +215,7 @@ export function createInvestigationLoopService(
         investigationReportId: report.id,
         ...(task.runtimeTaskId ? { runtimeTaskId: task.runtimeTaskId } : {}),
         runtimeRequestId: session.runtimeRequestId,
+        ...runtimeResultFields(store, session.runtimeRequestId),
       };
       store.insertInvestigationReport(report);
       const hypothesis = createInvestigationHypothesisService(store, { now }).proposeFromReport(report);
@@ -339,4 +344,21 @@ function validateReport(
 
 function uniqueIds(ids: string[]): string[] {
   return [...new Set(ids)];
+}
+
+function runtimeResultFields(store: EventStore, runtimeRequestId: string) {
+  const audit = store.getInvestigationRuntimeAudit(runtimeRequestId);
+  if (!audit) return {};
+  return {
+    ...(audit.metadata.provider ? { provider: audit.metadata.provider } : {}),
+    ...(audit.metadata.model ? { model: audit.metadata.model } : {}),
+    ...((audit.metadata.inputTokens !== undefined || audit.metadata.outputTokens !== undefined)
+      ? {
+        usage: {
+          inputTokens: audit.metadata.inputTokens ?? 0,
+          outputTokens: audit.metadata.outputTokens ?? 0,
+        },
+      }
+      : {}),
+  };
 }
