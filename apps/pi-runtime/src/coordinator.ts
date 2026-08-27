@@ -228,16 +228,23 @@ async function enrichOnce(
   const parsed = validateRuntimeEvidenceResponse(raw);
   if (!parsed.success) return context;
   if (parsed.value.runtimeRequestId !== options.runtimeRequestId) return context;
-  const allowedIds = new Set(requests.map((item) => item.requestId));
+  const requestedTypeById = new Map(requests.map((item) => [item.requestId, item.type]));
+  const answered = new Set<string>();
   const collected: Array<{ type: typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number]; evidence: { id: string; kind: string } }> = [];
   for (const item of parsed.value.results) {
-    if (!allowedIds.has(item.requestId)) continue;
-    if (item.status !== 'collected' || item.evidence === undefined) continue;
-    const evidence = item.evidence as { id?: unknown; kind?: unknown; incidentId?: unknown };
-    if (typeof evidence.id !== 'string' || typeof evidence.kind !== 'string') continue;
-    if (evidence.kind !== item.type) continue;
-    if (typeof evidence.incidentId === 'string' && evidence.incidentId !== context.incident.id) continue;
-    collected.push({ type: item.type, evidence: { id: evidence.id, kind: evidence.kind } });
+    const requestedType = requestedTypeById.get(item.requestId);
+    if (requestedType === undefined) continue;
+    if (answered.has(item.requestId)) continue;
+    answered.add(item.requestId);
+    if (item.status !== 'collected') continue;
+    if (item.type !== requestedType) continue;
+    if (item.evidenceId !== item.evidence.id) continue;
+    if (item.evidence.kind !== requestedType) continue;
+    if (item.evidence.incidentId !== context.incident.id) continue;
+    collected.push({
+      type: requestedType,
+      evidence: { id: item.evidence.id, kind: item.evidence.kind },
+    });
   }
   if (collected.length === 0) return context;
   const enriched: RuntimeInvestigationContext = {

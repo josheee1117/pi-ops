@@ -901,7 +901,19 @@ export interface EventStore {
   markDelegationTaskFailed(id: string, error: string): void;
   insertInvestigationContextSnapshot(hash: string, context: InvestigationContext, createdAt: string): void;
   getInvestigationContextSnapshot(hash: string): InvestigationContext | undefined;
-  insertInvestigationSession(session: InvestigationSession): void;
+  /** Atomically create one attempt graph: ReasoningJob + Plan + DelegationTask + Session. */
+  createInvestigationAttempt(input: {
+    reasoningJob: {
+      id: string;
+      incidentId: string;
+      reasonerType: string;
+      reasonerVersion: string;
+      createdAt: string;
+    };
+    plan: InvestigationPlan;
+    task: DelegationTask;
+    session: InvestigationSession;
+  }): void;
   getInvestigationSession(id: string): InvestigationSession | undefined;
   getOpenInvestigationSessionByRuntimeRequestId(runtimeRequestId: string): InvestigationSession | undefined;
   listPendingInvestigationSessions(): InvestigationSession[];
@@ -1924,13 +1936,18 @@ INSERT OR REPLACE INTO investigation_runtime_audits (
     'SELECT * FROM investigation_runtime_audits WHERE runtime_request_id = ?',
   );
   const insertInvestigationEvidenceAuditStmt = db.prepare(`
-INSERT OR REPLACE INTO investigation_evidence_audits (
+INSERT INTO investigation_evidence_audits (
   request_id, investigation_session_id, runtime_request_id, runtime_task_id,
   specialist_roles_json, evidence_type, status, evidence_ids_json, created_at, completed_at, error
 ) VALUES (
   @request_id, @investigation_session_id, @runtime_request_id, @runtime_task_id,
   @specialist_roles_json, @evidence_type, @status, @evidence_ids_json, @created_at, @completed_at, @error
-);
+)
+ON CONFLICT(request_id) DO UPDATE SET
+  status = excluded.status,
+  evidence_ids_json = excluded.evidence_ids_json,
+  completed_at = excluded.completed_at,
+  error = excluded.error;
 `);
   const getInvestigationEvidenceAuditStmt = db.prepare(
     'SELECT * FROM investigation_evidence_audits WHERE request_id = ?',
@@ -2186,6 +2203,61 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
   function laterTimestamp(a: string, b: string): string {
     return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
   }
+
+  const createInvestigationAttemptTransaction = db.transaction((input: {
+    reasoningJob: {
+      id: string;
+      incidentId: string;
+      reasonerType: string;
+      reasonerVersion: string;
+      createdAt: string;
+    };
+    plan: InvestigationPlan;
+    task: DelegationTask;
+    session: InvestigationSession;
+  }): void => {
+    insertReasoningJobStmt.run({
+      id: input.reasoningJob.id,
+      incident_id: input.reasoningJob.incidentId,
+      reasoner_type: input.reasoningJob.reasonerType,
+      reasoner_version: input.reasoningJob.reasonerVersion,
+      created_at: input.reasoningJob.createdAt,
+      updated_at: input.reasoningJob.createdAt,
+    });
+    insertInvestigationPlanStmt.run({
+      id: input.plan.id,
+      reasoning_job_id: input.plan.reasoningJobId,
+      strategy: input.plan.strategy,
+      objectives_json: JSON.stringify(input.plan.objectives),
+      requested_capabilities_json: JSON.stringify(input.plan.requestedCapabilities),
+      created_at: input.plan.createdAt,
+    });
+    insertDelegationTaskStmt.run({
+      id: input.task.id,
+      investigation_plan_id: input.task.investigationPlanId,
+      status: input.task.status,
+      submitted_at: input.task.submittedAt ?? null,
+      completed_at: input.task.completedAt ?? null,
+      runtime_task_id: input.task.runtimeTaskId ?? null,
+      runtime_request_id: input.task.runtimeRequestId ?? null,
+      last_error: input.task.lastError ?? null,
+    });
+    markReasoningJobWaitingDelegationStmt.run({
+      id: input.reasoningJob.id,
+      updated_at: input.reasoningJob.createdAt,
+    });
+    insertInvestigationSessionStmt.run({
+      id: input.session.id,
+      incident_id: input.session.incidentId,
+      context_snapshot_hash: input.session.contextSnapshotHash,
+      delegation_task_id: input.session.delegationTaskId,
+      runtime_request_id: input.session.runtimeRequestId,
+      status: input.session.status,
+      created_at: input.session.createdAt,
+      submitted_at: input.session.submittedAt ?? null,
+      completed_at: input.session.completedAt ?? null,
+    });
+  });
 
   const store: EventStore = {
     // ── Events ────────────────────────────────────────────────────────────
@@ -2757,18 +2829,19 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       return freezeSnapshot(JSON.parse(row.context_json) as InvestigationContext);
     },
 
-    insertInvestigationSession(session: InvestigationSession): void {
-      insertInvestigationSessionStmt.run({
-        id: session.id,
-        incident_id: session.incidentId,
-        context_snapshot_hash: session.contextSnapshotHash,
-        delegation_task_id: session.delegationTaskId,
-        runtime_request_id: session.runtimeRequestId,
-        status: session.status,
-        created_at: session.createdAt,
-        submitted_at: session.submittedAt ?? null,
-        completed_at: session.completedAt ?? null,
-      });
+    createInvestigationAttempt(input: {
+      reasoningJob: {
+        id: string;
+        incidentId: string;
+        reasonerType: string;
+        reasonerVersion: string;
+        createdAt: string;
+      };
+      plan: InvestigationPlan;
+      task: DelegationTask;
+      session: InvestigationSession;
+    }): void {
+      createInvestigationAttemptTransaction(input);
     },
 
     getInvestigationSession(id: string): InvestigationSession | undefined {
@@ -3018,12 +3091,30 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       completedAt?: string;
       error?: string;
     }): void {
+      const existing = getInvestigationEvidenceAuditStmt.get(audit.requestId) as {
+        investigation_session_id: string;
+        runtime_request_id: string;
+        runtime_task_id: string;
+        evidence_type: string;
+        specialist_roles_json: string;
+      } | undefined;
+      if (existing) {
+        const sameIdentity = existing.investigation_session_id === audit.investigationSessionId
+          && existing.runtime_request_id === audit.runtimeRequestId
+          && existing.runtime_task_id === audit.runtimeTaskId
+          && existing.evidence_type === audit.evidenceType;
+        if (!sameIdentity) {
+          throw new Error(
+            `InvestigationEvidenceAudit ${audit.requestId} cannot change its recorded provenance`,
+          );
+        }
+      }
       insertInvestigationEvidenceAuditStmt.run({
         request_id: audit.requestId,
         investigation_session_id: audit.investigationSessionId,
         runtime_request_id: audit.runtimeRequestId,
         runtime_task_id: audit.runtimeTaskId,
-        specialist_roles_json: JSON.stringify(audit.specialistRoles),
+        specialist_roles_json: existing?.specialist_roles_json ?? JSON.stringify(audit.specialistRoles),
         evidence_type: audit.evidenceType,
         status: audit.status,
         evidence_ids_json: JSON.stringify(audit.evidenceIds),

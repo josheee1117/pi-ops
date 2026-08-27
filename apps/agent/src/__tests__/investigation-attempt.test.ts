@@ -92,4 +92,70 @@ describe('investigation attempt lifecycle', () => {
     assert.equal(reportRow.sessionId, second.session.id);
     store.close();
   });
+
+  it('terminalizes the ReasoningJob with its failed session', async () => {
+    const { store, incident } = seedIncident();
+    const loop = createInvestigationLoopService(store);
+    const attempt = loop.start(incident.id);
+    await loop.submit(attempt.session.id);
+    const task = store.getDelegationTask(attempt.session.delegationTaskId)!;
+    const plan = store.getInvestigationPlan(task.investigationPlanId)!;
+    assert.equal(store.getReasoningJob(plan.reasoningJobId)?.status, 'WAITING_DELEGATION');
+    loop.fail(attempt.session.id, 'runtime failed');
+    assert.equal(store.getInvestigationSession(attempt.session.id)?.status, 'FAILED');
+    assert.equal(store.getDelegationTask(task.id)?.status, 'FAILED');
+    assert.equal(store.getReasoningJob(plan.reasoningJobId)?.status, 'FAILED');
+    store.close();
+  });
+
+  it('keeps attempt 1 COMPLETED when attempt 2 fails', async () => {
+    const { store, incident } = seedIncident();
+    const loop = createInvestigationLoopService(store);
+    const first = loop.start(incident.id);
+    await loop.submit(first.session.id);
+    loop.complete(first.session.id, report);
+    const firstJobId = store.getInvestigationPlan(
+      store.getDelegationTask(first.session.delegationTaskId)!.investigationPlanId,
+    )!.reasoningJobId;
+
+    const second = loop.start(incident.id);
+    await loop.submit(second.session.id);
+    loop.fail(second.session.id, 'runtime failed');
+    const secondJobId = store.getInvestigationPlan(
+      store.getDelegationTask(second.session.delegationTaskId)!.investigationPlanId,
+    )!.reasoningJobId;
+
+    assert.notEqual(firstJobId, secondJobId);
+    assert.equal(store.getReasoningJob(firstJobId)?.status, 'COMPLETED');
+    assert.equal(store.getReasoningJob(secondJobId)?.status, 'FAILED');
+    assert.equal(store.getInvestigationSession(first.session.id)?.status, 'COMPLETED');
+    assert.equal(store.getInvestigationSession(second.session.id)?.status, 'FAILED');
+    assert.ok(store.getReasoningResultByJobId(firstJobId));
+    assert.equal(store.getReasoningResultByJobId(secondJobId), undefined);
+    store.close();
+  });
+
+  it('keeps attempt 1 FAILED when attempt 2 completes', async () => {
+    const { store, incident } = seedIncident();
+    const loop = createInvestigationLoopService(store);
+    const first = loop.start(incident.id);
+    await loop.submit(first.session.id);
+    loop.fail(first.session.id, 'runtime failed');
+    const firstJobId = store.getInvestigationPlan(
+      store.getDelegationTask(first.session.delegationTaskId)!.investigationPlanId,
+    )!.reasoningJobId;
+
+    const second = loop.start(incident.id);
+    await loop.submit(second.session.id);
+    loop.complete(second.session.id, report);
+    const secondJobId = store.getInvestigationPlan(
+      store.getDelegationTask(second.session.delegationTaskId)!.investigationPlanId,
+    )!.reasoningJobId;
+
+    assert.equal(store.getReasoningJob(firstJobId)?.status, 'FAILED');
+    assert.equal(store.getReasoningJob(secondJobId)?.status, 'COMPLETED');
+    assert.equal(store.getReasoningResultByJobId(firstJobId), undefined);
+    assert.ok(store.getReasoningResultByJobId(secondJobId));
+    store.close();
+  });
 });

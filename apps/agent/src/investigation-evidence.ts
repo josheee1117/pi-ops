@@ -1,19 +1,19 @@
-import {
-  planEvidenceQueries,
-  type EvidenceOrchestrator,
-} from './evidence-orchestrator.js';
+import type { EvidenceOrchestrator } from './evidence-orchestrator.js';
 import type { AgentConfig } from './config.js';
 import type { EventStore } from './store.js';
+import {
+  resolveRuntimeEvidenceQuery,
+  trustedTriggeringEventFor,
+} from './runtime-evidence-resolver.js';
 import type {
   RuntimeEvidenceRequestBatch,
   RuntimeEvidenceResponse,
   RuntimeEvidenceResult,
+  RuntimeEvidenceType,
 } from '@pi-ops/protocol';
 import {
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
-  type EvidenceQueryRequest,
-  type OpsEvent,
 } from '@pi-ops/protocol';
 
 export function createInvestigationEvidenceService(
@@ -41,10 +41,19 @@ export function createInvestigationEvidenceService(
       const incident = store.getIncident(session.incidentId);
       if (!incident) throw new Error('Incident does not exist');
       const results: RuntimeEvidenceResult[] = [];
+      const seen = new Set<string>();
       for (const item of batch.requests) {
+        if (seen.has(item.requestId)) {
+          throw new Error(`duplicate requestId ${item.requestId} in one evidence batch`);
+        }
+        seen.add(item.requestId);
         const createdAt = now();
         const roles = item.requestingRoles ?? [];
-        const persist = (status: RuntimeEvidenceResult['status'], evidenceIds: string[], error?: string) => {
+        const persist = (
+          status: RuntimeEvidenceResult['status'],
+          evidenceIds: string[],
+          error?: string,
+        ) => {
           store.insertInvestigationEvidenceAudit({
             requestId: item.requestId,
             investigationSessionId: session.id,
@@ -69,9 +78,11 @@ export function createInvestigationEvidenceService(
           results.push({ requestId: item.requestId, type: item.type, status: 'rejected', error: 'evidence type is not allowlisted' });
           continue;
         }
+        // Enrichment reuse is scoped to this attempt. Older Evidence from a
+        // previous attempt stays visible through history, never as a fresh
+        // answer to this request.
         const evidenceId = `inv-${session.id}-evidence-${item.type}`;
-        const existing = store.getEvidence(evidenceId)
-          ?? store.listEvidence(incident.id).find((row) => row.kind === item.type && row.status === 'succeeded');
+        const existing = store.getEvidence(evidenceId);
         if (existing?.status === 'succeeded') {
           persist('collected', [existing.id]);
           results.push({
@@ -83,10 +94,16 @@ export function createInvestigationEvidenceService(
           });
           continue;
         }
-        const triggering = triggeringEventFor(store, incident);
-        const planned = planEvidenceQueries(incident, triggering, config.evidenceLogsMaxLines);
-        const query = planned.find((entry) => entry.type === item.type)
-          ?? hostQuery(incident.id, item.type);
+        const triggering = trustedTriggeringEventFor(
+          incident,
+          store.getEvidenceJob(`job-${incident.id}`)?.triggeringEvent,
+        );
+        const query = resolveRuntimeEvidenceQuery(
+          incident,
+          triggering,
+          item.type as RuntimeEvidenceType,
+          config.evidenceLogsMaxLines,
+        );
         if (!query) {
           persist('rejected', [], 'Pi-Ops could not resolve a permitted target');
           results.push({
@@ -99,8 +116,9 @@ export function createInvestigationEvidenceService(
         }
         try {
           await orchestrator.collectQueriesForIncident(incident, [query], `inv-${session.id}`);
-        } catch {
-          persist('unavailable', [], 'evidence collection failed');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          persist('unavailable', [], `evidence collection failed: ${message}`);
           results.push({
             requestId: item.requestId,
             type: item.type,
@@ -111,7 +129,7 @@ export function createInvestigationEvidenceService(
         }
         const collected = store.getEvidence(evidenceId);
         if (!collected || collected.status !== 'succeeded') {
-          persist('unavailable', [], 'evidence unavailable');
+          persist('unavailable', [], collected?.error ?? 'evidence unavailable');
           results.push({
             requestId: item.requestId,
             type: item.type,
@@ -135,29 +153,5 @@ export function createInvestigationEvidenceService(
         results,
       };
     },
-  };
-}
-
-function hostQuery(incidentId: string, type: string): EvidenceQueryRequest | undefined {
-  if (type === 'host.memory' || type === 'host.load') {
-    return { type, incidentId };
-  }
-  return undefined;
-}
-
-function triggeringEventFor(store: EventStore, incident: { id: string; node_id: string; service: string; type: string; last_seen: string }): OpsEvent {
-  const job = store.getEvidenceJob(`job-${incident.id}`);
-  if (job) return job.triggeringEvent;
-  return {
-    schemaVersion: 1,
-    id: `evt-synth-${incident.id}`,
-    time: incident.last_seen,
-    source: 'application',
-    nodeId: incident.node_id,
-    service: incident.service,
-    type: incident.type,
-    severity: 'warning',
-    message: incident.type,
-    attributes: {},
   };
 }

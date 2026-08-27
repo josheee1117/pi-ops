@@ -41,6 +41,16 @@ const validFinding = (role: 'jvm' | 'database' | 'container_host' | 'application
   status: 'completed',
 });
 
+const evidenceRow = (id: string, kind: string, incidentId = 'inc-1') => ({
+  id,
+  incidentId,
+  nodeId: 'test-svc-02',
+  source: kind.split('.')[0] ?? 'host',
+  kind,
+  collectedAt: '2026-08-20T12:00:02.000Z',
+  data: { kind },
+});
+
 describe('bounded multi-agent coordinator', () => {
   it('does not select database for jvm.gc_pressure', () => {
     const selected = selectSpecialists(context({
@@ -225,7 +235,7 @@ describe('bounded multi-agent coordinator', () => {
               type: 'host.memory',
               status: 'collected',
               evidenceId: 'evd-mem',
-              evidence: { id: 'evd-mem', kind: 'host.memory' },
+              evidence: evidenceRow('evd-mem', 'host.memory'),
             }],
           };
         },
@@ -299,7 +309,7 @@ describe('bounded multi-agent coordinator', () => {
               type: 'host.memory',
               status: 'collected',
               evidenceId: 'evd-mem',
-              evidence: { id: 'evd-mem', kind: 'host.memory', incidentId: 'inc-1' },
+              evidence: evidenceRow('evd-mem', 'host.memory'),
             }],
           };
         },
@@ -331,7 +341,8 @@ describe('bounded multi-agent coordinator', () => {
               requestId: 'ereq-isess-1-host.memory',
               type: 'host.memory',
               status: 'collected',
-              evidence: { id: 'evd-foreign', kind: 'docker.stats', incidentId: 'inc-other' },
+              evidenceId: 'evd-foreign',
+              evidence: evidenceRow('evd-foreign', 'docker.stats', 'inc-other'),
             }],
           };
         },
@@ -351,8 +362,10 @@ describe('bounded multi-agent coordinator', () => {
   });
 
   it('exposes no shell or remediation capability', () => {
-    assert.deepEqual([...runtimeCapabilities.evidenceTypes], [...EVIDENCE_QUERY_TYPES]);
-    assert.deepEqual([...RUNTIME_ALLOWED_EVIDENCE_TYPES], [...EVIDENCE_QUERY_TYPES]);
+    for (const type of runtimeCapabilities.evidenceTypes) {
+      assert.ok((EVIDENCE_QUERY_TYPES as readonly string[]).includes(type));
+    }
+    assert.equal((RUNTIME_ALLOWED_EVIDENCE_TYPES as readonly string[]).includes('host.disk'), false);
     for (const forbidden of RUNTIME_FORBIDDEN_CAPABILITIES) {
       assert.equal((runtimeCapabilities.evidenceTypes as readonly string[]).includes(forbidden), false);
     }

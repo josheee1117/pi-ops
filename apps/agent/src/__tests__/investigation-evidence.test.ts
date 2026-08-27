@@ -65,7 +65,7 @@ function seed() {
 }
 
 describe('typed investigation evidence requests', () => {
-  it('reuses existing Evidence and rejects forbidden capabilities', async () => {
+  it('scopes reuse to the session and rejects forbidden capabilities', async () => {
     const { store, incident } = seed();
     const loop = createInvestigationLoopService(store);
     const { session } = loop.start(incident.id);
@@ -73,58 +73,63 @@ describe('typed investigation evidence requests', () => {
     const task = store.getDelegationTask(session.delegationTaskId)!;
     store.markDelegationTaskSubmitted(task.id, new Date().toISOString(), 'rtask-1');
     const submitted = store.getDelegationTask(session.delegationTaskId)!;
+    let collections = 0;
     const orchestrator: EvidenceOrchestrator = {
       async collectForIncident() {
         return { incidentId: incident.id, requested: 0, succeeded: 0, failed: 0, retryableFailures: 0, terminalFailures: 0 };
       },
-      async collectQueriesForIncident() {
-        return { incidentId: incident.id, requested: 0, succeeded: 0, failed: 0, retryableFailures: 0, terminalFailures: 0 };
+      async collectQueriesForIncident(target, queries, collectionId) {
+        collections += 1;
+        for (const query of queries) {
+          store.insertEvidence({
+            id: `${collectionId}-evidence-${query.type}`,
+            incidentId: target.id,
+            nodeId: target.node_id,
+            source: 'host',
+            kind: query.type,
+            collectedAt: '2026-08-20T12:00:05.000Z',
+            data: { queryType: query.type },
+            status: 'succeeded',
+          });
+        }
+        return { incidentId: target.id, requested: queries.length, succeeded: queries.length, failed: 0, retryableFailures: 0, terminalFailures: 0 };
       },
     };
     const evidence = createInvestigationEvidenceService(store, CONFIG, orchestrator);
     const engine = createIncidentEngine(store, { aggregationWindowMs: CONFIG.aggregationWindowMs });
     const app = createApp(CONFIG, store, engine, undefined, loop, evidence);
-    const ok = await app.request('/v1/investigation-evidence', {
+    const request = (requestId: string, type: string, token = 'runtime-token') => app.request('/v1/investigation-evidence', {
       method: 'POST',
-      headers: { authorization: 'Bearer runtime-token', 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         schemaVersion: 1,
         runtimeRequestId: session.runtimeRequestId,
         runtimeTaskId: submitted.runtimeTaskId,
         sessionId: session.id,
-        requests: [{ requestId: 'r1', type: 'host.load' }],
+        requests: [{ requestId, type }],
       }),
     });
-    assert.equal(ok.status, 200);
-    const body = await ok.json() as { results: Array<{ status: string; evidenceId: string }> };
-    assert.equal(body.results[0]?.status, 'collected');
-    assert.equal(body.results[0]?.evidenceId, 'evd-now');
 
-    const forbidden = await app.request('/v1/investigation-evidence', {
-      method: 'POST',
-      headers: { authorization: 'Bearer runtime-token', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        schemaVersion: 1,
-        runtimeRequestId: session.runtimeRequestId,
-        runtimeTaskId: submitted.runtimeTaskId,
-        sessionId: session.id,
-        requests: [{ requestId: 'r2', type: 'bash' }],
-      }),
-    });
-    assert.equal(forbidden.status, 400);
+    // A pre-existing host.load Evidence row from initial collection is not a
+    // fresh answer: this attempt collects its own session-scoped Evidence.
+    const first = await request('r1', 'host.load');
+    assert.equal(first.status, 200);
+    const firstBody = await first.json() as { results: Array<{ status: string; evidenceId: string }> };
+    assert.equal(firstBody.results[0]?.status, 'collected');
+    assert.equal(firstBody.results[0]?.evidenceId, `inv-${session.id}-evidence-host.load`);
+    assert.notEqual(firstBody.results[0]?.evidenceId, 'evd-now');
+    assert.equal(collections, 1);
 
-    const ingest = await app.request('/v1/investigation-evidence', {
-      method: 'POST',
-      headers: { authorization: 'Bearer ingest-token', 'content-type': 'application/json' },
-      body: JSON.stringify({
-        schemaVersion: 1,
-        runtimeRequestId: session.runtimeRequestId,
-        runtimeTaskId: submitted.runtimeTaskId,
-        sessionId: session.id,
-        requests: [{ requestId: 'r3', type: 'host.load' }],
-      }),
-    });
-    assert.equal(ingest.status, 401);
+    // Same session + same capability reuses the session-scoped Evidence.
+    const second = await request('r1', 'host.load');
+    const secondBody = await second.json() as { results: Array<{ evidenceId: string }> };
+    assert.equal(secondBody.results[0]?.evidenceId, `inv-${session.id}-evidence-host.load`);
+    assert.equal(collections, 1);
+    assert.ok(store.getEvidence('evd-now'));
+
+    assert.equal((await request('r2', 'bash')).status, 400);
+    assert.equal((await request('r3', 'host.disk')).status, 400);
+    assert.equal((await request('r4', 'host.load', 'ingest-token')).status, 401);
     store.close();
   });
 });

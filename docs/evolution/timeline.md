@@ -2,6 +2,15 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 10.3 completed
+
+- a failed InvestigationSession now terminalizes its DelegationTask and ReasoningJob; attempts never touch each other
+- attempt graph creation is one store transaction; legacy reasoning_jobs UNIQUE migration has a real regression test
+- runtime evidence responses reuse the canonical Evidence schema and are bound to their exact request
+- `resolveRuntimeEvidenceQuery` is the single trusted target resolver; `host.disk` left the runtime allowlist
+- enrichment reuse is session-scoped, audits use UPSERT with immutable provenance
+- deterministic cross-application E2E covers ingest → investigation → typed enrichment → report, plus enrichment-unavailable and runtime-unreachable paths
+
 ## Phase 10.2 completed
 
 - InvestigationSession owns one ReasoningJob per attempt; incident_id on reasoning_jobs is no longer unique

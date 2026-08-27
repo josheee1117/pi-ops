@@ -1,4 +1,5 @@
 import { z, ZodError } from 'zod';
+import { evidenceSchema } from './evidence-schema.js';
 
 export const INVESTIGATION_RUNTIME_SCHEMA_VERSION = 1 as const;
 
@@ -19,9 +20,10 @@ export const RUNTIME_ALLOWED_EVIDENCE_TYPES = [
   'docker.stats',
   'host.memory',
   'host.load',
-  'host.disk',
   'http.probe',
 ] as const;
+
+export type RuntimeEvidenceType = (typeof RUNTIME_ALLOWED_EVIDENCE_TYPES)[number];
 
 export const RUNTIME_FORBIDDEN_CAPABILITIES = [
   'bash',
@@ -132,14 +134,41 @@ export const runtimeEvidenceRequestBatchSchema = z.object({
 
 export type RuntimeEvidenceRequestBatch = z.infer<typeof runtimeEvidenceRequestBatchSchema>;
 
-export const runtimeEvidenceResultSchema = z.object({
+const runtimeEvidenceCollectedSchema = z.object({
   requestId: z.string().min(1),
   type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
-  status: z.enum(['collected', 'unavailable', 'rejected']),
-  evidenceId: z.string().min(1).optional(),
-  evidence: z.unknown().optional(),
+  status: z.literal('collected'),
+  evidenceId: z.string().min(1),
+  evidence: evidenceSchema,
   error: z.string().max(2000).optional(),
 });
+
+const runtimeEvidenceMissingSchema = z.object({
+  requestId: z.string().min(1),
+  type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
+  status: z.enum(['unavailable', 'rejected']),
+  error: z.string().max(2000).optional(),
+});
+
+export const runtimeEvidenceResultSchema = z
+  .discriminatedUnion('status', [runtimeEvidenceCollectedSchema, runtimeEvidenceMissingSchema])
+  .superRefine((value, ctx) => {
+    if (value.status !== 'collected') return;
+    if (value.evidenceId !== value.evidence.id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['evidenceId'],
+        message: 'evidenceId must equal evidence.id',
+      });
+    }
+    if (value.evidence.kind !== value.type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['evidence', 'kind'],
+        message: 'evidence.kind must equal the requested type',
+      });
+    }
+  });
 
 export type RuntimeEvidenceResult = z.infer<typeof runtimeEvidenceResultSchema>;
 

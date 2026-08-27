@@ -32,9 +32,26 @@ Node Agent performs deterministic collection.
 
 The model never selects arbitrary execution targets.
 
-The resolved query is executed exactly. Pi-Ops does not replan the default Incident evidence set.
+### Target resolution
 
-One collection may satisfy multiple specialists. The request records `requestingRoles`. InvestigationEvidenceAudit is durable SQLite provenance and does not rewrite Evidence rows.
+`resolveRuntimeEvidenceQuery(incident, trustedTriggeringEvent, evidenceType, logsMaxLines)` is the only way a capability class becomes an `EvidenceQueryRequest`.
+
+- `host.memory` / `host.load` resolve against `Incident.node_id`
+- `docker.inspect` / `docker.stats` / `docker.logs` resolve only from trusted container identity already present in approved Event/Incident metadata, and keep the bounded log window and maxLines policy
+- `http.probe` resolves only from a trusted health-detector URL
+- unresolved targets are rejected; the runtime never supplies container, url, host, path, or arguments
+
+Every type in `RUNTIME_ALLOWED_EVIDENCE_TYPES` has a deterministic resolver outcome. `host.disk` has no trusted dynamic target and is therefore not in the runtime allowlist (the Node Agent still supports it for deterministic plans).
+
+### Response binding
+
+The response reuses the canonical `evidenceSchema`. A `collected` result must carry a full Evidence row, and `evidenceId` must equal `evidence.id`. The runtime binds every response item to its original request: unknown or duplicate `requestId`, wrong type, mismatched `evidence.kind`, foreign `incidentId`, or wrong `runtimeRequestId` are rejected without merging. Protocol corruption fails that enrichment request closed; the investigation still completes when existing Evidence is sufficient.
+
+### Freshness
+
+Enrichment reuse is scoped to the current InvestigationSession (`inv-${sessionId}-evidence-${type}`). Older successful Evidence of the same kind is never returned as a fresh answer; it stays visible through InvestigationContext history and is never copied or deleted.
+
+One collection may satisfy multiple specialists. The request records `requestingRoles`, and every requesting specialist reruns after success. `InvestigationEvidenceAudit` is durable SQLite provenance with UPSERT semantics: identity (requestId, session, runtimeRequestId, runtimeTaskId, evidenceType, requestingRoles, first createdAt) is immutable, while status, evidenceIds, completedAt and error follow the request lifecycle.
 
 Malformed RuntimeEvidenceResponse, mismatched runtimeRequestId, wrong Evidence kind, or foreign Incident ids are rejected and not merged.
 

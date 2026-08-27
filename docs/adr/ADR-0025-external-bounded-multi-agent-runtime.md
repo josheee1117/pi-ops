@@ -33,7 +33,11 @@ Pi-Ops governance (InvestigationReport → ReasoningResult)
 
 `InvestigationSession` is the attempt boundary. One session owns exactly one ReasoningJob (`rj-inv-${sessionId}`), InvestigationPlan, DelegationTask, runtimeRequestId, RuntimeTask, InvestigationReport, and ReasoningResult.
 
+The attempt graph is created in one store transaction, so a partial attempt cannot survive a failed insert.
+
 Open sessions with the same Incident + contextSnapshotHash are reused. COMPLETED or FAILED sessions do not block a new attempt. Starting attempt 2 does not mutate attempt 1 job status. `runtimeRequestId` is `rreq-${sessionId}`.
+
+Terminal state is consistent per attempt: a failed session fails its DelegationTask and its ReasoningJob. No attempt may change another attempt's lifecycle.
 
 `reasoning_jobs.incident_id` is not unique. `getReasoningResultByJobId` remains one-to-one because each attempt has its own job.
 

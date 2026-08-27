@@ -57,17 +57,7 @@ export function createInvestigationLoopService(
       const createdAt = now();
       const sessionId = `isess-${randomUUID()}`;
       const runtimeRequestId = runtimeRequestIdFor(sessionId);
-      const taskId = createAttemptGraph(store, incident, sessionId, runtimeRequestId, createdAt);
-      const session: InvestigationSession = {
-        id: sessionId,
-        incidentId: incident.id,
-        contextSnapshotHash,
-        delegationTaskId: taskId,
-        runtimeRequestId,
-        status: 'CREATED',
-        createdAt,
-      };
-      store.insertInvestigationSession(session);
+      const session = createAttempt(store, incident, sessionId, runtimeRequestId, contextSnapshotHash, createdAt);
       return { session, context };
     },
 
@@ -242,34 +232,51 @@ export function createInvestigationLoopService(
       if (task && task.status !== 'COMPLETED') {
         store.markDelegationTaskFailed(task.id, error);
       }
+      const plan = task ? store.getInvestigationPlan(task.investigationPlanId) : undefined;
+      const job = plan ? store.getReasoningJob(plan.reasoningJobId) : undefined;
+      if (job && job.status !== 'COMPLETED' && job.status !== 'FAILED') {
+        store.markReasoningJobFailed(job.id, error);
+      }
       store.updateInvestigationSessionStatus(session.id, 'FAILED', now());
       return store.getInvestigationSession(session.id)!;
     },
   };
 }
 
-function createAttemptGraph(
+function createAttempt(
   store: EventStore,
   incident: IncidentRow,
   sessionId: string,
   runtimeRequestId: string,
+  contextSnapshotHash: string,
   createdAt: string,
-): string {
+): InvestigationSession {
   const jobId = `rj-inv-${sessionId}`;
-  store.createReasoningJob({
-    id: jobId,
-    incidentId: incident.id,
-    reasonerType: 'delegated_analysis',
-    reasonerVersion: '1',
-    createdAt,
-  });
   const planned = buildInvestigationPlan(jobId, incident, 'delegated_analysis', createdAt);
   const plan = { ...planned, id: `iplan-${sessionId}` };
-  store.insertInvestigationPlan(plan);
   const task = { ...buildDelegationTask(plan), runtimeRequestId };
-  store.insertDelegationTask(task);
-  store.markReasoningJobWaitingDelegation(jobId);
-  return task.id;
+  const session: InvestigationSession = {
+    id: sessionId,
+    incidentId: incident.id,
+    contextSnapshotHash,
+    delegationTaskId: task.id,
+    runtimeRequestId,
+    status: 'CREATED',
+    createdAt,
+  };
+  store.createInvestigationAttempt({
+    reasoningJob: {
+      id: jobId,
+      incidentId: incident.id,
+      reasonerType: 'delegated_analysis',
+      reasonerVersion: '1',
+      createdAt,
+    },
+    plan,
+    task,
+    session,
+  });
+  return session;
 }
 
 function requireSession(store: EventStore, sessionId: string): InvestigationSession {
