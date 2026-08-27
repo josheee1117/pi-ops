@@ -45,7 +45,9 @@ Every type in `RUNTIME_ALLOWED_EVIDENCE_TYPES` has a deterministic resolver outc
 
 ### Response binding
 
-The response reuses the canonical `evidenceSchema`. A `collected` result must carry a full Evidence row, and `evidenceId` must equal `evidence.id`. The Coordinator merges that canonical payload — including `data` — into the runtime context before rerunning requesting specialists. Specialists receive collected Evidence content, not merely `{ id, kind }`. Duplicate Evidence ids must agree on immutable identity and content; otherwise enrichment fails closed. Newly collected facts that exceed `maxContextBytes` fail with `context_too_large` rather than silently dropping the requested Evidence.
+Raw durable Evidence in SQLite is not automatically safe model input. Pi-Ops owns both persistence and the model-safe projection `toRuntimeSafeEvidence`: secret-key / Env redaction and bounded logs. Initial InvestigationContext and dynamic `RuntimeEvidenceResponse.evidence` use that same projection. Specialists receive collected Evidence content after projection, not raw store rows and not merely `{ id, kind }`.
+
+A `collected` result must carry a full Evidence row, `evidenceId` must equal `evidence.id`, and `evidence.status` must be `succeeded` when present. The Coordinator merges the model-safe payload — including diagnostic `data` — into the runtime context before rerunning requesting specialists. Duplicate Evidence ids must agree on the model-safe identity and content; otherwise enrichment fails closed. Newly collected facts that exceed `maxContextBytes` fail with `context_too_large` rather than silently dropping the requested Evidence.
 
 The runtime binds every response item to its original request: unknown or duplicate `requestId`, wrong type, mismatched `evidence.kind`, foreign `incidentId`, or wrong `runtimeRequestId` are rejected without merging. Protocol corruption fails that enrichment request closed; the investigation still completes when existing Evidence is sufficient.
 

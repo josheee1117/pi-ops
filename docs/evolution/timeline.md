@@ -2,6 +2,11 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 11 security closure
+
+- one `toRuntimeSafeEvidence` projection for initial InvestigationContext and dynamic Runtime Evidence
+- raw SQLite Evidence stays unsanitized; Pi Runtime only sees redacted/bounded model-safe Evidence
+
 ## Phase 11 production semantics closure
 
 - Coordinator merges canonical collected Evidence, including `data`, before specialist rerun; facts over budget fail with `context_too_large`

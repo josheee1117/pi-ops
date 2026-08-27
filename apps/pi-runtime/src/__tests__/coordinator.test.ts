@@ -482,6 +482,78 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(await run(20), 'not-memory');
   });
 
+  it('merges duplicate model-safe Evidence ids idempotently', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const row = {
+      ...evidenceRow('evd-mem', 'host.memory'),
+      data: { usedPercent: 92 },
+    };
+    const outcome = await investigate(context({
+      evidence: [{ id: 'evd-now', kind: 'host.load' }, row],
+    }), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'evd-mem',
+              evidence: row,
+            }],
+          };
+        },
+      },
+    });
+    assert.equal(outcome.status, 'completed');
+    assert.ok(((outcome.report?.supportingEvidenceIds ?? []).filter((id) => id === 'evd-mem').length) <= 1);
+  });
+
+  it('fails closed when the same Evidence id has conflicting diagnostic content', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const outcome = await investigate(context({
+      evidence: [{ ...evidenceRow('evd-now', 'host.load'), data: { load1: 0.2 } }],
+    }), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'evd-now',
+              evidence: { ...evidenceRow('evd-now', 'host.memory'), data: { usedPercent: 92 } },
+            }],
+          };
+        },
+      },
+    });
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.error, 'evidence identity conflict');
+  });
+
   it('fails closed when newly collected Evidence exceeds the context bound', async () => {
     const model = createFakeRuntimeModel({
       specialistText: {

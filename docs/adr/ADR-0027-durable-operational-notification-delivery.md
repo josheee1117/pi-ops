@@ -46,7 +46,7 @@ RUNNING → FAILED    (exhaustion or terminal 4xx)
 startup: stale RUNNING → PENDING
 ```
 
-`DELIVERED` and `FAILED` cannot be overwritten by a late worker. `markNotificationJobDelivered` and `markNotificationJobRetry` update `WHERE id = ? AND status = 'RUNNING'`.
+`DELIVERED` and `FAILED` cannot be overwritten by a late worker. `markNotificationJobDelivered` and `markNotificationJobRetry` update `WHERE id = ? AND status = 'RUNNING'` and return whether the transition occurred. A false result logs `notification transition skipped because state changed` without webhook URL, token, or payload secrets.
 
 Delivery is at-least-once after a crash in `RUNNING`. The logical identity is `NotificationPayload.notificationId` (the deterministic job id). `HttpWebhookNotifier` sends `Idempotency-Key: <notificationId>`. Duplicate physical sends keep the same key.
 

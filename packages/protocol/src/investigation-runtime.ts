@@ -144,6 +144,7 @@ export const runtimeEvidenceRequestBatchSchema = z.object({
 
 export type RuntimeEvidenceRequestBatch = z.infer<typeof runtimeEvidenceRequestBatchSchema>;
 
+/** RuntimeEvidenceResponse.evidence is a Pi-Ops model-safe projection of durable Evidence, not the raw store row. */
 const runtimeEvidenceCollectedSchema = z.object({
   requestId: z.string().min(1),
   type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
@@ -176,6 +177,13 @@ export const runtimeEvidenceResultSchema = z
         code: z.ZodIssueCode.custom,
         path: ['evidence', 'kind'],
         message: 'evidence.kind must equal the requested type',
+      });
+    }
+    if (value.evidence.status !== undefined && value.evidence.status !== 'succeeded') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['evidence', 'status'],
+        message: 'collected evidence must be succeeded',
       });
     }
   });

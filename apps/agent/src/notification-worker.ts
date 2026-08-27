@@ -27,14 +27,18 @@ export function createNotificationJobWorker(
       if (!store.markNotificationJobRunning(job.id)) continue;
       try {
         await notifier.send(job.payload);
-        store.markNotificationJobDelivered(job.id);
+        if (!store.markNotificationJobDelivered(job.id)) {
+          console.warn('[agent] notification transition skipped because state changed');
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const current = store.getNotificationJob(job.id);
         const attempts = current?.attempts ?? job.attempts + 1;
         const retryable = isRetryableNotificationError(error);
         const failed = !retryable || attempts >= maxAttempts;
-        store.markNotificationJobRetry(job.id, message, failed);
+        if (!store.markNotificationJobRetry(job.id, message, failed)) {
+          console.warn('[agent] notification transition skipped because state changed');
+        }
       }
     }
   }

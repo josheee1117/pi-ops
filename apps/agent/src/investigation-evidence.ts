@@ -1,5 +1,9 @@
 import type { EvidenceOrchestrator } from './evidence-orchestrator.js';
 import type { AgentConfig } from './config.js';
+import {
+  MODEL_SAFE_MAX_LOG_LINES,
+  toRuntimeSafeEvidence,
+} from './incident-context.js';
 import type { EventStore } from './store.js';
 import {
   resolveRuntimeEvidenceQuery,
@@ -91,7 +95,7 @@ export function createInvestigationEvidenceService(
             type: item.type,
             status: 'collected',
             evidenceId: existing.id,
-            evidence: existing,
+            evidence: toRuntimeSafeEvidence(existing, MODEL_SAFE_MAX_LOG_LINES),
           });
           continue;
         }
@@ -145,7 +149,7 @@ export function createInvestigationEvidenceService(
           type: item.type,
           status: 'collected',
           evidenceId: collected.id,
-          evidence: collected,
+          evidence: toRuntimeSafeEvidence(collected, MODEL_SAFE_MAX_LOG_LINES),
         });
       }
       return {

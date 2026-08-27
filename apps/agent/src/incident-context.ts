@@ -19,7 +19,7 @@ export interface IncidentContextEvidence {
   source: string;
   kind: string;
   collectedAt: string;
-  status: string;
+  status: 'succeeded' | 'failed';
   data: unknown;
 }
 
@@ -39,6 +39,9 @@ export interface IncidentContextBounds {
   maxContextBytes: number;
   maxLogLines: number;
 }
+
+/** Model-facing log bound shared by initial InvestigationContext and dynamic runtime Evidence. */
+export const MODEL_SAFE_MAX_LOG_LINES = 20;
 
 const SECRET_KEY = /^(authorization|cookie|set-cookie|password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential|credentials|auth)$/i;
 const ENV_KEY = /^(env|environment)$/i;
@@ -82,7 +85,7 @@ export function buildIncidentContext(
   }
 
   const items: IncidentContextEvidence[] = selected.map((item) => {
-    const sanitized = sanitizeEvidence(item, bounds.maxLogLines);
+    const sanitized = toRuntimeSafeEvidence(item, bounds.maxLogLines);
     const encoded = jsonBytes(sanitized.data);
     if (encoded <= maxItemBytes) return sanitized;
     truncatedItems.push(item.id);
@@ -131,7 +134,10 @@ export function jsonBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
 
-function sanitizeEvidence(item: EvidenceRecord, maxLogLines: number): IncidentContextEvidence {
+export function toRuntimeSafeEvidence(
+  item: Pick<EvidenceRecord, 'id' | 'incidentId' | 'nodeId' | 'source' | 'kind' | 'collectedAt' | 'status' | 'data'>,
+  maxLogLines: number,
+): IncidentContextEvidence {
   return {
     id: item.id,
     incidentId: item.incidentId,
@@ -139,7 +145,7 @@ function sanitizeEvidence(item: EvidenceRecord, maxLogLines: number): IncidentCo
     source: item.source,
     kind: item.kind,
     collectedAt: item.collectedAt,
-    status: item.status,
+    status: item.status === 'failed' ? 'failed' : 'succeeded',
     data: boundLogs(redactSecrets(item.data), maxLogLines),
   };
 }

@@ -1,4 +1,9 @@
-import { buildIncidentContext, type IncidentContext, type IncidentContextBounds } from './incident-context.js';
+import {
+  buildIncidentContext,
+  MODEL_SAFE_MAX_LOG_LINES,
+  type IncidentContext,
+  type IncidentContextBounds,
+} from './incident-context.js';
 import {
   createKnowledgeRetriever,
   EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT,
@@ -24,7 +29,7 @@ export interface InvestigationContext {
 const DEFAULT_BOUNDS: IncidentContextBounds = {
   maxEvidenceItems: 8,
   maxContextBytes: 8192,
-  maxLogLines: 20,
+  maxLogLines: MODEL_SAFE_MAX_LOG_LINES,
 };
 
 export function buildInvestigationContext(
