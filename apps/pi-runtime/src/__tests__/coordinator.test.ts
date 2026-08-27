@@ -361,6 +361,163 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(outcome.model, 'deterministic');
   });
 
+  it('reruns specialists with collected Evidence.data', async () => {
+    const seen: number[] = [];
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const original = model.invoke.bind(model);
+    model.invoke = async (request) => {
+      if (request.system.includes('SPECIALIST_ROLE=database')) {
+        const payload = JSON.parse(request.user) as {
+          evidence: Array<{ data?: { usedPercent?: number } }>;
+        };
+        const percent = payload.evidence.find((item) => typeof item.data?.usedPercent === 'number')?.data?.usedPercent;
+        if (percent !== undefined) {
+          seen.push(percent);
+          return {
+            text: validFinding('database', ['evd-now', 'evd-mem']),
+            provider: 'fake',
+            model: 'deterministic',
+          };
+        }
+      }
+      return original(request);
+    };
+    const outcome = await investigate(context(), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'evd-mem',
+              evidence: {
+                ...evidenceRow('evd-mem', 'host.memory'),
+                data: { totalBytes: 16_000_000_000, availableBytes: 1_280_000_000, usedPercent: 92 },
+              },
+            }],
+          };
+        },
+      },
+    });
+    assert.equal(outcome.status, 'completed');
+    assert.deepEqual(seen, [92]);
+  });
+
+  it('changes the specialist finding when only Evidence.data changes', async () => {
+    async function run(usedPercent: number): Promise<string> {
+      let finding = '';
+      const model = createFakeRuntimeModel({
+        specialistText: {
+          database: validFinding('database', ['evd-now'], ['host.memory']),
+          application_business: validFinding('application_business', ['evd-now']),
+        },
+      });
+      const original = model.invoke.bind(model);
+      model.invoke = async (request) => {
+        if (request.system.includes('SPECIALIST_ROLE=database')) {
+          const payload = JSON.parse(request.user) as {
+            evidence: Array<{ data?: { usedPercent?: number } }>;
+          };
+          const percent = payload.evidence.find((item) => typeof item.data?.usedPercent === 'number')?.data?.usedPercent;
+          if (percent !== undefined) {
+            finding = percent > 90 ? 'memory-pressure' : 'not-memory';
+            return {
+              text: JSON.stringify({
+                role: 'database',
+                hypotheses: [finding],
+                supportingEvidenceIds: ['evd-now', 'evd-mem'],
+                contradictingEvidenceIds: [],
+                missingEvidence: [],
+                confidence: percent > 90 ? 0.91 : 0.41,
+                summary: finding,
+                status: 'completed',
+              }),
+              provider: 'fake',
+              model: 'deterministic',
+            };
+          }
+        }
+        return original(request);
+      };
+      const outcome = await investigate(context(), {
+        model,
+        runtimeRequestId: 'rreq-1',
+        runtimeTaskId: 'rtask-1',
+        sessionId: 'isess-1',
+        evidenceClient: {
+          async request() {
+            return {
+              schemaVersion: 1,
+              runtimeRequestId: 'rreq-1',
+              results: [{
+                requestId: 'ereq-isess-1-host.memory',
+                type: 'host.memory',
+                status: 'collected',
+                evidenceId: 'evd-mem',
+                evidence: {
+                  ...evidenceRow('evd-mem', 'host.memory'),
+                  data: { usedPercent },
+                },
+              }],
+            };
+          },
+        },
+      });
+      assert.equal(outcome.status, 'completed');
+      return finding;
+    }
+    assert.equal(await run(92), 'memory-pressure');
+    assert.equal(await run(20), 'not-memory');
+  });
+
+  it('fails closed when newly collected Evidence exceeds the context bound', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const outcome = await investigate(context(), {
+      model,
+      maxContextBytes: 2048,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'evd-mem',
+              evidence: {
+                ...evidenceRow('evd-mem', 'host.memory'),
+                data: { blob: 'x'.repeat(20_000) },
+              },
+            }],
+          };
+        },
+      },
+    });
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.error, 'context_too_large');
+  });
+
   it('does not let stale same-kind Evidence suppress a fresh request', async () => {
     const model = createFakeRuntimeModel({
       specialistText: {

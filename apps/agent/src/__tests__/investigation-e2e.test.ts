@@ -116,8 +116,17 @@ function slowSqlEvent(): OpsEvent {
 }
 
 /** Deterministic specialist model: the database specialist needs host.memory. */
+function memoryUsedPercent(evidence: Array<{ kind: string; data?: unknown }>): number | undefined {
+  for (const item of evidence) {
+    if (item.kind !== 'host.memory' || !item.data || typeof item.data !== 'object') continue;
+    const usedPercent = (item.data as { usedPercent?: unknown }).usedPercent;
+    if (typeof usedPercent === 'number') return usedPercent;
+  }
+  return undefined;
+}
+
 function scriptedModel() {
-  const calls: Array<{ role: string; kinds: string[]; ids: string[] }> = [];
+  const calls: Array<{ role: string; kinds: string[]; ids: string[]; hypothesis: string; usedPercent?: number }> = [];
   const model = {
     provider: 'fake',
     model: 'deterministic',
@@ -128,19 +137,27 @@ function scriptedModel() {
       if (!role) {
         return { text: '{}', provider: 'fake', model: 'deterministic' };
       }
-      const payload = JSON.parse(request.user) as { evidence: Array<{ id: string; kind: string }> };
+      const payload = JSON.parse(request.user) as {
+        evidence: Array<{ id: string; kind: string; data?: unknown }>;
+      };
       const kinds = payload.evidence.map((item) => item.kind);
       const ids = payload.evidence.map((item) => item.id);
-      calls.push({ role, kinds, ids });
-      const hasMemory = payload.evidence.some((item) => item.kind === 'host.memory' && item.id.startsWith('inv-'));
+      const usedPercent = memoryUsedPercent(payload.evidence);
+      const pressure = usedPercent !== undefined && usedPercent > 90;
+      const hypothesis = role === 'database' && usedPercent !== undefined
+        ? (pressure ? 'host memory pressure is starving the database' : 'host memory is not the cause')
+        : `${role} hypothesis for the current incident`;
+      calls.push({ role, kinds, ids, hypothesis, ...(usedPercent !== undefined ? { usedPercent } : {}) });
       const finding = {
         role,
-        hypotheses: [`${role} hypothesis for the current incident`],
+        hypotheses: [hypothesis],
         supportingEvidenceIds: ids,
         contradictingEvidenceIds: [],
-        missingEvidence: role === 'database' && !hasMemory ? ['host.memory'] : [],
-        confidence: role === 'database' ? (hasMemory ? 0.86 : 0.55) : 0.5,
-        summary: `${role} reviewed ${kinds.join(',') || 'no'} evidence`,
+        missingEvidence: role === 'database' && usedPercent === undefined ? ['host.memory'] : [],
+        confidence: role === 'database'
+          ? (usedPercent === undefined ? 0.55 : (pressure ? 0.91 : 0.41))
+          : 0.5,
+        summary: hypothesis,
         status: 'completed',
       };
       return {
@@ -155,12 +172,16 @@ function scriptedModel() {
   return model;
 }
 
-function nodeAgentFetch(behaviour: { failTypes?: string[] } = {}): FetchLike {
+function nodeAgentFetch(behaviour: { failTypes?: string[]; memoryUsedPercent?: number } = {}): FetchLike {
   return (async (_input, init) => {
     const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
     if (behaviour.failTypes?.includes(query.type)) {
       return new Response('node agent unavailable', { status: 503 });
     }
+    const usedPercent = behaviour.memoryUsedPercent ?? 92;
+    const data = query.type === 'host.memory'
+      ? { totalBytes: 16_000_000_000, availableBytes: Math.round(16_000_000_000 * (1 - usedPercent / 100)), usedPercent }
+      : { queryType: query.type };
     return new Response(JSON.stringify({
       id: `node-${query.type}`,
       incidentId: query.incidentId,
@@ -168,7 +189,7 @@ function nodeAgentFetch(behaviour: { failTypes?: string[] } = {}): FetchLike {
       source: query.type.split('.')[0],
       kind: query.type,
       collectedAt: '2026-08-20T12:00:05.000Z',
-      data: { queryType: query.type },
+      data,
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }) as FetchLike;
 }
@@ -186,12 +207,15 @@ interface Harness {
   close(): void;
 }
 
-function buildHarness(options: { failEvidenceTypes?: string[]; runtimeReachable?: boolean } = {}): Harness {
+function buildHarness(options: { failEvidenceTypes?: string[]; runtimeReachable?: boolean; memoryUsedPercent?: number } = {}): Harness {
   const dir = mkdtempSync(join(tmpdir(), 'pi-ops-e2e-'));
   const store = createEventStore(join(dir, 'agent.sqlite'));
   const config = agentConfig(join(dir, 'agent.sqlite'));
   const nodeAgentCalls: string[] = [];
-  const baseNodeFetch = nodeAgentFetch({ ...(options.failEvidenceTypes ? { failTypes: options.failEvidenceTypes } : {}) });
+  const baseNodeFetch = nodeAgentFetch({
+    ...(options.failEvidenceTypes ? { failTypes: options.failEvidenceTypes } : {}),
+    ...(options.memoryUsedPercent !== undefined ? { memoryUsedPercent: options.memoryUsedPercent } : {}),
+  });
   const recordingNodeFetch: FetchLike = (async (input, init) => {
     const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
     nodeAgentCalls.push(query.type);
@@ -341,13 +365,15 @@ describe('deterministic investigation E2E', () => {
     const databaseCalls = harness.model.calls.filter((call) => call.role === 'database');
     const otherCalls = harness.model.calls.filter((call) => call.role !== 'database');
     assert.equal(databaseCalls.length, 2);
-    assert.ok(databaseCalls[1]?.kinds.includes('host.memory'));
+    assert.equal(databaseCalls[1]?.usedPercent, 92);
+    assert.equal(databaseCalls[1]?.hypothesis, 'host memory pressure is starving the database');
     for (const call of otherCalls) {
       assert.equal(call.ids.some((id) => id.startsWith('inv-') && id.endsWith('host.memory')), false);
     }
 
     // Report + ReasoningResult provenance
     const report = harness.store.getInvestigationReportBySessionId(session.id)!;
+    assert.match(report.hypothesis, /memory pressure/);
     assert.ok(report.supportingEvidenceIds.includes(enrichedEvidenceId));
     const result = harness.store.getReasoningResultByJobId(job.id)!;
     assert.equal(result.investigationSessionId, session.id);
@@ -433,6 +459,26 @@ describe('deterministic investigation E2E', () => {
     assert.equal(harness.notifier.sent.length, delivered);
     assert.equal(harness.model.networkCalls, 0);
     harness.close();
+  });
+
+  it('changes the specialist finding when only host.memory data changes', async () => {
+    async function findingFor(usedPercent: number): Promise<string> {
+      const harness = buildHarness({ memoryUsedPercent: usedPercent });
+      const incident = await ingestAndCollectInitialEvidence(harness);
+      const { session } = harness.loop.start(incident.id);
+      await harness.loop.submit(session.id);
+      await harness.runtime.drain();
+      const database = harness.model.calls.filter((call) => call.role === 'database');
+      const second = database[1];
+      const hypothesis = second?.hypothesis ?? '';
+      harness.close();
+      return hypothesis;
+    }
+    const pressure = await findingFor(92);
+    const idle = await findingFor(20);
+    assert.equal(pressure, 'host memory pressure is starving the database');
+    assert.equal(idle, 'host memory is not the cause');
+    assert.notEqual(pressure, idle);
   });
 });
 

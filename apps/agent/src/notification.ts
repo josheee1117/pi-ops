@@ -38,6 +38,7 @@ export interface NotificationAnalysis {
 
 export interface NotificationPayload {
   schemaVersion: typeof NOTIFICATION_SCHEMA_VERSION;
+  notificationId: string;
   type: NotificationType;
   incident: Omit<NotificationIncidentFacts, 'eventCount'>;
   facts: {
@@ -69,6 +70,7 @@ export function notificationJobId(type: NotificationType, key: string): string {
 }
 
 export function buildNotificationPayload(input: {
+  notificationId: string;
   type: NotificationType;
   incident: NotificationIncidentFacts;
   evidenceIds: readonly string[];
@@ -76,6 +78,7 @@ export function buildNotificationPayload(input: {
 }): NotificationPayload {
   const payload: NotificationPayload = {
     schemaVersion: NOTIFICATION_SCHEMA_VERSION,
+    notificationId: input.notificationId,
     type: input.type,
     incident: {
       id: input.incident.id,
@@ -131,15 +134,16 @@ export function buildNotificationJob(input: {
   const key = input.type === 'INVESTIGATION_COMPLETED'
     ? input.investigationSessionId ?? input.incident.id
     : input.incident.id;
+  const id = notificationJobId(input.type, key);
   return {
-    id: notificationJobId(input.type, key),
+    id,
     type: input.type,
     incidentId: input.incident.id,
     ...(input.investigationSessionId ? { investigationSessionId: input.investigationSessionId } : {}),
     ...(input.reasoningResultId ? { reasoningResultId: input.reasoningResultId } : {}),
     status: 'PENDING',
     attempts: 0,
-    payload: buildNotificationPayload(input),
+    payload: buildNotificationPayload({ ...input, notificationId: id }),
     createdAt: input.now,
     updatedAt: input.now,
   };

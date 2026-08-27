@@ -45,7 +45,9 @@ Every type in `RUNTIME_ALLOWED_EVIDENCE_TYPES` has a deterministic resolver outc
 
 ### Response binding
 
-The response reuses the canonical `evidenceSchema`. A `collected` result must carry a full Evidence row, and `evidenceId` must equal `evidence.id`. The runtime binds every response item to its original request: unknown or duplicate `requestId`, wrong type, mismatched `evidence.kind`, foreign `incidentId`, or wrong `runtimeRequestId` are rejected without merging. Protocol corruption fails that enrichment request closed; the investigation still completes when existing Evidence is sufficient.
+The response reuses the canonical `evidenceSchema`. A `collected` result must carry a full Evidence row, and `evidenceId` must equal `evidence.id`. The Coordinator merges that canonical payload — including `data` — into the runtime context before rerunning requesting specialists. Specialists receive collected Evidence content, not merely `{ id, kind }`. Duplicate Evidence ids must agree on immutable identity and content; otherwise enrichment fails closed. Newly collected facts that exceed `maxContextBytes` fail with `context_too_large` rather than silently dropping the requested Evidence.
+
+The runtime binds every response item to its original request: unknown or duplicate `requestId`, wrong type, mismatched `evidence.kind`, foreign `incidentId`, or wrong `runtimeRequestId` are rejected without merging. Protocol corruption fails that enrichment request closed; the investigation still completes when existing Evidence is sufficient.
 
 ### Freshness
 

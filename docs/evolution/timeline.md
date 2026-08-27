@@ -2,6 +2,11 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 11 production semantics closure
+
+- Coordinator merges canonical collected Evidence, including `data`, before specialist rerun; facts over budget fail with `context_too_large`
+- Notification delivery transitions are state-guarded; `notificationId` is the Idempotency-Key; job `createdAt` is scheduling time so replay delivers OPEN before RECOVERED
+
 ## Phase 11 completed
 
 - IncidentContext prefers newer collectedAt at equal rank; typed enrichment stays session-scoped and is not suppressed by historical same-kind Evidence

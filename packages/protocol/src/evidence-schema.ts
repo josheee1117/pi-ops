@@ -7,6 +7,7 @@ export interface Evidence {
   source: string;
   kind: string;
   collectedAt: string;
+  status?: 'succeeded' | 'failed';
   data: unknown;
 }
 
@@ -17,6 +18,7 @@ export const evidenceSchema = z.object({
   source: z.string().min(1),
   kind: z.string().min(1),
   collectedAt: z.string().datetime({ offset: true }),
+  status: z.enum(['succeeded', 'failed']).optional(),
   data: z.unknown(),
 }).superRefine((value, ctx) => {
   if (!Object.prototype.hasOwnProperty.call(value, 'data')) {

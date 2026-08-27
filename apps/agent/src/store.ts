@@ -1046,8 +1046,8 @@ export interface EventStore {
   listNotificationJobs(incidentId: string): NotificationJob[];
   listPendingNotificationJobs(limit: number): NotificationJob[];
   markNotificationJobRunning(id: string): boolean;
-  markNotificationJobDelivered(id: string): void;
-  markNotificationJobRetry(id: string, error: string, failed: boolean): void;
+  markNotificationJobDelivered(id: string): boolean;
+  markNotificationJobRetry(id: string, error: string, failed: boolean): boolean;
   resetRunningNotificationJobs(): number;
 
   /** Close the database connection. */
@@ -2068,12 +2068,12 @@ WHERE id = @id AND status = 'PENDING';
   const markNotificationJobDeliveredStmt = db.prepare(`
 UPDATE notification_jobs
 SET status = 'DELIVERED', last_error = NULL, updated_at = @updated_at, delivered_at = @delivered_at
-WHERE id = @id;
+WHERE id = @id AND status = 'RUNNING';
 `);
   const markNotificationJobRetryStmt = db.prepare(`
 UPDATE notification_jobs
 SET status = @status, last_error = @last_error, updated_at = @updated_at
-WHERE id = @id;
+WHERE id = @id AND status = 'RUNNING';
 `);
   const resetRunningNotificationJobsStmt = db.prepare(`
 UPDATE notification_jobs SET status = 'PENDING', updated_at = ? WHERE status = 'RUNNING';
@@ -3357,22 +3357,24 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       return result.changes === 1;
     },
 
-    markNotificationJobDelivered(id: string): void {
+    markNotificationJobDelivered(id: string): boolean {
       const now = new Date().toISOString();
-      markNotificationJobDeliveredStmt.run({
+      const result = markNotificationJobDeliveredStmt.run({
         id,
         updated_at: now,
         delivered_at: now,
       });
+      return result.changes === 1;
     },
 
-    markNotificationJobRetry(id: string, error: string, failed: boolean): void {
-      markNotificationJobRetryStmt.run({
+    markNotificationJobRetry(id: string, error: string, failed: boolean): boolean {
+      const result = markNotificationJobRetryStmt.run({
         id,
         status: failed ? 'FAILED' : 'PENDING',
         last_error: error,
         updated_at: new Date().toISOString(),
       });
+      return result.changes === 1;
     },
 
     resetRunningNotificationJobs(): number {
@@ -3407,7 +3409,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       evidenceIds: store.listEvidence(incident.id)
         .filter((item) => item.status === 'succeeded')
         .map((item) => item.id),
-      now: recovered.last_seen,
+      now: new Date().toISOString(),
     }));
     return true;
   });

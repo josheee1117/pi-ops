@@ -31,10 +31,13 @@ export function isRetryableNotificationError(error: unknown): boolean {
 
 export function createFakeNotifier() {
   const sent: NotificationPayload[] = [];
-  const notifier: Notifier & { sent: NotificationPayload[] } = {
+  const identities: string[] = [];
+  const notifier: Notifier & { sent: NotificationPayload[]; identities: string[] } = {
     sent,
+    identities,
     async send(notification) {
       sent.push(notification);
+      identities.push(notification.notificationId);
     },
   };
   return notifier;
@@ -44,6 +47,7 @@ export function createHttpWebhookNotifier(options: {
   url: string;
   timeoutMs: number;
   maxResponseBytes: number;
+  token?: string;
   fetch?: typeof fetch;
 }): Notifier {
   const fetchImpl = options.fetch ?? fetch;
@@ -52,9 +56,14 @@ export function createHttpWebhookNotifier(options: {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), options.timeoutMs);
       try {
+        const headers: Record<string, string> = {
+          'content-type': 'application/json',
+          'Idempotency-Key': notification.notificationId,
+        };
+        if (options.token) headers.authorization = `Bearer ${options.token}`;
         const response = await fetchImpl(options.url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers,
           body: JSON.stringify(notification),
           signal: controller.signal,
         });

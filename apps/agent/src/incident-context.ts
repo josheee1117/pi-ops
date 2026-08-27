@@ -14,6 +14,8 @@ export interface IncidentContextIncident {
 
 export interface IncidentContextEvidence {
   id: string;
+  incidentId: string;
+  nodeId: string;
   source: string;
   kind: string;
   collectedAt: string;
@@ -132,6 +134,8 @@ export function jsonBytes(value: unknown): number {
 function sanitizeEvidence(item: EvidenceRecord, maxLogLines: number): IncidentContextEvidence {
   return {
     id: item.id,
+    incidentId: item.incidentId,
+    nodeId: item.nodeId,
     source: item.source,
     kind: item.kind,
     collectedAt: item.collectedAt,

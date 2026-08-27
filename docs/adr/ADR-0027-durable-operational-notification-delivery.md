@@ -36,16 +36,23 @@ Payload separates deterministic facts from AI analysis:
 - historical knowledge stays advisory and is not copied into the payload
 - chain-of-thought is never persisted
 
-Delivery is durable, idempotent, and recoverable:
+Delivery is durable, idempotent, and recoverable. Transitions are state-guarded in SQLite:
 
 ```text
-PENDING → RUNNING → DELIVERED
-retryable failure: RUNNING → PENDING
-retry exhaustion or terminal 4xx: FAILED
+PENDING → RUNNING
+RUNNING → DELIVERED
+RUNNING → PENDING   (retryable)
+RUNNING → FAILED    (exhaustion or terminal 4xx)
 startup: stale RUNNING → PENDING
 ```
 
-`FakeNotifier` is the test seam. `HttpWebhookNotifier` is an optional configured adapter: one target URL, bounded timeout and response, retry 429 / 5xx / timeout / connection errors, ordinary 4xx terminal. Vendor credentials are not hard-coded. Logs never include secrets or the webhook URL.
+`DELIVERED` and `FAILED` cannot be overwritten by a late worker. `markNotificationJobDelivered` and `markNotificationJobRetry` update `WHERE id = ? AND status = 'RUNNING'`.
+
+Delivery is at-least-once after a crash in `RUNNING`. The logical identity is `NotificationPayload.notificationId` (the deterministic job id). `HttpWebhookNotifier` sends `Idempotency-Key: <notificationId>`. Duplicate physical sends keep the same key.
+
+`NotificationJob.createdAt` is the scheduling clock — when Pi-Ops persisted the job — not the business event time. Event occurrence stays in `payload.incident.firstSeen` / `lastSeen`. Historical replay therefore delivers `INCIDENT_OPEN` before `INCIDENT_RECOVERED`.
+
+`FakeNotifier` is the test seam. `HttpWebhookNotifier` is an optional configured adapter: one target URL, optional bearer token, bounded timeout and response, retry 429 / 5xx / timeout / connection errors, ordinary 4xx terminal. Vendor credentials are not hard-coded. Logs never include secrets, tokens, or the webhook URL.
 
 Notifier failure never mutates Incident, Event, Evidence, InvestigationSession, ReasoningResult, or MemoryEntry.
 

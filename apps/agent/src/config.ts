@@ -65,6 +65,7 @@ export interface AgentConfig {
   piRuntimeTimeoutMs?: number;
   piRuntimeCallbackUrl?: string;
   notificationWebhookUrl?: string;
+  notificationWebhookToken?: string;
   notificationTimeoutMs?: number;
   notificationMaxResponseBytes?: number;
   notificationJobPollIntervalMs?: number;
@@ -249,6 +250,9 @@ export function loadConfig(): AgentConfig {
       : {}),
     ...(process.env['PI_OPS_NOTIFICATION_WEBHOOK_URL']
       ? { notificationWebhookUrl: process.env['PI_OPS_NOTIFICATION_WEBHOOK_URL'] }
+      : {}),
+    ...(process.env['PI_OPS_NOTIFICATION_WEBHOOK_TOKEN']
+      ? { notificationWebhookToken: process.env['PI_OPS_NOTIFICATION_WEBHOOK_TOKEN'] }
       : {}),
     notificationTimeoutMs: integerEnv('PI_OPS_NOTIFICATION_TIMEOUT_MS', 3000, {
       max: 60_000,

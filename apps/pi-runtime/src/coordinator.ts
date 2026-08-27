@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import {
   investigationReportInputSchema,
   MAX_EVIDENCE_ENRICHMENT_ROUNDS,
@@ -6,6 +7,7 @@ import {
   normalizeSpecialistRoles,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   validateRuntimeEvidenceResponse,
+  type Evidence,
   type RuntimeInvestigationReportInput,
   type RuntimeInvestigationContext,
   type SpecialistFinding,
@@ -236,7 +238,7 @@ async function enrichOnce(
   if (parsed.value.runtimeRequestId !== options.runtimeRequestId) return context;
   const requestedTypeById = new Map(requests.map((item) => [item.requestId, item.type]));
   const answered = new Set<string>();
-  const collected: Array<{ type: typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number]; evidence: { id: string; kind: string } }> = [];
+  const collected: Array<{ type: typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number]; evidence: Evidence }> = [];
   for (const item of parsed.value.results) {
     const requestedType = requestedTypeById.get(item.requestId);
     if (requestedType === undefined) continue;
@@ -249,19 +251,50 @@ async function enrichOnce(
     if (item.evidence.incidentId !== context.incident.id) continue;
     collected.push({
       type: requestedType,
-      evidence: { id: item.evidence.id, kind: item.evidence.kind },
+      evidence: item.evidence as Evidence,
     });
   }
   if (collected.length === 0) return context;
+  const merged = mergeCanonicalEvidence(context.evidence, collected.map((item) => item.evidence));
   const enriched: RuntimeInvestigationContext = {
     ...context,
-    evidence: [...context.evidence, ...collected.map((item) => item.evidence)],
+    evidence: merged,
   };
+  const bounded = boundInvestigationContext(enriched, options.maxContextBytes);
   const rerunRoles = [...new Set(requests
     .filter((item) => collected.some((result) => result.type === item.type))
     .flatMap((item) => item.requestingRoles))];
-  await runRound(rerunRoles, enriched, model, options, signal, specialistStatus, findingsByRole, usage);
-  return enriched;
+  await runRound(rerunRoles, bounded, model, options, signal, specialistStatus, findingsByRole, usage);
+  return bounded;
+}
+
+function mergeCanonicalEvidence(
+  current: RuntimeInvestigationContext['evidence'],
+  incoming: Evidence[],
+): RuntimeInvestigationContext['evidence'] {
+  const merged = [...current];
+  for (const evidence of incoming) {
+    const existing = merged.find((item) => item.id === evidence.id);
+    if (!existing) {
+      merged.push(evidence as unknown as RuntimeInvestigationContext['evidence'][number]);
+      continue;
+    }
+    if (!sameCanonicalEvidence(existing, evidence)) {
+      throw new Error('evidence identity conflict');
+    }
+  }
+  return merged;
+}
+
+function sameCanonicalEvidence(existing: RuntimeInvestigationContext['evidence'][number], incoming: Evidence): boolean {
+  const current = existing as Record<string, unknown>;
+  const keys: Array<keyof Evidence> = ['id', 'incidentId', 'nodeId', 'source', 'kind', 'collectedAt', 'data'];
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(current, key)) return false;
+    if (!isDeepStrictEqual(current[key], incoming[key])) return false;
+  }
+  if (incoming.status !== undefined && current.status !== incoming.status) return false;
+  return true;
 }
 
 function synthesizeDeterministic(

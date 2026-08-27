@@ -75,6 +75,7 @@ const notificationWorker = config.notificationWebhookUrl
       url: config.notificationWebhookUrl,
       timeoutMs: config.notificationTimeoutMs ?? 3000,
       maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
+      ...(config.notificationWebhookToken ? { token: config.notificationWebhookToken } : {}),
     }),
   )
   : undefined;
