@@ -142,14 +142,16 @@ describe('memory intelligence', () => {
     const { store, incident, evidence, entry } = seedApproved();
     const context = buildInvestigationContext(incident, evidence, store);
     assert.equal(context.incident.id, incident.id);
-    assert.ok(context.relatedMemories.some((item) => item.id === entry.id));
+    assert.ok(context.historicalKnowledge.relatedMemories.some((item) => item.memory.id === entry.id));
     assert.ok(Object.isFrozen(context));
-    assert.ok(Object.isFrozen(context.relatedMemories));
+    assert.ok(Object.isFrozen(context.historicalKnowledge.relatedMemories));
     assert.throws(() => {
       (context as { incident: { id: string } }).incident.id = 'mutated';
     });
     assert.throws(() => {
-      (context.relatedMemories as MemoryIntelligenceMutable).push(context.relatedMemories[0]!);
+      (context.historicalKnowledge.relatedMemories as MemoryIntelligenceMutable).push(
+        context.historicalKnowledge.relatedMemories[0]!,
+      );
     });
     store.close();
   });
@@ -174,4 +176,4 @@ describe('memory intelligence', () => {
   });
 });
 
-type MemoryIntelligenceMutable = Array<ReturnType<typeof buildInvestigationContext>['relatedMemories'][number]>;
+type MemoryIntelligenceMutable = Array<ReturnType<typeof buildInvestigationContext>['historicalKnowledge']['relatedMemories'][number]>;

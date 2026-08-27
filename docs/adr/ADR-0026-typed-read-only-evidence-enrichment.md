@@ -49,9 +49,11 @@ The response reuses the canonical `evidenceSchema`. A `collected` result must ca
 
 ### Freshness
 
-Enrichment reuse is scoped to the current InvestigationSession (`inv-${sessionId}-evidence-${type}`). Older successful Evidence of the same kind is never returned as a fresh answer; it stays visible through InvestigationContext history and is never copied or deleted.
+IncidentContext ranks Evidence by kind/status rank, then newer `collectedAt`, then id. Enrichment reuse is scoped to the current InvestigationSession (`inv-${sessionId}-evidence-${type}`). Historical same-kind Evidence does not satisfy a fresh typed request and does not suppress Coordinator enrichment. Older rows stay visible through history and are never copied or deleted.
 
-One collection may satisfy multiple specialists. The request records `requestingRoles`, and every requesting specialist reruns after success. `InvestigationEvidenceAudit` is durable SQLite provenance with UPSERT semantics: identity (requestId, session, runtimeRequestId, runtimeTaskId, evidenceType, requestingRoles, first createdAt) is immutable, while status, evidenceIds, completedAt and error follow the request lifecycle.
+Canonical typed requests require `requestingRoles` with at least one SpecialistRole. Roles are unique and ordered by `SPECIALIST_ROLES`.
+
+One collection may satisfy multiple specialists, and every requesting specialist reruns after success. `InvestigationEvidenceAudit` is durable SQLite provenance with UPSERT semantics: identity (requestId, session, runtimeRequestId, runtimeTaskId, evidenceType, normalized requestingRoles, first createdAt) is immutable, while status, evidenceIds, completedAt and error follow the request lifecycle. Same requestId with a different identity is a conflict.
 
 Malformed RuntimeEvidenceResponse, mismatched runtimeRequestId, wrong Evidence kind, or foreign Incident ids are rejected and not merged.
 

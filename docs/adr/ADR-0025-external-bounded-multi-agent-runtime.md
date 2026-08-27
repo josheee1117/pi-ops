@@ -39,7 +39,15 @@ Open sessions with the same Incident + contextSnapshotHash are reused. COMPLETED
 
 Terminal state is consistent per attempt: a failed session fails its DelegationTask and its ReasoningJob. No attempt may change another attempt's lifecycle.
 
-`reasoning_jobs.incident_id` is not unique. `getReasoningResultByJobId` remains one-to-one because each attempt has its own job.
+`reasoning_jobs.incident_id` is not unique. Each InvestigationSession has at most one ReasoningResult. Opening a store fails closed if legacy `reasoning_results` rows share a non-null `reasoning_job_id`.
+
+Pi Runtime receives a canonical InvestigationContext:
+
+```text
+schemaVersion, incident, evidence, historicalKnowledge, historicalKnowledgeStatus, conflictingMemories
+```
+
+Legacy top-level history fields are not sent and are stripped if present. `factsOnlyContext` contains only schemaVersion, incident, and evidence.
 
 ### Ownership
 

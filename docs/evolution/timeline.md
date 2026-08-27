@@ -2,6 +2,13 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 11 completed
+
+- IncidentContext prefers newer collectedAt at equal rank; typed enrichment stays session-scoped and is not suppressed by historical same-kind Evidence
+- Pi Runtime receives canonical historicalKnowledge only; SUPPORTED hypotheses are not resolutions
+- requestingRoles is required and part of InvestigationEvidenceAudit identity
+- NotificationJob/Worker deliver INCIDENT_OPEN, INVESTIGATION_COMPLETED, and INCIDENT_RECOVERED durably without mutating facts
+
 ## Phase 10.3 completed
 
 - a failed InvestigationSession now terminalizes its DelegationTask and ReasoningJob; attempts never touch each other

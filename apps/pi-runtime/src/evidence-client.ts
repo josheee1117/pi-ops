@@ -15,7 +15,7 @@ export interface RuntimeEvidenceClient {
     requests: Array<{
       requestId: string;
       type: RuntimeEvidenceResponse['results'][number]['type'];
-      requestingRoles?: SpecialistRole[];
+      requestingRoles: SpecialistRole[];
     }>;
   }): Promise<RuntimeEvidenceResponse>;
 }

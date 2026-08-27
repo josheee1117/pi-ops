@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence, InvestigationRuntimeMetadata } from '@pi-ops/protocol';
+import { normalizeSpecialistRoles } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
@@ -16,6 +17,11 @@ import type { InvestigationReport } from './investigation-report.js';
 import type { InvestigationContext } from './investigation-context.js';
 import type { InvestigationSession } from './investigation-session.js';
 import type { DelegationTask } from './delegation-task.js';
+import {
+  buildNotificationJob,
+  incidentFactsFromRow,
+  type NotificationJob,
+} from './notification.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -405,6 +411,33 @@ CREATE INDEX IF NOT EXISTS idx_investigation_evidence_audits_session
   ON investigation_evidence_audits (investigation_session_id, created_at, request_id);
 CREATE INDEX IF NOT EXISTS idx_investigation_evidence_audits_runtime
   ON investigation_evidence_audits (runtime_request_id, created_at, request_id);
+`;
+
+const CREATE_NOTIFICATION_JOBS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS notification_jobs (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  incident_id TEXT NOT NULL,
+  investigation_session_id TEXT,
+  reasoning_result_id TEXT,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  payload_json TEXT NOT NULL,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  delivered_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_notification_jobs_status
+  ON notification_jobs (status, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_notification_jobs_incident
+  ON notification_jobs (incident_id, created_at, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_jobs_open
+  ON notification_jobs (incident_id) WHERE type = 'INCIDENT_OPEN';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_jobs_recovered
+  ON notification_jobs (incident_id) WHERE type = 'INCIDENT_RECOVERED';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_jobs_completed
+  ON notification_jobs (investigation_session_id) WHERE type = 'INVESTIGATION_COMPLETED' AND investigation_session_id IS NOT NULL;
 `;
 
 const CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL = `
@@ -1007,6 +1040,16 @@ export interface EventStore {
     error?: string;
   }>;
 
+  withTransaction<T>(fn: () => T): T;
+  scheduleNotificationJob(job: NotificationJob): boolean;
+  getNotificationJob(id: string): NotificationJob | undefined;
+  listNotificationJobs(incidentId: string): NotificationJob[];
+  listPendingNotificationJobs(limit: number): NotificationJob[];
+  markNotificationJobRunning(id: string): boolean;
+  markNotificationJobDelivered(id: string): void;
+  markNotificationJobRetry(id: string, error: string, failed: boolean): void;
+  resetRunningNotificationJobs(): number;
+
   /** Close the database connection. */
   close(): void;
 }
@@ -1371,6 +1414,36 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
 }
 
 
+function mapNotificationJob(row: {
+  id: string;
+  type: string;
+  incident_id: string;
+  investigation_session_id: string | null;
+  reasoning_result_id: string | null;
+  status: string;
+  attempts: number;
+  payload_json: string;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  delivered_at: string | null;
+}): NotificationJob {
+  return {
+    id: row.id,
+    type: row.type as NotificationJob['type'],
+    incidentId: row.incident_id,
+    ...(row.investigation_session_id ? { investigationSessionId: row.investigation_session_id } : {}),
+    ...(row.reasoning_result_id ? { reasoningResultId: row.reasoning_result_id } : {}),
+    status: row.status as NotificationJob['status'],
+    attempts: row.attempts,
+    payload: JSON.parse(row.payload_json) as NotificationJob['payload'],
+    ...(row.last_error ? { lastError: row.last_error } : {}),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    ...(row.delivered_at ? { deliveredAt: row.delivered_at } : {}),
+  };
+}
+
 function mapEvidenceAuditRow(row: {
   request_id: string;
   investigation_session_id: string;
@@ -1583,6 +1656,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_EVIDENCE_AUDITS_TABLE_SQL);
+    db.exec(CREATE_NOTIFICATION_JOBS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RELATIONS_TABLE_SQL);
@@ -1638,6 +1712,18 @@ export function createEventStore(dbPath: string): EventStore {
       if (!reasoningColumns.has(name)) {
         db.exec(`ALTER TABLE reasoning_results ADD COLUMN ${name} ${type}`);
       }
+    }
+    const duplicateJobs = db.prepare(`
+      SELECT reasoning_job_id AS id, COUNT(*) AS count
+      FROM reasoning_results
+      WHERE reasoning_job_id IS NOT NULL
+      GROUP BY reasoning_job_id
+      HAVING count > 1
+    `).all() as Array<{ id: string; count: number }>;
+    if (duplicateJobs.length > 0) {
+      throw new Error(
+        `Cannot enforce one ReasoningResult per ReasoningJob: duplicate reasoning_job_id (${duplicateJobs.map((row) => row.id).join(', ')})`,
+      );
     }
     db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_results_job
@@ -1955,6 +2041,43 @@ ON CONFLICT(request_id) DO UPDATE SET
   const listInvestigationEvidenceAuditsStmt = db.prepare(
     'SELECT * FROM investigation_evidence_audits WHERE investigation_session_id = ? ORDER BY created_at, request_id',
   );
+  const insertNotificationJobStmt = db.prepare(`
+INSERT OR IGNORE INTO notification_jobs (
+  id, type, incident_id, investigation_session_id, reasoning_result_id, status, attempts,
+  payload_json, last_error, created_at, updated_at, delivered_at
+) VALUES (
+  @id, @type, @incident_id, @investigation_session_id, @reasoning_result_id, @status, @attempts,
+  @payload_json, @last_error, @created_at, @updated_at, @delivered_at
+);
+`);
+  const getNotificationJobStmt = db.prepare('SELECT * FROM notification_jobs WHERE id = ?');
+  const listNotificationJobsStmt = db.prepare(
+    'SELECT * FROM notification_jobs WHERE incident_id = ? ORDER BY created_at, id',
+  );
+  const listPendingNotificationJobsStmt = db.prepare(`
+SELECT * FROM notification_jobs
+WHERE status = 'PENDING'
+ORDER BY created_at, id
+LIMIT ?;
+`);
+  const markNotificationJobRunningStmt = db.prepare(`
+UPDATE notification_jobs
+SET status = 'RUNNING', attempts = attempts + 1, updated_at = @updated_at
+WHERE id = @id AND status = 'PENDING';
+`);
+  const markNotificationJobDeliveredStmt = db.prepare(`
+UPDATE notification_jobs
+SET status = 'DELIVERED', last_error = NULL, updated_at = @updated_at, delivered_at = @delivered_at
+WHERE id = @id;
+`);
+  const markNotificationJobRetryStmt = db.prepare(`
+UPDATE notification_jobs
+SET status = @status, last_error = @last_error, updated_at = @updated_at
+WHERE id = @id;
+`);
+  const resetRunningNotificationJobsStmt = db.prepare(`
+UPDATE notification_jobs SET status = 'PENDING', updated_at = ? WHERE status = 'RUNNING';
+`);
 
   const insertEvidenceProfileStmt = db.prepare(`
 INSERT INTO evidence_profiles (evidence_id, category, reliability_score, diagnostic_weight)
@@ -2020,6 +2143,23 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       ...(row.evidence_snapshot_hash ? { evidenceSnapshotHash: row.evidence_snapshot_hash } : {}),
       ...metadata,
     };
+  }
+
+  function insertNotification(job: NotificationJob): void {
+    insertNotificationJobStmt.run({
+      id: job.id,
+      type: job.type,
+      incident_id: job.incidentId,
+      investigation_session_id: job.investigationSessionId ?? null,
+      reasoning_result_id: job.reasoningResultId ?? null,
+      status: job.status,
+      attempts: job.attempts,
+      payload_json: JSON.stringify(job.payload),
+      last_error: job.lastError ?? null,
+      created_at: job.createdAt,
+      updated_at: job.updatedAt,
+      delivered_at: job.deliveredAt ?? null,
+    });
   }
 
   function insertIncident(id: string, incident: Omit<IncidentRow, 'id'>): void {
@@ -2197,7 +2337,14 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       created_at: now,
       updated_at: now,
     });
-    return { id, ...incident };
+    const created = { id, ...incident };
+    insertNotification(buildNotificationJob({
+      type: 'INCIDENT_OPEN',
+      incident: incidentFactsFromRow(created),
+      evidenceIds: [],
+      now,
+    }));
+    return created;
   });
 
   function laterTimestamp(a: string, b: string): string {
@@ -3098,11 +3245,14 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         evidence_type: string;
         specialist_roles_json: string;
       } | undefined;
+      const specialistRoles = normalizeSpecialistRoles(audit.specialistRoles);
+      const specialistRolesJson = JSON.stringify(specialistRoles);
       if (existing) {
         const sameIdentity = existing.investigation_session_id === audit.investigationSessionId
           && existing.runtime_request_id === audit.runtimeRequestId
           && existing.runtime_task_id === audit.runtimeTaskId
-          && existing.evidence_type === audit.evidenceType;
+          && existing.evidence_type === audit.evidenceType
+          && existing.specialist_roles_json === specialistRolesJson;
         if (!sameIdentity) {
           throw new Error(
             `InvestigationEvidenceAudit ${audit.requestId} cannot change its recorded provenance`,
@@ -3114,7 +3264,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         investigation_session_id: audit.investigationSessionId,
         runtime_request_id: audit.runtimeRequestId,
         runtime_task_id: audit.runtimeTaskId,
-        specialist_roles_json: existing?.specialist_roles_json ?? JSON.stringify(audit.specialistRoles),
+        specialist_roles_json: existing?.specialist_roles_json ?? specialistRolesJson,
         evidence_type: audit.evidenceType,
         status: audit.status,
         evidence_ids_json: JSON.stringify(audit.evidenceIds),
@@ -3158,6 +3308,77 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       }>).map(mapEvidenceAuditRow);
     },
 
+    withTransaction<T>(fn: () => T): T {
+      let result!: T;
+      db.transaction(() => {
+        result = fn();
+      })();
+      return result;
+    },
+
+    scheduleNotificationJob(job: NotificationJob): boolean {
+      const inserted = insertNotificationJobStmt.run({
+        id: job.id,
+        type: job.type,
+        incident_id: job.incidentId,
+        investigation_session_id: job.investigationSessionId ?? null,
+        reasoning_result_id: job.reasoningResultId ?? null,
+        status: job.status,
+        attempts: job.attempts,
+        payload_json: JSON.stringify(job.payload),
+        last_error: job.lastError ?? null,
+        created_at: job.createdAt,
+        updated_at: job.updatedAt,
+        delivered_at: job.deliveredAt ?? null,
+      });
+      return inserted.changes > 0;
+    },
+
+    getNotificationJob(id: string) {
+      const row = getNotificationJobStmt.get(id) as Parameters<typeof mapNotificationJob>[0] | undefined;
+      return row ? mapNotificationJob(row) : undefined;
+    },
+
+    listNotificationJobs(incidentId: string) {
+      return (listNotificationJobsStmt.all(incidentId) as Array<Parameters<typeof mapNotificationJob>[0]>)
+        .map(mapNotificationJob);
+    },
+
+    listPendingNotificationJobs(limit: number) {
+      return (listPendingNotificationJobsStmt.all(limit) as Array<Parameters<typeof mapNotificationJob>[0]>)
+        .map(mapNotificationJob);
+    },
+
+    markNotificationJobRunning(id: string): boolean {
+      const result = markNotificationJobRunningStmt.run({
+        id,
+        updated_at: new Date().toISOString(),
+      });
+      return result.changes === 1;
+    },
+
+    markNotificationJobDelivered(id: string): void {
+      const now = new Date().toISOString();
+      markNotificationJobDeliveredStmt.run({
+        id,
+        updated_at: now,
+        delivered_at: now,
+      });
+    },
+
+    markNotificationJobRetry(id: string, error: string, failed: boolean): void {
+      markNotificationJobRetryStmt.run({
+        id,
+        status: failed ? 'FAILED' : 'PENDING',
+        last_error: error,
+        updated_at: new Date().toISOString(),
+      });
+    },
+
+    resetRunningNotificationJobs(): number {
+      return resetRunningNotificationJobsStmt.run(new Date().toISOString()).changes;
+    },
+
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
     close(): void {
@@ -3179,6 +3400,15 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     });
     store.removePendingRecovery(recovery.id);
     store.markEventProcessed(recovery.id, recovery.time);
+    const recovered = store.getIncident(incident.id)!;
+    insertNotification(buildNotificationJob({
+      type: 'INCIDENT_RECOVERED',
+      incident: incidentFactsFromRow(recovered),
+      evidenceIds: store.listEvidence(incident.id)
+        .filter((item) => item.status === 'succeeded')
+        .map((item) => item.id),
+      now: recovered.last_seen,
+    }));
     return true;
   });
 

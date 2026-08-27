@@ -4,6 +4,7 @@ export const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
   'health.recovered': 'health.failure',
   'host.memory_recovered': 'host.memory_pressure',
   'host.disk_recovered': 'host.disk_pressure',
+  'application.slow_sql_recovered': 'application.slow_sql',
 };
 
 type FingerprintEvent = Pick<OpsEvent, 'source' | 'nodeId' | 'service' | 'type'> & {
@@ -20,7 +21,8 @@ function stringAttribute(event: FingerprintEvent, key: string): string | undefin
  * JVM CPU/GC keep service-level identity.
  */
 function typeSpecificDimensions(event: FingerprintEvent): string[] {
-  switch (event.type) {
+  const type = RECOVERY_TYPE_MAP[event.type] ?? event.type;
+  switch (type) {
     case 'application.slow_sql': {
       return [
         stringAttribute(event, 'sqlFingerprint')

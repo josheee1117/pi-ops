@@ -9,6 +9,14 @@ const KNOWLEDGE_KEYS = [
   'relatedMemories',
 ] as const;
 
+const LEGACY_CONTEXT_KEYS = [
+  'relatedMemories',
+  'previousResolutions',
+  'relatedIncidents',
+  'historicalResolutions',
+  'similarHypotheses',
+] as const;
+
 export class ContextTooLargeError extends Error {
   readonly code = 'context_too_large';
 
@@ -22,16 +30,16 @@ export function boundInvestigationContext(
   context: RuntimeInvestigationContext,
   maxBytes = DEFAULT_MAX_RUNTIME_CONTEXT_BYTES,
 ): RuntimeInvestigationContext {
-  const clone = structuredClone(context) as RuntimeInvestigationContext & {
-    historicalKnowledge?: Record<string, unknown>;
-    conflictingMemories?: unknown[];
-  };
+  const clone = structuredClone(context) as RuntimeInvestigationContext & Record<string, unknown>;
+  for (const key of LEGACY_CONTEXT_KEYS) {
+    delete clone[key];
+  }
   const factsOnly = factsOnlyContext(clone);
   if (jsonSize(factsOnly) > maxBytes) throw new ContextTooLargeError();
 
   trimKnowledge(clone, 5);
   while (jsonSize(clone) > maxBytes) {
-    const knowledge = clone.historicalKnowledge;
+    const knowledge = clone.historicalKnowledge as Record<string, unknown> | undefined;
     if (!knowledge || !hasKnowledgeItems(knowledge)) {
       clone.historicalKnowledge = {
         similarIncidents: [],
@@ -52,28 +60,24 @@ export function jsonSize(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
 
-function factsOnlyContext(context: RuntimeInvestigationContext): RuntimeInvestigationContext {
+export function factsOnlyContext(context: RuntimeInvestigationContext): RuntimeInvestigationContext {
   return {
-    ...context,
-    historicalKnowledge: {
-      similarIncidents: [],
-      historicalHypotheses: [],
-      previousResolutions: [],
-      relatedMemories: [],
-    },
-    conflictingMemories: [],
+    schemaVersion: context.schemaVersion,
+    incident: context.incident,
+    evidence: context.evidence,
   };
 }
 
 function trimKnowledge(
-  context: { historicalKnowledge?: Record<string, unknown> },
+  context: { historicalKnowledge?: unknown },
   limit: number,
 ): void {
   const knowledge = context.historicalKnowledge;
-  if (!knowledge) return;
+  if (!knowledge || typeof knowledge !== 'object') return;
+  const record = knowledge as Record<string, unknown>;
   for (const key of KNOWLEDGE_KEYS) {
-    const value = knowledge[key];
-    if (Array.isArray(value)) knowledge[key] = value.slice(0, limit);
+    const value = record[key];
+    if (Array.isArray(value)) record[key] = value.slice(0, limit);
   }
 }
 

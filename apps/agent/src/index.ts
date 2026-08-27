@@ -13,6 +13,8 @@ import { createInvestigationEvidenceService } from './investigation-evidence.js'
 import { createInvestigationLoopService } from './investigation-loop.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import { createReasoningJobWorker } from './reasoning-worker.js';
+import { createNotificationJobWorker } from './notification-worker.js';
+import { createHttpWebhookNotifier } from './notifier.js';
 import { createApp } from './app.js';
 
 const config = loadConfig();
@@ -65,6 +67,18 @@ const reasoningWorker = createReasoningJobWorker(
   runtimeClient,
 );
 reasoningWorker.start();
+const notificationWorker = config.notificationWebhookUrl
+  ? createNotificationJobWorker(
+    config,
+    store,
+    createHttpWebhookNotifier({
+      url: config.notificationWebhookUrl,
+      timeoutMs: config.notificationTimeoutMs ?? 3000,
+      maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
+    }),
+  )
+  : undefined;
+notificationWorker?.start();
 const app = createApp(
   config,
   store,
@@ -72,6 +86,7 @@ const app = createApp(
   evidenceWorker,
   investigationLoop,
   investigationEvidence,
+  notificationWorker,
 );
 
 console.log(`[pi-ops-agent] starting on :${config.port}, db=${config.sqlitePath}`);

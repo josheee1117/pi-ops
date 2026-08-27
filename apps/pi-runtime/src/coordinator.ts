@@ -3,6 +3,7 @@ import {
   MAX_EVIDENCE_ENRICHMENT_ROUNDS,
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   MAX_EVIDENCE_TYPES_PER_SPECIALIST,
+  normalizeSpecialistRoles,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   validateRuntimeEvidenceResponse,
   type RuntimeInvestigationReportInput,
@@ -189,7 +190,12 @@ async function enrichOnce(
 ): Promise<RuntimeInvestigationContext> {
   if (!options.evidenceClient || MAX_EVIDENCE_ENRICHMENT_ROUNDS < 1) return context;
   if (!options.runtimeRequestId || !options.runtimeTaskId || !options.sessionId) return context;
-  const existingKinds = new Set(context.evidence.map((item) => item.kind));
+  const sessionPrefix = options.sessionId ? `inv-${options.sessionId}-evidence-` : '';
+  const existingKinds = new Set(
+    context.evidence
+      .filter((item) => sessionPrefix !== '' && item.id.startsWith(sessionPrefix))
+      .map((item) => item.kind),
+  );
   const byType = new Map<typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number], Set<SpecialistRole>>();
   for (const role of selected) {
     const finding = findingsByRole.get(role);
@@ -211,7 +217,7 @@ async function enrichOnce(
   const requests = [...byType.entries()].map(([type, roles]) => ({
     requestId: `ereq-${options.sessionId}-${type}`,
     type,
-    requestingRoles: [...roles],
+    requestingRoles: normalizeSpecialistRoles([...roles]),
   }));
   if (requests.length === 0) return context;
   let raw: unknown;

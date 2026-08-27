@@ -11,6 +11,9 @@ import { createHttpPiRuntimeClient } from '../http-pi-runtime-client.js';
 import { createIncidentEngine } from '../incident.js';
 import { createInvestigationEvidenceService } from '../investigation-evidence.js';
 import { createInvestigationLoopService } from '../investigation-loop.js';
+import { notificationJobId } from '../notification.js';
+import { createNotificationJobWorker } from '../notification-worker.js';
+import { createFakeNotifier } from '../notifier.js';
 import { createEventStore, type EventStore } from '../store.js';
 
 // apps/pi-runtime lives outside this package rootDir, so the real runtime is
@@ -114,7 +117,7 @@ function slowSqlEvent(): OpsEvent {
 
 /** Deterministic specialist model: the database specialist needs host.memory. */
 function scriptedModel() {
-  const calls: Array<{ role: string; kinds: string[] }> = [];
+  const calls: Array<{ role: string; kinds: string[]; ids: string[] }> = [];
   const model = {
     provider: 'fake',
     model: 'deterministic',
@@ -127,9 +130,9 @@ function scriptedModel() {
       }
       const payload = JSON.parse(request.user) as { evidence: Array<{ id: string; kind: string }> };
       const kinds = payload.evidence.map((item) => item.kind);
-      calls.push({ role, kinds });
       const ids = payload.evidence.map((item) => item.id);
-      const hasMemory = kinds.includes('host.memory');
+      calls.push({ role, kinds, ids });
+      const hasMemory = payload.evidence.some((item) => item.kind === 'host.memory' && item.id.startsWith('inv-'));
       const finding = {
         role,
         hypotheses: [`${role} hypothesis for the current incident`],
@@ -177,6 +180,8 @@ interface Harness {
   loop: ReturnType<typeof createInvestigationLoopService>;
   orchestrator: ReturnType<typeof createEvidenceOrchestrator>;
   model: ReturnType<typeof scriptedModel>;
+  notifier: ReturnType<typeof createFakeNotifier>;
+  notifications: ReturnType<typeof createNotificationJobWorker>;
   nodeAgentCalls: string[];
   close(): void;
 }
@@ -238,7 +243,9 @@ function buildHarness(options: { failEvidenceTypes?: string[]; runtimeReachable?
 
   const loop = createInvestigationLoopService(store, { runtime: runtimeClient });
   const evidenceService = createInvestigationEvidenceService(store, config, orchestrator);
-  agentApp = createApp(config, store, engine, undefined, loop, evidenceService);
+  const notifier = createFakeNotifier();
+  const notifications = createNotificationJobWorker(config, store, notifier);
+  agentApp = createApp(config, store, engine, undefined, loop, evidenceService, notifications);
 
   return {
     store,
@@ -247,6 +254,8 @@ function buildHarness(options: { failEvidenceTypes?: string[]; runtimeReachable?
     loop,
     orchestrator,
     model,
+    notifier,
+    notifications,
     nodeAgentCalls,
     close: () => {
       runtime.close();
@@ -275,6 +284,16 @@ describe('deterministic investigation E2E', () => {
   it('runs ingest → investigation → typed enrichment → report with full provenance', async () => {
     const harness = buildHarness();
     const incident = await ingestAndCollectInitialEvidence(harness);
+    harness.store.insertEvidence({
+      id: `incident-${incident.id}-evidence-host.memory`,
+      incidentId: incident.id,
+      nodeId: 'test-svc-02',
+      source: 'host',
+      kind: 'host.memory',
+      collectedAt: '2026-08-20T10:00:00.000Z',
+      data: { stale: true },
+      status: 'succeeded',
+    });
     const beforeIncident = structuredClone(harness.store.getIncident(incident.id)!);
     const initialEvidenceIds = harness.store.listEvidence(incident.id).map((row) => row.id);
     assert.ok(initialEvidenceIds.some((id) => id.endsWith('-evidence-host.load')));
@@ -324,7 +343,7 @@ describe('deterministic investigation E2E', () => {
     assert.equal(databaseCalls.length, 2);
     assert.ok(databaseCalls[1]?.kinds.includes('host.memory'));
     for (const call of otherCalls) {
-      assert.equal(call.kinds.includes('host.memory'), false);
+      assert.equal(call.ids.some((id) => id.startsWith('inv-') && id.endsWith('host.memory')), false);
     }
 
     // Report + ReasoningResult provenance
@@ -343,6 +362,76 @@ describe('deterministic investigation E2E', () => {
     for (const id of initialEvidenceIds) {
       assert.ok(harness.store.getEvidence(id));
     }
+    assert.equal(harness.store.getEvidence(`incident-${incident.id}-evidence-host.memory`)?.collectedAt, '2026-08-20T10:00:00.000Z');
+
+    await harness.notifications.runOnce();
+    const openId = notificationJobId('INCIDENT_OPEN', incident.id);
+    const completedId = notificationJobId('INVESTIGATION_COMPLETED', session.id);
+    assert.equal(harness.store.getNotificationJob(openId)?.status, 'DELIVERED');
+    assert.equal(harness.store.getNotificationJob(completedId)?.status, 'DELIVERED');
+    assert.equal(harness.store.getNotificationJob(completedId)?.payload.analysis?.reasoningResultId, result.id);
+
+    const replayed = harness.loop.handleRuntimeResult({
+      schemaVersion: 1,
+      runtimeRequestId: session.runtimeRequestId,
+      runtimeTaskId: runtimeTask.runtimeTaskId,
+      sessionId: session.id,
+      status: 'completed',
+      report: {
+        hypothesis: report.hypothesis,
+        supportingEvidenceIds: report.supportingEvidenceIds,
+        contradictingEvidenceIds: report.contradictingEvidenceIds,
+        confidence: report.confidence,
+        recommendation: report.recommendation,
+      },
+    });
+    assert.equal(replayed.id, report.id);
+    assert.equal(
+      harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INVESTIGATION_COMPLETED').length,
+      1,
+    );
+
+    const recovery = {
+      ...slowSqlEvent(),
+      id: 'evt-e2e-slow-sql-recovered',
+      time: '2026-08-20T12:20:00.000Z',
+      type: 'application.slow_sql_recovered',
+      severity: 'info' as const,
+      message: 'slow sql recovered',
+    };
+    const recovered = await harness.agentApp.request('/v1/events', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ingest-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        producer: { id: 'data-asset-service', type: 'application', version: '1.0.0' },
+        events: [recovery],
+      }),
+    });
+    assert.equal(recovered.status, 200);
+    assert.equal(harness.store.getIncident(incident.id)?.state, 'RECOVERED');
+    await harness.notifications.runOnce();
+    const recoveredId = notificationJobId('INCIDENT_RECOVERED', incident.id);
+    assert.equal(harness.store.getNotificationJob(recoveredId)?.status, 'DELIVERED');
+
+    const replayEvent = await harness.agentApp.request('/v1/events', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ingest-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        producer: { id: 'data-asset-service', type: 'application', version: '1.0.0' },
+        events: [slowSqlEvent()],
+      }),
+    });
+    assert.equal(replayEvent.status, 200);
+    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INCIDENT_OPEN').length, 1);
+    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INCIDENT_RECOVERED').length, 1);
+    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INVESTIGATION_COMPLETED').length, 1);
+
+    const delivered = harness.notifier.sent.length;
+    harness.notifications.start();
+    await harness.notifications.runOnce();
+    await harness.notifications.stop();
+    assert.equal(harness.notifier.sent.length, delivered);
+    assert.equal(harness.model.networkCalls, 0);
     harness.close();
   });
 });

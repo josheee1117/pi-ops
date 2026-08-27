@@ -21,6 +21,10 @@ import {
   REASONING_STRATEGY_VERSION,
 } from './reasoning-strategy.js';
 import { hashEvidenceSnapshot } from './reasoning-worker.js';
+import {
+  buildNotificationJob,
+  incidentFactsFromRow,
+} from './notification.js';
 import type { EventStore, IncidentRow } from './store.js';
 
 const MAX_TEXT_CHARS = 2000;
@@ -213,13 +217,30 @@ export function createInvestigationLoopService(
         runtimeRequestId: session.runtimeRequestId,
         ...runtimeResultFields(store, session.runtimeRequestId),
       };
-      store.insertInvestigationReport(report);
-      const hypothesis = createInvestigationHypothesisService(store, { now }).proposeFromReport(report);
-      result.hypothesisIds = [hypothesis.id];
-      store.insertReasoningResult(result);
-      store.markDelegationTaskCompleted(task.id, report.createdAt);
-      if (job.status !== 'COMPLETED') store.markReasoningJobCompleted(job.id);
-      store.updateInvestigationSessionStatus(session.id, 'COMPLETED', report.createdAt);
+      store.withTransaction(() => {
+        store.insertInvestigationReport(report);
+        const hypothesis = createInvestigationHypothesisService(store, { now }).proposeFromReport(report);
+        result.hypothesisIds = [hypothesis.id];
+        store.insertReasoningResult(result);
+        store.markDelegationTaskCompleted(task.id, report.createdAt);
+        if (job.status !== 'COMPLETED') store.markReasoningJobCompleted(job.id);
+        store.updateInvestigationSessionStatus(session.id, 'COMPLETED', report.createdAt);
+        store.scheduleNotificationJob(buildNotificationJob({
+          type: 'INVESTIGATION_COMPLETED',
+          incident: incidentFactsFromRow(incident),
+          evidenceIds: evidence.filter((item) => item.status === 'succeeded').map((item) => item.id),
+          now: report.createdAt,
+          investigationSessionId: session.id,
+          reasoningResultId: result.id,
+          analysis: {
+            investigationSessionId: session.id,
+            reasoningResultId: result.id,
+            hypothesis: report.hypothesis,
+            confidence: report.confidence,
+            recommendation: report.recommendation,
+          },
+        }));
+      });
       return report;
     },
 

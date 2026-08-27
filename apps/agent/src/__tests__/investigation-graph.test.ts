@@ -142,11 +142,11 @@ describe('investigation knowledge graph', () => {
     const beforeIncident = structuredClone(store.getIncident(incident.id)!);
     const beforeEvidence = structuredClone(store.listEvidence(incident.id));
     const context = buildInvestigationContext(incident, [evidence], store);
-    assert.equal(context.relatedIncidents.length, 0);
+    assert.equal(context.historicalKnowledge.similarIncidents.length, 0);
     assert.deepEqual(store.getIncident(incident.id), beforeIncident);
     assert.deepEqual(store.listEvidence(incident.id), beforeEvidence);
     assert.ok(Object.isFrozen(context));
-    assert.ok(context.relatedIncidents === undefined || Array.isArray(context.relatedIncidents));
+    assert.ok(Array.isArray(context.historicalKnowledge.similarIncidents));
     store.close();
   });
 
@@ -162,8 +162,9 @@ describe('investigation knowledge graph', () => {
     const context = buildInvestigationContext(incident, [evidence], broken as unknown as typeof store);
     assert.equal(context.incident.id, incident.id);
     assert.ok(context.evidence.length >= 1);
-    assert.deepEqual(context.relatedIncidents, []);
-    assert.deepEqual(context.historicalResolutions, []);
+    assert.deepEqual(context.historicalKnowledge.similarIncidents, []);
+    assert.deepEqual(context.historicalKnowledge.previousResolutions, []);
+    assert.equal(context.historicalKnowledgeStatus, 'unavailable');
     assert.equal(store.getIncident(incident.id)?.id, incident.id);
     store.close();
   });

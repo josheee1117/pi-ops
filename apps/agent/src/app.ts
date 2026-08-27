@@ -10,6 +10,7 @@ import {
 } from '@pi-ops/protocol';
 import type { createInvestigationLoopService } from './investigation-loop.js';
 import type { createInvestigationEvidenceService } from './investigation-evidence.js';
+import type { NotificationJobWorker } from './notification-worker.js';
 
 class RequestBodyTooLargeError extends Error {}
 
@@ -42,6 +43,7 @@ export function createApp(
   evidenceWorker?: EvidenceJobWorker,
   investigationLoop?: ReturnType<typeof createInvestigationLoopService>,
   investigationEvidence?: ReturnType<typeof createInvestigationEvidenceService>,
+  notificationWorker?: NotificationJobWorker,
 ): Hono {
   const app = new Hono();
 
@@ -111,6 +113,7 @@ export function createApp(
     }
 
     if (createdIncidents > 0) evidenceWorker?.wake();
+    notificationWorker?.wake();
 
     return c.json({
       accepted: batch.events.length,
@@ -138,6 +141,7 @@ export function createApp(
     if (!parsed.success) return c.json({ error: parsed.message }, 400);
     try {
       const result = investigationLoop.handleRuntimeResult(parsed.value);
+      notificationWorker?.wake();
       return c.json({ ok: true, status: parsed.value.status, id: result.id });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

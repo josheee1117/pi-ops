@@ -64,6 +64,12 @@ export interface AgentConfig {
   piRuntimeToken?: string;
   piRuntimeTimeoutMs?: number;
   piRuntimeCallbackUrl?: string;
+  notificationWebhookUrl?: string;
+  notificationTimeoutMs?: number;
+  notificationMaxResponseBytes?: number;
+  notificationJobPollIntervalMs?: number;
+  notificationJobMaxAttempts?: number;
+  notificationJobBatchSize?: number;
 }
 
 function requireEnv(key: string): string {
@@ -241,6 +247,24 @@ export function loadConfig(): AgentConfig {
     ...(process.env['PI_OPS_PI_RUNTIME_CALLBACK_URL']
       ? { piRuntimeCallbackUrl: process.env['PI_OPS_PI_RUNTIME_CALLBACK_URL'] }
       : {}),
+    ...(process.env['PI_OPS_NOTIFICATION_WEBHOOK_URL']
+      ? { notificationWebhookUrl: process.env['PI_OPS_NOTIFICATION_WEBHOOK_URL'] }
+      : {}),
+    notificationTimeoutMs: integerEnv('PI_OPS_NOTIFICATION_TIMEOUT_MS', 3000, {
+      max: 60_000,
+    }),
+    notificationMaxResponseBytes: integerEnv('PI_OPS_NOTIFICATION_MAX_RESPONSE_BYTES', 8192, {
+      max: 1024 * 1024,
+    }),
+    notificationJobPollIntervalMs: integerEnv('PI_OPS_NOTIFICATION_JOB_POLL_INTERVAL_MS', 1000, {
+      max: 60 * 60 * 1000,
+    }),
+    notificationJobMaxAttempts: integerEnv('PI_OPS_NOTIFICATION_JOB_MAX_ATTEMPTS', 5, {
+      max: 100,
+    }),
+    notificationJobBatchSize: integerEnv('PI_OPS_NOTIFICATION_JOB_BATCH_SIZE', 20, {
+      max: 1000,
+    }),
   };
 }
 

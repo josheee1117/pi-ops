@@ -12,6 +12,7 @@ import type {
   RuntimeEvidenceType,
 } from '@pi-ops/protocol';
 import {
+  normalizeSpecialistRoles,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
 } from '@pi-ops/protocol';
@@ -48,7 +49,7 @@ export function createInvestigationEvidenceService(
         }
         seen.add(item.requestId);
         const createdAt = now();
-        const roles = item.requestingRoles ?? [];
+        const roles = normalizeSpecialistRoles(item.requestingRoles);
         const persist = (
           status: RuntimeEvidenceResult['status'],
           evidenceIds: string[],

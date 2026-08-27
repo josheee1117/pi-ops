@@ -300,7 +300,7 @@ describe('bounded multi-agent coordinator', () => {
         async request(input) {
           collections += 1;
           assert.equal(input.requests.length, 1);
-          assert.deepEqual(new Set(input.requests[0]?.requestingRoles), new Set(['jvm', 'container_host']));
+          assert.deepEqual(input.requests[0]?.requestingRoles, ['jvm', 'container_host']);
           return {
             schemaVersion: 1,
             runtimeRequestId: 'rreq-1',
@@ -359,6 +359,63 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(model.networkCalls, 0);
     assert.equal(outcome.provider, 'fake');
     assert.equal(outcome.model, 'deterministic');
+  });
+
+  it('does not let stale same-kind Evidence suppress a fresh request', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now', 'incident-inc-1-evidence-host.memory'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    let requested: string[] = [];
+    const outcome = await investigate(context({
+      evidence: [
+        { id: 'evd-now', kind: 'host.load' },
+        { id: 'incident-inc-1-evidence-host.memory', kind: 'host.memory' },
+      ],
+    }), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request(input) {
+          requested = input.requests.map((item) => item.type);
+          assert.deepEqual(input.requests[0]?.requestingRoles, ['database']);
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'inv-isess-1-evidence-host.memory',
+              evidence: evidenceRow('inv-isess-1-evidence-host.memory', 'host.memory'),
+            }],
+          };
+        },
+      },
+    });
+    assert.deepEqual(requested, ['host.memory']);
+    assert.equal(outcome.status, 'completed');
+  });
+
+  it('strips duplicate historical fields so factsOnly is facts only', () => {
+    const bounded = boundInvestigationContext(context({
+      relatedMemories: [{ id: 'legacy' }],
+      previousResolutions: ['legacy resolution'],
+      historicalResolutions: ['supported hypothesis'],
+      similarHypotheses: [{ statement: 'supported hypothesis' }],
+      relatedIncidents: [{ incident: { id: 'inc-old' } }],
+    } as unknown as Partial<RuntimeInvestigationContext>));
+    assert.equal('relatedMemories' in bounded, false);
+    assert.equal('previousResolutions' in bounded, false);
+    assert.equal('historicalResolutions' in bounded, false);
+    assert.equal('similarHypotheses' in bounded, false);
+    assert.equal('relatedIncidents' in bounded, false);
+    assert.ok(bounded.incident);
+    assert.ok(bounded.evidence);
   });
 
   it('exposes no shell or remediation capability', () => {

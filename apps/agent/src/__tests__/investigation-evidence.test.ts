@@ -106,7 +106,7 @@ describe('typed investigation evidence requests', () => {
         runtimeRequestId: session.runtimeRequestId,
         runtimeTaskId: submitted.runtimeTaskId,
         sessionId: session.id,
-        requests: [{ requestId, type }],
+        requests: [{ requestId, type, requestingRoles: ['database'] }],
       }),
     });
 
@@ -130,6 +130,59 @@ describe('typed investigation evidence requests', () => {
     assert.equal((await request('r2', 'bash')).status, 400);
     assert.equal((await request('r3', 'host.disk')).status, 400);
     assert.equal((await request('r4', 'host.load', 'ingest-token')).status, 401);
+    store.close();
+  });
+
+  it('collects fresh host.memory for a later attempt despite 10:00 history', async () => {
+    const { store, incident } = seed();
+    store.insertEvidence({
+      id: `incident-${incident.id}-evidence-host.memory`,
+      incidentId: incident.id,
+      nodeId: 'test-svc-02',
+      source: 'host',
+      kind: 'host.memory',
+      collectedAt: '2026-08-20T10:00:00.000Z',
+      data: { stale: true },
+      status: 'succeeded',
+    });
+    const loop = createInvestigationLoopService(store, {
+      now: () => '2026-08-20T10:30:00.000Z',
+    });
+    const { session } = loop.start(incident.id);
+    await loop.submit(session.id);
+    store.markDelegationTaskSubmitted(session.delegationTaskId, '2026-08-20T10:30:00.000Z', 'rtask-fresh');
+    const orchestrator: EvidenceOrchestrator = {
+      async collectForIncident() {
+        return { incidentId: incident.id, requested: 0, succeeded: 0, failed: 0, retryableFailures: 0, terminalFailures: 0 };
+      },
+      async collectQueriesForIncident(target, queries, collectionId) {
+        for (const query of queries) {
+          store.insertEvidence({
+            id: `${collectionId}-evidence-${query.type}`,
+            incidentId: target.id,
+            nodeId: target.node_id,
+            source: 'host',
+            kind: query.type,
+            collectedAt: '2026-08-20T10:30:05.000Z',
+            data: { fresh: true },
+            status: 'succeeded',
+          });
+        }
+        return { incidentId: target.id, requested: queries.length, succeeded: queries.length, failed: 0, retryableFailures: 0, terminalFailures: 0 };
+      },
+    };
+    const service = createInvestigationEvidenceService(store, CONFIG, orchestrator);
+    const response = await service.handle({
+      schemaVersion: 1,
+      runtimeRequestId: session.runtimeRequestId,
+      runtimeTaskId: 'rtask-fresh',
+      sessionId: session.id,
+      requests: [{ requestId: 'fresh-mem', type: 'host.memory', requestingRoles: ['database'] }],
+    });
+    assert.equal(response.results[0]?.status, 'collected');
+    assert.equal(response.results[0]?.evidenceId, `inv-${session.id}-evidence-host.memory`);
+    assert.notEqual(response.results[0]?.evidenceId, `incident-${incident.id}-evidence-host.memory`);
+    assert.deepEqual(store.getEvidence(`incident-${incident.id}-evidence-host.memory`)?.data, { stale: true });
     store.close();
   });
 });

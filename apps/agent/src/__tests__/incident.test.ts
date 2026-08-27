@@ -62,6 +62,22 @@ describe('computeFingerprint', () => {
     assert.equal(computeFingerprint(recovery), computeFingerprint(failure));
   });
 
+  it('keeps slow SQL recovery on the same fingerprint including sqlFingerprint', () => {
+    const failure = makeEvent({
+      source: 'application',
+      service: 'data-asset-service',
+      type: 'application.slow_sql',
+      attributes: { sqlFingerprint: 'deadbeef' },
+    });
+    const recovery = makeEvent({
+      source: 'application',
+      service: 'data-asset-service',
+      type: 'application.slow_sql_recovered',
+      attributes: { sqlFingerprint: 'deadbeef' },
+    });
+    assert.equal(computeFingerprint(recovery), computeFingerprint(failure));
+  });
+
   it('separates slow SQL incidents by sqlFingerprint in the same window', () => {
     const { store, engine } = setup();
     const first = engine.processEvent(

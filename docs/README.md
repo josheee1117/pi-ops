@@ -23,8 +23,9 @@ The current implementation source of truth is:
 19. `adr/ADR-0024-operational-knowledge-retrieval.md`
 20. `adr/ADR-0025-external-bounded-multi-agent-runtime.md`
 21. `adr/ADR-0026-typed-read-only-evidence-enrichment.md`
-22. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-23. `evolution/timeline.md`
+22. `adr/ADR-0027-durable-operational-notification-delivery.md`
+23. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
+24. `evolution/timeline.md`
 
 The architecture intentionally separates:
 

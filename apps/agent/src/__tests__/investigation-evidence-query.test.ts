@@ -195,4 +195,47 @@ describe('exact typed evidence execution', () => {
     assert.ok(audit.evidenceIds.length > 0);
     reopened.close();
   });
+
+  it('normalizes requestingRoles and rejects identity conflicts', async () => {
+    const store = createEventStore(':memory:');
+    store.insertBatch({ producer: { id: 'producer', type: 'application', version: '1' }, events: [makeEvent()] }, '2026-08-20T12:00:00.000Z');
+    const incident = store.createIncidentFromEvent(incidentData, makeEvent());
+    const fetchImpl: FetchLike = (async (_input, init) => {
+      const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
+      return new Response(JSON.stringify({
+        id: 'node-evd',
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: 'host',
+        kind: query.type,
+        collectedAt: '2026-08-20T12:00:02.000Z',
+        data: {},
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as FetchLike;
+    const loop = createInvestigationLoopService(store);
+    const { session } = loop.start(incident.id);
+    await loop.submit(session.id);
+    store.markDelegationTaskSubmitted(session.delegationTaskId, new Date().toISOString(), 'rtask-id');
+    const service = createInvestigationEvidenceService(store, makeConfig(), createEvidenceOrchestrator(makeConfig(), store, fetchImpl));
+    await service.handle({
+      schemaVersion: 1,
+      runtimeRequestId: session.runtimeRequestId,
+      runtimeTaskId: 'rtask-id',
+      sessionId: session.id,
+      requests: [{ requestId: 'same', type: 'host.memory', requestingRoles: ['container_host', 'jvm', 'jvm'] }],
+    });
+    const audit = store.getInvestigationEvidenceAudit('same');
+    assert.deepEqual(audit?.specialistRoles, ['jvm', 'container_host']);
+    await assert.rejects(
+      () => service.handle({
+        schemaVersion: 1,
+        runtimeRequestId: session.runtimeRequestId,
+        runtimeTaskId: 'rtask-id',
+        sessionId: session.id,
+        requests: [{ requestId: 'same', type: 'host.memory', requestingRoles: ['database'] }],
+      }),
+      /cannot change its recorded provenance/,
+    );
+    store.close();
+  });
 });

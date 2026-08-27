@@ -12,6 +12,16 @@ export const SPECIALIST_ROLES = [
 
 export type SpecialistRole = (typeof SPECIALIST_ROLES)[number];
 
+export function normalizeSpecialistRoles(roles: readonly string[]): SpecialistRole[] {
+  const unique = new Set<SpecialistRole>();
+  for (const role of roles) {
+    if ((SPECIALIST_ROLES as readonly string[]).includes(role)) {
+      unique.add(role as SpecialistRole);
+    }
+  }
+  return SPECIALIST_ROLES.filter((role) => unique.has(role));
+}
+
 export const MAX_SPECIALISTS_PER_INVESTIGATION = 3;
 
 export const RUNTIME_ALLOWED_EVIDENCE_TYPES = [
@@ -121,7 +131,7 @@ export const runtimeEvidenceRequestSchema = z.object({
 export const runtimeEvidenceItemSchema = z.object({
   requestId: z.string().min(1),
   type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
-  requestingRoles: z.array(z.enum(SPECIALIST_ROLES)).min(1).max(4).optional(),
+  requestingRoles: z.array(z.enum(SPECIALIST_ROLES)).min(1).max(4),
 });
 
 export const runtimeEvidenceRequestBatchSchema = z.object({

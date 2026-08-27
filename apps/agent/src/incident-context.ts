@@ -65,6 +65,8 @@ export function buildIncidentContext(
   const ordered = [...evidence].sort((left, right) => {
     const rank = evidenceRank(left) - evidenceRank(right);
     if (rank !== 0) return rank;
+    const collected = right.collectedAt.localeCompare(left.collectedAt);
+    if (collected !== 0) return collected;
     return left.id.localeCompare(right.id);
   });
 
