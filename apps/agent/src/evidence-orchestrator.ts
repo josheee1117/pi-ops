@@ -22,6 +22,11 @@ export interface EvidenceOrchestrator {
     triggeringEvent: OpsEvent,
     collectionId?: string,
   ): Promise<EvidenceCollectionSummary>;
+  collectQueriesForIncident(
+    incident: IncidentRow,
+    queries: EvidenceQueryRequest[],
+    collectionId?: string,
+  ): Promise<EvidenceCollectionSummary>;
 }
 
 export type FetchLike = typeof fetch;
@@ -444,6 +449,52 @@ export function createEvidenceOrchestrator(
       return {
         incidentId: incident.id,
         requested,
+        succeeded,
+        failed: retryableFailures + terminalFailures,
+        retryableFailures,
+        terminalFailures,
+      };
+    },
+
+    async collectQueriesForIncident(
+      incident: IncidentRow,
+      queries: EvidenceQueryRequest[],
+      collectionId?: string,
+    ): Promise<EvidenceCollectionSummary> {
+      const evidenceBaseId = collectionId ?? `incident-${incident.id}`;
+      const existingEvidence = new Map(
+        store.listEvidence(incident.id).map((item) => [item.id, item]),
+      );
+      const endpoint = config.nodeAgents.get(incident.node_id);
+      const settled = await Promise.allSettled(
+        queries.map((query) => {
+          const evidenceId = `${evidenceBaseId}-evidence-${query.type}`;
+          const existing = existingEvidence.get(evidenceId);
+          if (existing?.status === 'succeeded') return Promise.resolve('succeeded' as const);
+          if (existing?.failureClass === 'terminal') {
+            return Promise.resolve('terminal-failure' as const);
+          }
+          return collectOne(endpoint, incident, query, evidenceId);
+        }),
+      );
+      const results: CollectionOutcome[] = [];
+      let hasRejection = false;
+      let firstRejection: unknown;
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        } else if (!hasRejection) {
+          hasRejection = true;
+          firstRejection = result.reason;
+        }
+      }
+      if (hasRejection) throw firstRejection;
+      const succeeded = results.filter((result) => result === 'succeeded').length;
+      const retryableFailures = results.filter((result) => result === 'retryable-failure').length;
+      const terminalFailures = results.filter((result) => result === 'terminal-failure').length;
+      return {
+        incidentId: incident.id,
+        requested: queries.length,
         succeeded,
         failed: retryableFailures + terminalFailures,
         retryableFailures,

@@ -31,9 +31,11 @@ Pi-Ops governance (InvestigationReport → ReasoningResult)
 
 ### Investigation attempts
 
-`InvestigationSession` is the attempt boundary. One session owns exactly one ReasoningJob, InvestigationPlan, DelegationTask, runtimeRequestId, RuntimeTask, InvestigationReport, and ReasoningResult.
+`InvestigationSession` is the attempt boundary. One session owns exactly one ReasoningJob (`rj-inv-${sessionId}`), InvestigationPlan, DelegationTask, runtimeRequestId, RuntimeTask, InvestigationReport, and ReasoningResult.
 
-Open sessions with the same Incident + contextSnapshotHash are reused. COMPLETED or FAILED sessions do not block a new attempt. `runtimeRequestId` is `rreq-${sessionId}` so a new attempt is a new runtime identity even when the context hash matches.
+Open sessions with the same Incident + contextSnapshotHash are reused. COMPLETED or FAILED sessions do not block a new attempt. Starting attempt 2 does not mutate attempt 1 job status. `runtimeRequestId` is `rreq-${sessionId}`.
+
+`reasoning_jobs.incident_id` is not unique. `getReasoningResultByJobId` remains one-to-one because each attempt has its own job.
 
 ### Ownership
 
@@ -51,7 +53,7 @@ Execution and delivery are separate SQLite statuses. `DELIVERING` is uncertain: 
 
 ### Deadlines
 
-HTTP submit timeout, model execution timeout, and callback timeout are separate. Execution uses an orchestration `withDeadline` Promise race plus AbortController. A late model result cannot overwrite an already-failed RuntimeTask.
+HTTP submit timeout, model execution timeout, and callback timeout are separate. Execution uses an orchestration `withDeadline` Promise race plus AbortController. A late model result cannot overwrite an already-failed RuntimeTask. Evidence enrichment shares that same deadline.
 
 ### Knowledge vs Evidence
 
@@ -63,7 +65,7 @@ Coordinator and specialists depend on an injected `RuntimeModel`. CI uses a dete
 
 Benefits:
 
-- the same Incident can be re-investigated after completion or failure
+- the same Incident can be re-investigated after completion or failure without rewriting the previous attempt
 - completed reports survive callback crashes
 - non-cooperative models cannot hang the runtime
 

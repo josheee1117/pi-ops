@@ -119,6 +119,7 @@ export const runtimeEvidenceRequestSchema = z.object({
 export const runtimeEvidenceItemSchema = z.object({
   requestId: z.string().min(1),
   type: z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES),
+  requestingRoles: z.array(z.enum(SPECIALIST_ROLES)).min(1).max(4).optional(),
 });
 
 export const runtimeEvidenceRequestBatchSchema = z.object({
@@ -201,6 +202,13 @@ export function validateRuntimeInvestigationContext(
 
 export function validateSpecialistFinding(data: unknown): ValidationOutcome<SpecialistFinding> {
   return validate(specialistFindingSchema, data);
+}
+
+
+export function validateRuntimeEvidenceResponse(
+  data: unknown,
+): ValidationOutcome<RuntimeEvidenceResponse> {
+  return validate(runtimeEvidenceResponseSchema, data);
 }
 
 export function validateRuntimeEvidenceRequestBatch(

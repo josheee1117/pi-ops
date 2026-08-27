@@ -12,20 +12,9 @@ import type {
 import {
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
+  type EvidenceQueryRequest,
+  type OpsEvent,
 } from '@pi-ops/protocol';
-import type { OpsEvent } from '@pi-ops/protocol';
-
-export interface InvestigationEvidenceAudit {
-  requestId: string;
-  investigationSessionId: string;
-  runtimeRequestId: string;
-  evidenceType: string;
-  status: RuntimeEvidenceResult['status'];
-  evidenceIds: string[];
-  createdAt: string;
-  completedAt?: string;
-  error?: string;
-}
 
 export function createInvestigationEvidenceService(
   store: EventStore,
@@ -34,10 +23,8 @@ export function createInvestigationEvidenceService(
   options: { now?: () => string } = {},
 ) {
   const now = options.now ?? (() => new Date().toISOString());
-  const audits = new Map<string, InvestigationEvidenceAudit>();
 
   return {
-    audits,
     async handle(batch: RuntimeEvidenceRequestBatch): Promise<RuntimeEvidenceResponse> {
       const session = store.getInvestigationSession(batch.sessionId);
       if (!session) throw new Error(`InvestigationSession ${batch.sessionId} does not exist`);
@@ -56,27 +43,37 @@ export function createInvestigationEvidenceService(
       const results: RuntimeEvidenceResult[] = [];
       for (const item of batch.requests) {
         const createdAt = now();
+        const roles = item.requestingRoles ?? [];
+        const persist = (status: RuntimeEvidenceResult['status'], evidenceIds: string[], error?: string) => {
+          store.insertInvestigationEvidenceAudit({
+            requestId: item.requestId,
+            investigationSessionId: session.id,
+            runtimeRequestId: batch.runtimeRequestId,
+            runtimeTaskId: batch.runtimeTaskId,
+            specialistRoles: roles,
+            evidenceType: item.type,
+            status,
+            evidenceIds,
+            createdAt,
+            completedAt: now(),
+            error,
+          });
+        };
         if ((RUNTIME_FORBIDDEN_CAPABILITIES as readonly string[]).includes(item.type)) {
+          persist('rejected', [], 'forbidden capability');
           results.push({ requestId: item.requestId, type: item.type, status: 'rejected', error: 'forbidden capability' });
           continue;
         }
         if (!(RUNTIME_ALLOWED_EVIDENCE_TYPES as readonly string[]).includes(item.type)) {
+          persist('rejected', [], 'evidence type is not allowlisted');
           results.push({ requestId: item.requestId, type: item.type, status: 'rejected', error: 'evidence type is not allowlisted' });
           continue;
         }
-        const existing = store.listEvidence(incident.id).find((row) => row.kind === item.type && row.status === 'succeeded');
-        if (existing) {
-          const audit: InvestigationEvidenceAudit = {
-            requestId: item.requestId,
-            investigationSessionId: session.id,
-            runtimeRequestId: batch.runtimeRequestId,
-            evidenceType: item.type,
-            status: 'collected',
-            evidenceIds: [existing.id],
-            createdAt,
-            completedAt: now(),
-          };
-          audits.set(item.requestId, audit);
+        const evidenceId = `inv-${session.id}-evidence-${item.type}`;
+        const existing = store.getEvidence(evidenceId)
+          ?? store.listEvidence(incident.id).find((row) => row.kind === item.type && row.status === 'succeeded');
+        if (existing?.status === 'succeeded') {
+          persist('collected', [existing.id]);
           results.push({
             requestId: item.requestId,
             type: item.type,
@@ -91,6 +88,7 @@ export function createInvestigationEvidenceService(
         const query = planned.find((entry) => entry.type === item.type)
           ?? hostQuery(incident.id, item.type);
         if (!query) {
+          persist('rejected', [], 'Pi-Ops could not resolve a permitted target');
           results.push({
             requestId: item.requestId,
             type: item.type,
@@ -99,10 +97,10 @@ export function createInvestigationEvidenceService(
           });
           continue;
         }
-        const evidenceId = `inv-${session.id}-evidence-${item.type}`;
         try {
-          await orchestrator.collectForIncident(incident, triggering, `inv-${session.id}`);
+          await orchestrator.collectQueriesForIncident(incident, [query], `inv-${session.id}`);
         } catch {
+          persist('unavailable', [], 'evidence collection failed');
           results.push({
             requestId: item.requestId,
             type: item.type,
@@ -111,10 +109,9 @@ export function createInvestigationEvidenceService(
           });
           continue;
         }
-        const collected = store.listEvidence(incident.id).find((row) => (
-          (row.id === evidenceId || row.kind === item.type) && row.status === 'succeeded'
-        ));
-        if (!collected) {
+        const collected = store.getEvidence(evidenceId);
+        if (!collected || collected.status !== 'succeeded') {
+          persist('unavailable', [], 'evidence unavailable');
           results.push({
             requestId: item.requestId,
             type: item.type,
@@ -123,16 +120,7 @@ export function createInvestigationEvidenceService(
           });
           continue;
         }
-        audits.set(item.requestId, {
-          requestId: item.requestId,
-          investigationSessionId: session.id,
-          runtimeRequestId: batch.runtimeRequestId,
-          evidenceType: item.type,
-          status: 'collected',
-          evidenceIds: [collected.id],
-          createdAt,
-          completedAt: now(),
-        });
+        persist('collected', [collected.id]);
         results.push({
           requestId: item.requestId,
           type: item.type,
@@ -150,9 +138,9 @@ export function createInvestigationEvidenceService(
   };
 }
 
-function hostQuery(incidentId: string, type: string) {
+function hostQuery(incidentId: string, type: string): EvidenceQueryRequest | undefined {
   if (type === 'host.memory' || type === 'host.load') {
-    return { type, incidentId } as const;
+    return { type, incidentId };
   }
   return undefined;
 }

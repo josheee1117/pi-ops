@@ -232,6 +232,7 @@ export {
   validateRuntimeInvestigationContext,
   validateSpecialistFinding,
   validateRuntimeEvidenceRequestBatch,
+  validateRuntimeEvidenceResponse,
 } from './investigation-runtime.js';
 export type {
   SpecialistRole,

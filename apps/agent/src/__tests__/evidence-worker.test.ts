@@ -100,6 +100,16 @@ describe('durable evidence jobs', () => {
           terminalFailures: 0,
         };
       },
+      async collectQueriesForIncident(incident) {
+        return {
+          incidentId: incident.id,
+          requested: 0,
+          succeeded: 0,
+          failed: 0,
+          retryableFailures: 0,
+          terminalFailures: 0,
+        };
+      },
     };
     const worker = createEvidenceJobWorker(makeConfig(), store, orchestrator);
     await worker.runOnce();
@@ -379,6 +389,16 @@ describe('durable evidence jobs', () => {
     const orchestrator: EvidenceOrchestrator = {
       async collectForIncident(incident) {
         calls++;
+        return {
+          incidentId: incident.id,
+          requested: 0,
+          succeeded: 0,
+          failed: 0,
+          retryableFailures: 0,
+          terminalFailures: 0,
+        };
+      },
+      async collectQueriesForIncident(incident) {
         return {
           incidentId: incident.id,
           requested: 0,

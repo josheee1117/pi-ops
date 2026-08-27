@@ -221,7 +221,7 @@ describe('bounded multi-agent coordinator', () => {
             schemaVersion: 1,
             runtimeRequestId: 'rreq-1',
             results: [{
-              requestId: 'ereq-1',
+              requestId: 'ereq-isess-1-host.memory',
               type: 'host.memory',
               status: 'collected',
               evidenceId: 'evd-mem',
@@ -251,6 +251,89 @@ describe('bounded multi-agent coordinator', () => {
       evidenceClient: {
         async request() {
           throw new Error('node agent down');
+        },
+      },
+    });
+    assert.equal(outcome.status, 'completed');
+    assert.deepEqual(outcome.report?.supportingEvidenceIds, ['evd-now']);
+  });
+
+  it('collects host.memory once and reruns both requesting specialists', async () => {
+    const ctx = context({
+      incident: { id: 'inc-1', type: 'jvm.gc_pressure', service: 'data-asset-service' },
+      evidence: [{ id: 'evd-now', kind: 'docker.stats' }],
+    });
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        jvm: validFinding('jvm', ['evd-now'], ['host.memory']),
+        container_host: validFinding('container_host', ['evd-now'], ['host.memory']),
+      },
+    });
+    let collections = 0;
+    const rerun: string[] = [];
+    const original = model.invoke.bind(model);
+    model.invoke = async (request) => {
+      if (request.user.includes('evd-mem')) {
+        if (request.system.includes('SPECIALIST_ROLE=jvm')) rerun.push('jvm');
+        if (request.system.includes('SPECIALIST_ROLE=container_host')) rerun.push('container_host');
+        const role = request.system.includes('SPECIALIST_ROLE=jvm') ? 'jvm' : 'container_host';
+        return { text: validFinding(role, ['evd-now', 'evd-mem']), provider: 'fake', model: 'deterministic' };
+      }
+      return original(request);
+    };
+    const outcome = await investigate(ctx, {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request(input) {
+          collections += 1;
+          assert.equal(input.requests.length, 1);
+          assert.deepEqual(new Set(input.requests[0]?.requestingRoles), new Set(['jvm', 'container_host']));
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-1',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidenceId: 'evd-mem',
+              evidence: { id: 'evd-mem', kind: 'host.memory', incidentId: 'inc-1' },
+            }],
+          };
+        },
+      },
+    });
+    assert.equal(outcome.status, 'completed');
+    assert.equal(collections, 1);
+    assert.deepEqual(new Set(rerun), new Set(['jvm', 'container_host']));
+  });
+
+  it('rejects malformed and foreign evidence responses', async () => {
+    const model = createFakeRuntimeModel({
+      specialistText: {
+        database: validFinding('database', ['evd-now'], ['host.memory']),
+        application_business: validFinding('application_business', ['evd-now']),
+      },
+    });
+    const outcome = await investigate(context(), {
+      model,
+      runtimeRequestId: 'rreq-1',
+      runtimeTaskId: 'rtask-1',
+      sessionId: 'isess-1',
+      evidenceClient: {
+        async request() {
+          return {
+            schemaVersion: 1,
+            runtimeRequestId: 'rreq-other',
+            results: [{
+              requestId: 'ereq-isess-1-host.memory',
+              type: 'host.memory',
+              status: 'collected',
+              evidence: { id: 'evd-foreign', kind: 'docker.stats', incidentId: 'inc-other' },
+            }],
+          };
         },
       },
     });

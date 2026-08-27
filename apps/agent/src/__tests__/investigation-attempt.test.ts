@@ -53,6 +53,9 @@ describe('investigation attempt lifecycle', () => {
     const first = loop.start(incident.id);
     await loop.submit(first.session.id);
     loop.complete(first.session.id, report);
+    const firstPlan = store.getInvestigationPlan(store.getDelegationTask(first.session.delegationTaskId)!.investigationPlanId)!;
+    const firstJob = store.getReasoningJob(firstPlan.reasoningJobId)!;
+    assert.equal(firstJob.status, 'COMPLETED');
     const second = loop.start(incident.id);
     assert.notEqual(second.session.id, first.session.id);
     assert.notEqual(second.session.runtimeRequestId, first.session.runtimeRequestId);
@@ -60,13 +63,16 @@ describe('investigation attempt lifecycle', () => {
     const firstTask = store.getDelegationTask(first.session.delegationTaskId)!;
     const secondTask = store.getDelegationTask(second.session.delegationTaskId)!;
     assert.notEqual(firstTask.investigationPlanId, secondTask.investigationPlanId);
+    const secondPlan = store.getInvestigationPlan(secondTask.investigationPlanId)!;
+    assert.notEqual(secondPlan.reasoningJobId, firstPlan.reasoningJobId);
+    assert.equal(store.getReasoningJob(firstPlan.reasoningJobId)?.status, 'COMPLETED');
     await loop.submit(second.session.id);
     loop.complete(second.session.id, report);
-    const firstReport = store.getInvestigationReportBySessionId(first.session.id);
-    const secondReport = store.getInvestigationReportBySessionId(second.session.id);
-    assert.ok(firstReport);
-    assert.ok(secondReport);
-    assert.notEqual(firstReport.id, secondReport.id);
+    const result1 = store.getReasoningResultByJobId(firstPlan.reasoningJobId);
+    const result2 = store.getReasoningResultByJobId(secondPlan.reasoningJobId);
+    assert.ok(result1);
+    assert.ok(result2);
+    assert.notEqual(result1.id, result2.id);
     store.close();
   });
 
@@ -76,8 +82,11 @@ describe('investigation attempt lifecycle', () => {
     const first = loop.start(incident.id);
     await loop.submit(first.session.id);
     loop.fail(first.session.id, 'runtime failed');
+    const firstPlan = store.getInvestigationPlan(store.getDelegationTask(first.session.delegationTaskId)!.investigationPlanId)!;
+    const firstStatus = store.getReasoningJob(firstPlan.reasoningJobId)?.status;
     const second = loop.start(incident.id);
     assert.notEqual(second.session.id, first.session.id);
+    assert.equal(store.getReasoningJob(firstPlan.reasoningJobId)?.status, firstStatus);
     await loop.submit(second.session.id);
     const reportRow = loop.complete(second.session.id, report);
     assert.equal(reportRow.sessionId, second.session.id);

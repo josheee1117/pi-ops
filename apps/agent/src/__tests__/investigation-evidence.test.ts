@@ -77,6 +77,9 @@ describe('typed investigation evidence requests', () => {
       async collectForIncident() {
         return { incidentId: incident.id, requested: 0, succeeded: 0, failed: 0, retryableFailures: 0, terminalFailures: 0 };
       },
+      async collectQueriesForIncident() {
+        return { incidentId: incident.id, requested: 0, succeeded: 0, failed: 0, retryableFailures: 0, terminalFailures: 0 };
+      },
     };
     const evidence = createInvestigationEvidenceService(store, CONFIG, orchestrator);
     const engine = createIncidentEngine(store, { aggregationWindowMs: CONFIG.aggregationWindowMs });

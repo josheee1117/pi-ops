@@ -2,6 +2,13 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 10.2 completed
+
+- InvestigationSession owns one ReasoningJob per attempt; incident_id on reasoning_jobs is no longer unique
+- typed missingEvidence executes the resolved query exactly via collectQueriesForIncident
+- InvestigationEvidenceAudit is durable; requestingRoles survive one collection / multiple specialist reruns
+- DELIVERING callbacks retry after crash; hard execution deadline is orchestration-level
+
 ## Phase 10 completed
 
 - External `apps/pi-runtime` runs a bounded coordinator and allowlisted specialists

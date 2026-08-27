@@ -4,6 +4,7 @@ import {
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   MAX_EVIDENCE_TYPES_PER_SPECIALIST,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
+  validateRuntimeEvidenceResponse,
   type RuntimeInvestigationReportInput,
   type RuntimeInvestigationContext,
   type SpecialistFinding,
@@ -189,8 +190,7 @@ async function enrichOnce(
   if (!options.evidenceClient || MAX_EVIDENCE_ENRICHMENT_ROUNDS < 1) return context;
   if (!options.runtimeRequestId || !options.runtimeTaskId || !options.sessionId) return context;
   const existingKinds = new Set(context.evidence.map((item) => item.kind));
-  const requests: Array<{ requestId: string; type: typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number]; role: SpecialistRole }> = [];
-  const seen = new Set<string>();
+  const byType = new Map<typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number], Set<SpecialistRole>>();
   for (const role of selected) {
     const finding = findingsByRole.get(role);
     if (!finding) continue;
@@ -198,44 +198,57 @@ async function enrichOnce(
     for (const type of finding.missingEvidence) {
       if (!(RUNTIME_ALLOWED_EVIDENCE_TYPES as readonly string[]).includes(type)) continue;
       if (existingKinds.has(type)) continue;
-      if (seen.has(type)) continue;
-      if (taken >= MAX_EVIDENCE_TYPES_PER_SPECIALIST) break;
-      if (requests.length >= MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION) break;
-      seen.add(type);
+      const key = type as typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number];
+      const roles = byType.get(key) ?? new Set<SpecialistRole>();
+      if (roles.has(role)) continue;
+      if (taken >= MAX_EVIDENCE_TYPES_PER_SPECIALIST) continue;
+      if (!byType.has(key) && byType.size >= MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION) continue;
       taken += 1;
-      requests.push({
-        requestId: `ereq-${options.sessionId}-${type}`,
-        type,
-        role,
-      });
+      roles.add(role);
+      byType.set(key, roles);
     }
   }
+  const requests = [...byType.entries()].map(([type, roles]) => ({
+    requestId: `ereq-${options.sessionId}-${type}`,
+    type,
+    requestingRoles: [...roles],
+  }));
   if (requests.length === 0) return context;
+  let raw: unknown;
   try {
-    const response = await options.evidenceClient.request({
+    raw = await options.evidenceClient.request({
       runtimeRequestId: options.runtimeRequestId,
       runtimeTaskId: options.runtimeTaskId,
       sessionId: options.sessionId,
-      requests: requests.map(({ requestId, type }) => ({ requestId, type })),
+      requests,
     });
-    const collected = response.results.filter((item) => item.status === 'collected' && item.evidence);
-    if (collected.length === 0) return context;
-    const extra = collected.map((item) => {
-      const evidence = item.evidence as { id: string; kind: string };
-      return evidence;
-    });
-    const enriched: RuntimeInvestigationContext = {
-      ...context,
-      evidence: [...context.evidence, ...extra],
-    };
-    const rerunRoles = [...new Set(requests
-      .filter((item) => collected.some((result) => result.type === item.type))
-      .map((item) => item.role))];
-    await runRound(rerunRoles, enriched, model, options, signal, specialistStatus, findingsByRole, usage);
-    return enriched;
   } catch {
     return context;
   }
+  const parsed = validateRuntimeEvidenceResponse(raw);
+  if (!parsed.success) return context;
+  if (parsed.value.runtimeRequestId !== options.runtimeRequestId) return context;
+  const allowedIds = new Set(requests.map((item) => item.requestId));
+  const collected: Array<{ type: typeof RUNTIME_ALLOWED_EVIDENCE_TYPES[number]; evidence: { id: string; kind: string } }> = [];
+  for (const item of parsed.value.results) {
+    if (!allowedIds.has(item.requestId)) continue;
+    if (item.status !== 'collected' || item.evidence === undefined) continue;
+    const evidence = item.evidence as { id?: unknown; kind?: unknown; incidentId?: unknown };
+    if (typeof evidence.id !== 'string' || typeof evidence.kind !== 'string') continue;
+    if (evidence.kind !== item.type) continue;
+    if (typeof evidence.incidentId === 'string' && evidence.incidentId !== context.incident.id) continue;
+    collected.push({ type: item.type, evidence: { id: evidence.id, kind: evidence.kind } });
+  }
+  if (collected.length === 0) return context;
+  const enriched: RuntimeInvestigationContext = {
+    ...context,
+    evidence: [...context.evidence, ...collected.map((item) => item.evidence)],
+  };
+  const rerunRoles = [...new Set(requests
+    .filter((item) => collected.some((result) => result.type === item.type))
+    .flatMap((item) => item.requestingRoles))];
+  await runRound(rerunRoles, enriched, model, options, signal, specialistStatus, findingsByRole, usage);
+  return enriched;
 }
 
 function synthesizeDeterministic(

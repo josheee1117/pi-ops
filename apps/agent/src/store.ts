@@ -259,7 +259,7 @@ CREATE INDEX IF NOT EXISTS idx_reasoning_results_incident
 const CREATE_REASONING_JOBS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS reasoning_jobs (
   id TEXT PRIMARY KEY,
-  incident_id TEXT NOT NULL UNIQUE,
+  incident_id TEXT NOT NULL,
   reasoner_type TEXT NOT NULL,
   reasoner_version TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -269,6 +269,7 @@ CREATE TABLE IF NOT EXISTS reasoning_jobs (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_jobs_status ON reasoning_jobs (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_reasoning_jobs_incident ON reasoning_jobs (incident_id, created_at, id);
 `;
 
 const CREATE_REASONING_EVALUATIONS_TABLE_SQL = `
@@ -383,6 +384,27 @@ CREATE TABLE IF NOT EXISTS investigation_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_investigation_sessions_incident
   ON investigation_sessions (incident_id, created_at, id);
+`;
+
+
+const CREATE_INVESTIGATION_EVIDENCE_AUDITS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS investigation_evidence_audits (
+  request_id TEXT PRIMARY KEY,
+  investigation_session_id TEXT NOT NULL,
+  runtime_request_id TEXT NOT NULL,
+  runtime_task_id TEXT NOT NULL,
+  specialist_roles_json TEXT NOT NULL,
+  evidence_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  evidence_ids_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_investigation_evidence_audits_session
+  ON investigation_evidence_audits (investigation_session_id, created_at, request_id);
+CREATE INDEX IF NOT EXISTS idx_investigation_evidence_audits_runtime
+  ON investigation_evidence_audits (runtime_request_id, created_at, request_id);
 `;
 
 const CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL = `
@@ -933,6 +955,46 @@ export interface EventStore {
     createdAt: string;
   } | undefined;
 
+  insertInvestigationEvidenceAudit(audit: {
+    requestId: string;
+    investigationSessionId: string;
+    runtimeRequestId: string;
+    runtimeTaskId: string;
+    specialistRoles: string[];
+    evidenceType: string;
+    status: string;
+    evidenceIds: string[];
+    createdAt: string;
+    completedAt?: string;
+    error?: string;
+  }): void;
+  getInvestigationEvidenceAudit(requestId: string): {
+    requestId: string;
+    investigationSessionId: string;
+    runtimeRequestId: string;
+    runtimeTaskId: string;
+    specialistRoles: string[];
+    evidenceType: string;
+    status: string;
+    evidenceIds: string[];
+    createdAt: string;
+    completedAt?: string;
+    error?: string;
+  } | undefined;
+  listInvestigationEvidenceAudits(sessionId: string): Array<{
+    requestId: string;
+    investigationSessionId: string;
+    runtimeRequestId: string;
+    runtimeTaskId: string;
+    specialistRoles: string[];
+    evidenceType: string;
+    status: string;
+    evidenceIds: string[];
+    createdAt: string;
+    completedAt?: string;
+    error?: string;
+  }>;
+
   /** Close the database connection. */
   close(): void;
 }
@@ -1296,6 +1358,64 @@ function parseReasoningMetadata(raw: string | null): Partial<ReasoningResult> {
   }
 }
 
+
+function mapEvidenceAuditRow(row: {
+  request_id: string;
+  investigation_session_id: string;
+  runtime_request_id: string;
+  runtime_task_id: string;
+  specialist_roles_json: string;
+  evidence_type: string;
+  status: string;
+  evidence_ids_json: string;
+  created_at: string;
+  completed_at: string | null;
+  error: string | null;
+}) {
+  return {
+    requestId: row.request_id,
+    investigationSessionId: row.investigation_session_id,
+    runtimeRequestId: row.runtime_request_id,
+    runtimeTaskId: row.runtime_task_id,
+    specialistRoles: JSON.parse(row.specialist_roles_json) as string[],
+    evidenceType: row.evidence_type,
+    status: row.status,
+    evidenceIds: JSON.parse(row.evidence_ids_json) as string[],
+    createdAt: row.created_at,
+    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+    ...(row.error ? { error: row.error } : {}),
+  };
+}
+
+function rebuildReasoningJobsIncidentIndex(db: { exec(sql: string): unknown; prepare(sql: string): { get(...args: unknown[]): unknown } }): void {
+  const table = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reasoning_jobs'",
+  ).get() as { sql: string } | undefined;
+  if (!table?.sql.includes('incident_id TEXT NOT NULL UNIQUE')) return;
+  db.exec(`
+    CREATE TABLE reasoning_jobs_attempt (
+      id TEXT PRIMARY KEY,
+      incident_id TEXT NOT NULL,
+      reasoner_type TEXT NOT NULL,
+      reasoner_version TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO reasoning_jobs_attempt (
+      id, incident_id, reasoner_type, reasoner_version, status, attempts, last_error, created_at, updated_at
+    )
+    SELECT id, incident_id, reasoner_type, reasoner_version, status, attempts, last_error, created_at, updated_at
+    FROM reasoning_jobs;
+    DROP TABLE reasoning_jobs;
+    ALTER TABLE reasoning_jobs_attempt RENAME TO reasoning_jobs;
+    CREATE INDEX IF NOT EXISTS idx_reasoning_jobs_status ON reasoning_jobs (status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_reasoning_jobs_incident ON reasoning_jobs (incident_id, created_at, id);
+  `);
+}
+
 export function createEventStore(dbPath: string): EventStore {
   const db = new Database(dbPath);
 
@@ -1430,6 +1550,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_EVIDENCE_JOBS_TABLE_SQL);
     db.exec(CREATE_REASONING_RESULTS_TABLE_SQL);
     db.exec(CREATE_REASONING_JOBS_TABLE_SQL);
+    rebuildReasoningJobsIncidentIndex(db);
     db.exec(CREATE_REASONING_EVALUATIONS_TABLE_SQL);
     const evaluationColumns = new Set(
       (db.pragma('table_info(reasoning_evaluations)') as Array<{ name: string }>).map(({ name }) => name),
@@ -1449,6 +1570,7 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_SESSIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_REPORTS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL);
+    db.exec(CREATE_INVESTIGATION_EVIDENCE_AUDITS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RELATIONS_TABLE_SQL);
@@ -1801,6 +1923,22 @@ INSERT OR REPLACE INTO investigation_runtime_audits (
   const getInvestigationRuntimeAuditStmt = db.prepare(
     'SELECT * FROM investigation_runtime_audits WHERE runtime_request_id = ?',
   );
+  const insertInvestigationEvidenceAuditStmt = db.prepare(`
+INSERT OR REPLACE INTO investigation_evidence_audits (
+  request_id, investigation_session_id, runtime_request_id, runtime_task_id,
+  specialist_roles_json, evidence_type, status, evidence_ids_json, created_at, completed_at, error
+) VALUES (
+  @request_id, @investigation_session_id, @runtime_request_id, @runtime_task_id,
+  @specialist_roles_json, @evidence_type, @status, @evidence_ids_json, @created_at, @completed_at, @error
+);
+`);
+  const getInvestigationEvidenceAuditStmt = db.prepare(
+    'SELECT * FROM investigation_evidence_audits WHERE request_id = ?',
+  );
+  const listInvestigationEvidenceAuditsStmt = db.prepare(
+    'SELECT * FROM investigation_evidence_audits WHERE investigation_session_id = ? ORDER BY created_at, request_id',
+  );
+
   const insertEvidenceProfileStmt = db.prepare(`
 INSERT INTO evidence_profiles (evidence_id, category, reliability_score, diagnostic_weight)
 VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
@@ -2864,6 +3002,69 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         metadata: JSON.parse(row.metadata_json) as InvestigationRuntimeMetadata,
         createdAt: row.created_at,
       };
+    },
+
+
+    insertInvestigationEvidenceAudit(audit: {
+      requestId: string;
+      investigationSessionId: string;
+      runtimeRequestId: string;
+      runtimeTaskId: string;
+      specialistRoles: string[];
+      evidenceType: string;
+      status: string;
+      evidenceIds: string[];
+      createdAt: string;
+      completedAt?: string;
+      error?: string;
+    }): void {
+      insertInvestigationEvidenceAuditStmt.run({
+        request_id: audit.requestId,
+        investigation_session_id: audit.investigationSessionId,
+        runtime_request_id: audit.runtimeRequestId,
+        runtime_task_id: audit.runtimeTaskId,
+        specialist_roles_json: JSON.stringify(audit.specialistRoles),
+        evidence_type: audit.evidenceType,
+        status: audit.status,
+        evidence_ids_json: JSON.stringify(audit.evidenceIds),
+        created_at: audit.createdAt,
+        completed_at: audit.completedAt ?? null,
+        error: audit.error ?? null,
+      });
+    },
+
+    getInvestigationEvidenceAudit(requestId: string) {
+      const row = getInvestigationEvidenceAuditStmt.get(requestId) as {
+        request_id: string;
+        investigation_session_id: string;
+        runtime_request_id: string;
+        runtime_task_id: string;
+        specialist_roles_json: string;
+        evidence_type: string;
+        status: string;
+        evidence_ids_json: string;
+        created_at: string;
+        completed_at: string | null;
+        error: string | null;
+      } | undefined;
+      if (!row) return undefined;
+      return mapEvidenceAuditRow(row);
+    },
+
+    listInvestigationEvidenceAudits(sessionId: string) {
+      return (listInvestigationEvidenceAuditsStmt.all(sessionId) as Array<{
+        request_id: string;
+        investigation_session_id: string;
+        runtime_request_id: string;
+        runtime_task_id: string;
+        specialist_roles_json: string;
+        evidence_type: string;
+        status: string;
+        evidence_ids_json: string;
+        created_at: string;
+        completed_at: string | null;
+        error: string | null;
+      }>).map(mapEvidenceAuditRow);
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────

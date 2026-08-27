@@ -17,10 +17,11 @@ Specialist missingEvidence (capability class)
   → Coordinator (bounded: 1 round, ≤2 types/specialist, ≤4 total)
   → Pi Runtime Evidence Client
   → Pi-Ops /v1/investigation-evidence (runtime token)
-  → existing Evidence orchestration
+  → resolve trusted EvidenceQueryRequest
+  → EvidenceOrchestrator.collectQueriesForIncident(exact queries)
   → Node Agent
   → new Evidence
-  → rerun only requesting specialists
+  → rerun every specialist that requested that type
 ```
 
 Pi Runtime decides WHAT evidence capability is missing.
@@ -31,6 +32,12 @@ Node Agent performs deterministic collection.
 
 The model never selects arbitrary execution targets.
 
+The resolved query is executed exactly. Pi-Ops does not replan the default Incident evidence set.
+
+One collection may satisfy multiple specialists. The request records `requestingRoles`. InvestigationEvidenceAudit is durable SQLite provenance and does not rewrite Evidence rows.
+
+Malformed RuntimeEvidenceResponse, mismatched runtimeRequestId, wrong Evidence kind, or foreign Incident ids are rejected and not merged.
+
 Pi Runtime never contacts Node Agent, Docker, or the host. `noTools: 'all'` remains. Failed enrichment is non-fatal when existing Evidence can still support a report.
 
 ## Consequences
@@ -38,7 +45,8 @@ Pi Runtime never contacts Node Agent, Docker, or the host. `noTools: 'all'` rema
 Benefits:
 
 - specialists can ask for host.memory / docker.stats without becoming operators
-- collection stays on the existing EvidenceJob / Node Agent path
+- collection stays on the existing Node Agent path
+- requester provenance survives process restart
 
 Costs:
 

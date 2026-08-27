@@ -255,17 +255,14 @@ function createAttemptGraph(
   runtimeRequestId: string,
   createdAt: string,
 ): string {
-  const existing = store.getReasoningJob(`rj-${incident.id}`) ?? store.getReasoningJob(`rj-inv-${incident.id}`);
-  const jobId = existing?.id ?? `rj-inv-${incident.id}`;
-  if (!existing) {
-    store.createReasoningJob({
-      id: jobId,
-      incidentId: incident.id,
-      reasonerType: 'delegated_analysis',
-      reasonerVersion: '1',
-      createdAt,
-    });
-  }
+  const jobId = `rj-inv-${sessionId}`;
+  store.createReasoningJob({
+    id: jobId,
+    incidentId: incident.id,
+    reasonerType: 'delegated_analysis',
+    reasonerVersion: '1',
+    createdAt,
+  });
   const planned = buildInvestigationPlan(jobId, incident, 'delegated_analysis', createdAt);
   const plan = { ...planned, id: `iplan-${sessionId}` };
   store.insertInvestigationPlan(plan);

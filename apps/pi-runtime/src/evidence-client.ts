@@ -2,6 +2,7 @@ import {
   INVESTIGATION_RUNTIME_SCHEMA_VERSION,
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   validateRuntimeEvidenceRequestBatch,
+  validateRuntimeEvidenceResponse,
   type RuntimeEvidenceResponse,
   type SpecialistRole,
 } from '@pi-ops/protocol';
@@ -11,8 +12,11 @@ export interface RuntimeEvidenceClient {
     runtimeRequestId: string;
     runtimeTaskId: string;
     sessionId: string;
-    requests: Array<{ requestId: string; type: RuntimeEvidenceResponse['results'][number]['type'] }>;
-    specialistRole?: SpecialistRole;
+    requests: Array<{
+      requestId: string;
+      type: RuntimeEvidenceResponse['results'][number]['type'];
+      requestingRoles?: SpecialistRole[];
+    }>;
   }): Promise<RuntimeEvidenceResponse>;
 }
 
@@ -48,7 +52,10 @@ export function createHttpRuntimeEvidenceClient(options: {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error(`evidence request ${response.status}`);
-        return await response.json() as RuntimeEvidenceResponse;
+        const body: unknown = await response.json();
+        const validated = validateRuntimeEvidenceResponse(body);
+        if (!validated.success) throw new Error(validated.message);
+        return validated.value;
       } finally {
         clearTimeout(timer);
       }
