@@ -6,9 +6,10 @@ Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a l
 
 - Node Agent owns HTTP target observation; Pi-Ops transport failure stays retryable
 - ingest / operator / runtime tokens are distinct and fail closed
-- external Pi Runtime is the only reasoning plane when `PI_OPS_PI_RUNTIME_URL` is set
-- completed Evidence without an InvestigationSession is reconciled from SQLite
-- default `pnpm smoke:local` uses only `pi-ops-drill`
+- external Pi Runtime is all-or-none (URL+token+callback) and the only reasoning plane when enabled
+- one EvidenceJob generation maps to at most one successful Investigation; dynamic Evidence does not start another generation
+- SUBMITTED/RUNNING sessions time out and retry within a bounded budget
+- default `pnpm smoke:local` uses only `pi-ops-drill` and a clean SQLite directory
 
 ## Phase 12 本机工作与验收记录
 

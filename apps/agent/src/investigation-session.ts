@@ -14,6 +14,7 @@ export interface InvestigationSession {
   contextSnapshotHash: string;
   delegationTaskId: string;
   runtimeRequestId: string;
+  evidenceGeneration: number;
   status: InvestigationSessionStatus;
   createdAt: string;
   submittedAt?: string;

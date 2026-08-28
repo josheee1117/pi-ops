@@ -25,6 +25,11 @@ wait_http() {
   return 1
 }
 
+echo "== clean smoke sqlite =="
+"${COMPOSE[@]}" down >/dev/null 2>&1 || true
+rm -rf "$ROOT/deploy/local/data/pi-ops" "$ROOT/deploy/local/data/pi-runtime"
+mkdir -p "$ROOT/deploy/local/data/pi-ops" "$ROOT/deploy/local/data/pi-runtime"
+
 echo "== build + start =="
 "${COMPOSE[@]}" up -d --build
 
@@ -68,6 +73,21 @@ for _ in $(seq 1 40); do
 done
 echo "session $session_status"
 [[ "$session_status" == "COMPLETED" ]] || { echo "$detail"; exit 1; }
+
+echo "== reconciliation stability =="
+sleep 3
+detail=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
+DETAIL="$detail" python3 - <<'PY'
+import json, os
+data = json.loads(os.environ["DETAIL"])
+sessions = data.get("sessions") or []
+completed = [s for s in sessions if s.get("status") == "COMPLETED"]
+assert len(sessions) == 1, sessions
+assert len(completed) == 1, sessions
+notes = [n for n in data.get("notifications") or [] if n.get("type") == "INVESTIGATION_COMPLETED"]
+assert len(notes) == 1, notes
+print("exactly one completed investigation session")
+PY
 
 echo "== evidence + model-safe =="
 safe=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id/evidence?view=safe")

@@ -24,7 +24,7 @@ const incidentEngine = createIncidentEngine(store, {
   aggregationWindowMs: config.aggregationWindowMs,
   reasonerType: config.reasonerType,
   reasonerVersion: config.reasonerType === 'pi' ? PI_REASONER_VERSION : '1',
-  scheduleLocalReasoning: !config.piRuntimeUrl,
+  scheduleLocalReasoning: !config.externalRuntimeEnabled,
 });
 let replayedEvents = 0;
 while (true) {
@@ -41,11 +41,11 @@ if (replayedEvents > 0) {
 }
 incidentEngine.reconcilePendingRecoveries();
 const evidenceOrchestrator = createEvidenceOrchestrator(config, store);
-const runtimeClient = config.piRuntimeUrl && config.piRuntimeToken && config.piRuntimeCallbackUrl
+const runtimeClient = config.externalRuntimeEnabled
   ? createHttpPiRuntimeClient({
-    baseUrl: config.piRuntimeUrl,
-    token: config.piRuntimeToken,
-    callbackUrl: config.piRuntimeCallbackUrl,
+    baseUrl: config.piRuntimeUrl!,
+    token: config.piRuntimeToken!,
+    callbackUrl: config.piRuntimeCallbackUrl!,
     timeoutMs: config.piRuntimeTimeoutMs,
   })
   : createNoopPiRuntimeClient();
@@ -54,9 +54,10 @@ const investigationEvidence = createInvestigationEvidenceService(store, config, 
 const investigationReconciler = createInvestigationReconciler({
   store,
   loop: investigationLoop,
-  enabled: Boolean(config.piRuntimeUrl),
+  enabled: config.externalRuntimeEnabled,
   maxAttempts: config.investigationRetryMaxAttempts,
   backoffMs: config.investigationRetryBackoffMs,
+  staleTimeoutMs: config.investigationStaleTimeoutMs,
   pollIntervalMs: config.evidenceJobPollIntervalMs,
 });
 const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator, {

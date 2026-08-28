@@ -35,7 +35,13 @@ Pi-Ops governance (InvestigationReport → ReasoningResult)
 
 The attempt graph is created in one store transaction, so a partial attempt cannot survive a failed insert.
 
-Open sessions with the same Incident + contextSnapshotHash are reused. COMPLETED or FAILED sessions do not block a new attempt. Starting attempt 2 does not mutate attempt 1 job status. `runtimeRequestId` is `rreq-${sessionId}`.
+Open sessions with the same Incident + `EvidenceJob.generation` are reused. COMPLETED or FAILED sessions do not block a new *operator* attempt. Durable reconciliation treats one completed Investigation per Evidence generation as satisfied.
+
+`EvidenceJob.generation` starts at 1 and increments only when deterministic Evidence is requeued (escalation / expiry). Dynamic Investigation Evidence (`inv-${sessionId}-...`) belongs to that generation and must not start another generation. `runtimeRequestId` is `rreq-${sessionId}`.
+
+SUBMITTED/RUNNING sessions older than `PI_OPS_INVESTIGATION_STALE_TIMEOUT_MS` fail through InvestigationLoop and may retry within `PI_OPS_INVESTIGATION_RETRY_MAX_ATTEMPTS`.
+
+External Runtime settings are all-or-none: URL, token, and callback URL are all set, or none are set.
 
 Terminal state is consistent per attempt: a failed session fails its DelegationTask and its ReasoningJob. No attempt may change another attempt's lifecycle.
 

@@ -6,6 +6,8 @@ const CONFIG_KEYS = [
   'PI_OPS_INGEST_TOKEN',
   'PI_OPS_OPERATOR_TOKEN',
   'PI_OPS_PI_RUNTIME_TOKEN',
+  'PI_OPS_PI_RUNTIME_URL',
+  'PI_OPS_PI_RUNTIME_CALLBACK_URL',
   'PI_OPS_SQLITE_PATH',
   'PI_OPS_NODE_AGENTS',
   'PI_OPS_AGENT_PORT',
@@ -92,6 +94,37 @@ describe('loadConfig node-agent registry', () => {
     }, () => {
       assert.throws(() => loadConfig(), /Duplicate node-agent config/);
     });
+  });
+
+  it('accepts all-or-none external runtime configuration', () => {
+    withConfigEnv({}, () => {
+      assert.equal(loadConfig().externalRuntimeEnabled, false);
+    });
+    withConfigEnv({
+      PI_OPS_PI_RUNTIME_URL: 'http://runtime',
+      PI_OPS_PI_RUNTIME_TOKEN: 'runtime-token',
+      PI_OPS_PI_RUNTIME_CALLBACK_URL: 'http://pi-ops/v1/investigation-results',
+    }, () => {
+      const config = loadConfig();
+      assert.equal(config.externalRuntimeEnabled, true);
+      assert.equal(config.piRuntimeUrl, 'http://runtime');
+    });
+  });
+
+  it('rejects partial external runtime configuration', () => {
+    const partials: Array<Record<string, string>> = [
+      { PI_OPS_PI_RUNTIME_URL: 'http://runtime' },
+      { PI_OPS_PI_RUNTIME_TOKEN: 'runtime-token' },
+      { PI_OPS_PI_RUNTIME_CALLBACK_URL: 'http://cb' },
+      { PI_OPS_PI_RUNTIME_URL: 'http://runtime', PI_OPS_PI_RUNTIME_TOKEN: 'runtime-token' },
+      { PI_OPS_PI_RUNTIME_URL: 'http://runtime', PI_OPS_PI_RUNTIME_CALLBACK_URL: 'http://cb' },
+      { PI_OPS_PI_RUNTIME_TOKEN: 'runtime-token', PI_OPS_PI_RUNTIME_CALLBACK_URL: 'http://cb' },
+    ];
+    for (const values of partials) {
+      withConfigEnv(values, () => {
+        assert.throws(() => loadConfig(), /must all be set together/);
+      });
+    }
   });
 
   it('rejects identical ingest and operator tokens', () => {

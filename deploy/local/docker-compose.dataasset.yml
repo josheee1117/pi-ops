@@ -1,0 +1,5 @@
+services:
+  pi-ops-node-agent:
+    env_file:
+      - compose.env
+      - compose.env.dataasset

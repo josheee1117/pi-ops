@@ -20,6 +20,8 @@ const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   operatorToken: 'operator-token',
   investigationRetryMaxAttempts: 3,
   investigationRetryBackoffMs: 0,
+    investigationStaleTimeoutMs: 60_000,
+    externalRuntimeEnabled: false,
   nodeId: 'test-node',
   maxBodySize: 1024 * 1024,
   aggregationWindowMs: 5 * 60 * 1000,

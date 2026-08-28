@@ -52,16 +52,17 @@ export function createInvestigationLoopService(
       const context = buildInvestigationContext(incident, evidence, store);
       const contextSnapshotHash = hashInvestigationContext(context);
       store.insertInvestigationContextSnapshot(contextSnapshotHash, context, now());
+      const evidenceGeneration = store.getEvidenceJob(`job-${incident.id}`)?.generation ?? 1;
       const open = store.listAllInvestigationSessions().find((session) => (
         session.incidentId === incident.id
-        && session.contextSnapshotHash === contextSnapshotHash
+        && session.evidenceGeneration === evidenceGeneration
         && (session.status === 'CREATED' || session.status === 'SUBMITTED' || session.status === 'RUNNING')
       ));
       if (open) return { session: open, context };
       const createdAt = now();
       const sessionId = `isess-${randomUUID()}`;
       const runtimeRequestId = runtimeRequestIdFor(sessionId);
-      const session = createAttempt(store, incident, sessionId, runtimeRequestId, contextSnapshotHash, createdAt);
+      const session = createAttempt(store, incident, sessionId, runtimeRequestId, contextSnapshotHash, evidenceGeneration, createdAt);
       return { session, context };
     },
 
@@ -270,6 +271,7 @@ function createAttempt(
   sessionId: string,
   runtimeRequestId: string,
   contextSnapshotHash: string,
+  evidenceGeneration: number,
   createdAt: string,
 ): InvestigationSession {
   const jobId = `rj-inv-${sessionId}`;
@@ -282,6 +284,7 @@ function createAttempt(
     contextSnapshotHash,
     delegationTaskId: task.id,
     runtimeRequestId,
+    evidenceGeneration,
     status: 'CREATED',
     createdAt,
   };

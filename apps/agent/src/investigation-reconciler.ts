@@ -1,7 +1,6 @@
-import { buildInvestigationContext } from './investigation-context.js';
-import { hashInvestigationContext } from './investigation-session.js';
 import type { createInvestigationLoopService } from './investigation-loop.js';
 import type { EventStore } from './store.js';
+import type { InvestigationSession } from './investigation-session.js';
 
 export interface InvestigationReconciler {
   reconcile(): Promise<void>;
@@ -15,6 +14,7 @@ export function createInvestigationReconciler(options: {
   enabled: boolean;
   maxAttempts: number;
   backoffMs: number;
+  staleTimeoutMs: number;
   pollIntervalMs: number;
   now?: () => string;
 }): InvestigationReconciler {
@@ -32,14 +32,14 @@ export function createInvestigationReconciler(options: {
   }
 
   async function run(): Promise<void> {
+    options.loop.reconcile({ timeoutMs: options.staleTimeoutMs });
     for (const incident of options.store.listIncidents()) {
       const job = options.store.getEvidenceJob(`job-${incident.id}`);
       if (!job || job.state !== 'COMPLETED') continue;
-      const context = buildInvestigationContext(incident, options.store.listEvidence(incident.id), options.store);
-      const hash = hashInvestigationContext(context);
+      const generation = job.generation;
       const matching = options.store.listAllInvestigationSessions().filter((session) => (
         session.incidentId === incident.id
-        && session.contextSnapshotHash === hash
+        && session.evidenceGeneration === generation
       ));
       if (matching.some((session) => session.status === 'COMPLETED')) continue;
       const activeSession = matching.find((session) => (
@@ -53,13 +53,7 @@ export function createInvestigationReconciler(options: {
       }
       const failed = matching.filter((session) => session.status === 'FAILED');
       if (failed.length >= options.maxAttempts) continue;
-      if (failed.length > 0) {
-        const latest = [...failed].sort((left, right) => (
-          Date.parse(right.completedAt ?? right.createdAt) - Date.parse(left.completedAt ?? left.createdAt)
-        ))[0]!;
-        const elapsed = Date.parse(now()) - Date.parse(latest.completedAt ?? latest.createdAt);
-        if (!Number.isFinite(elapsed) || elapsed < options.backoffMs * failed.length) continue;
-      }
+      if (failed.length > 0 && !retryReady(failed, now(), options.backoffMs)) continue;
       const { session } = options.loop.start(incident.id);
       if (session.status === 'CREATED') {
         await options.loop.submit(session.id);
@@ -80,4 +74,12 @@ export function createInvestigationReconciler(options: {
       timer = undefined;
     },
   };
+}
+
+function retryReady(failed: InvestigationSession[], nowIso: string, backoffMs: number): boolean {
+  const latest = [...failed].sort((left, right) => (
+    Date.parse(right.completedAt ?? right.createdAt) - Date.parse(left.completedAt ?? left.createdAt)
+  ))[0]!;
+  const elapsed = Date.parse(nowIso) - Date.parse(latest.completedAt ?? latest.createdAt);
+  return Number.isFinite(elapsed) && elapsed >= backoffMs * failed.length;
 }

@@ -123,6 +123,7 @@ export interface EvidenceJob {
   triggeringEvent: OpsEvent;
   state: EvidenceJobState;
   attempts: number;
+  generation: number;
   lastError?: string;
   createdAt: string;
   updatedAt: string;
@@ -134,6 +135,7 @@ interface EvidenceJobRow {
   event_json: string;
   state: EvidenceJobState;
   attempts: number;
+  generation: number | null;
   last_error: string | null;
   created_at: string;
   updated_at: string;
@@ -235,6 +237,7 @@ CREATE TABLE IF NOT EXISTS evidence_jobs (
   event_json TEXT NOT NULL,
   state TEXT NOT NULL,
   attempts INTEGER NOT NULL DEFAULT 0,
+  generation INTEGER NOT NULL DEFAULT 1,
   last_error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -383,6 +386,7 @@ CREATE TABLE IF NOT EXISTS investigation_sessions (
   context_snapshot_hash TEXT NOT NULL,
   delegation_task_id TEXT NOT NULL,
   runtime_request_id TEXT,
+  evidence_generation INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   submitted_at TEXT,
@@ -677,9 +681,9 @@ const COUNT_EVIDENCE_SQL = `SELECT COUNT(*) as count FROM evidence`;
 
 const INSERT_EVIDENCE_JOB_SQL = `
 INSERT INTO evidence_jobs (
-  id, incident_id, event_json, state, attempts, last_error, created_at, updated_at
+  id, incident_id, event_json, state, attempts, generation, last_error, created_at, updated_at
 ) VALUES (
-  @id, @incident_id, @event_json, 'PENDING', 0, NULL, @created_at, @updated_at
+  @id, @incident_id, @event_json, 'PENDING', 0, 1, NULL, @created_at, @updated_at
 );
 `;
 
@@ -688,6 +692,7 @@ UPDATE evidence_jobs
 SET state = 'PENDING',
     event_json = @event_json,
     attempts = 0,
+    generation = generation + 1,
     last_error = NULL,
     updated_at = @updated_at
 WHERE incident_id = @incident_id
@@ -1156,6 +1161,7 @@ interface InvestigationSessionRow {
   context_snapshot_hash: string;
   delegation_task_id: string;
   runtime_request_id: string | null;
+  evidence_generation: number | null;
   status: InvestigationSession['status'];
   created_at: string;
   submitted_at: string | null;
@@ -1181,6 +1187,7 @@ function mapInvestigationSessionRow(row: InvestigationSessionRow): Investigation
     contextSnapshotHash: row.context_snapshot_hash,
     delegationTaskId: row.delegation_task_id,
     runtimeRequestId: row.runtime_request_id ?? '',
+    evidenceGeneration: row.evidence_generation ?? 1,
     status: row.status,
     createdAt: row.created_at,
     ...(row.submitted_at ? { submittedAt: row.submitted_at } : {}),
@@ -1685,6 +1692,15 @@ export function createEventStore(dbPath: string): EventStore {
     if (!sessionColumns.has('submitted_at')) {
       db.exec('ALTER TABLE investigation_sessions ADD COLUMN submitted_at TEXT');
     }
+    if (!sessionColumns.has('evidence_generation')) {
+      db.exec('ALTER TABLE investigation_sessions ADD COLUMN evidence_generation INTEGER NOT NULL DEFAULT 1');
+    }
+    const evidenceJobColumns = new Set(
+      (db.pragma('table_info(evidence_jobs)') as Array<{ name: string }>).map(({ name }) => name),
+    );
+    if (!evidenceJobColumns.has('generation')) {
+      db.exec('ALTER TABLE evidence_jobs ADD COLUMN generation INTEGER NOT NULL DEFAULT 1');
+    }
     const reportColumns = new Set(
       (db.pragma('table_info(investigation_reports)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1908,10 +1924,10 @@ VALUES (@hash, @context_json, @created_at);
   const insertInvestigationSessionStmt = db.prepare(`
 INSERT INTO investigation_sessions (
   id, incident_id, context_snapshot_hash, delegation_task_id, runtime_request_id,
-  status, created_at, submitted_at, completed_at
+  evidence_generation, status, created_at, submitted_at, completed_at
 ) VALUES (
   @id, @incident_id, @context_snapshot_hash, @delegation_task_id, @runtime_request_id,
-  @status, @created_at, @submitted_at, @completed_at
+  @evidence_generation, @status, @created_at, @submitted_at, @completed_at
 );
 `);
   const getInvestigationSessionStmt = db.prepare('SELECT * FROM investigation_sessions WHERE id = ?');
@@ -2092,6 +2108,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       triggeringEvent: JSON.parse(row.event_json) as OpsEvent,
       state: row.state,
       attempts: row.attempts,
+      generation: row.generation ?? 1,
       ...(row.last_error ? { lastError: row.last_error } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -2401,6 +2418,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       context_snapshot_hash: input.session.contextSnapshotHash,
       delegation_task_id: input.session.delegationTaskId,
       runtime_request_id: input.session.runtimeRequestId,
+      evidence_generation: input.session.evidenceGeneration,
       status: input.session.status,
       created_at: input.session.createdAt,
       submitted_at: input.session.submittedAt ?? null,

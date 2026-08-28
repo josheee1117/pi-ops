@@ -59,6 +59,8 @@ export interface AgentConfig {
   reasoningMaxLogLines: number;
   /** Maximum model output bytes accepted as structured JSON. */
   reasoningMaxOutputBytes: number;
+  /** Canonical: all of URL/token/callback are set. */
+  externalRuntimeEnabled: boolean;
   /** External Pi Runtime base URL. When unset, investigation submit stays local/no-op. */
   piRuntimeUrl?: string;
   /** Bearer token shared with Pi Runtime. Never logged. */
@@ -76,6 +78,8 @@ export interface AgentConfig {
   investigationRetryMaxAttempts: number;
   /** Minimum delay between FAILED attempts of the same snapshot. */
   investigationRetryBackoffMs: number;
+  /** SUBMITTED/RUNNING sessions older than this fail and may retry. */
+  investigationStaleTimeoutMs: number;
 }
 
 function requireEnv(key: string): string {
@@ -174,11 +178,13 @@ export function loadConfig(): AgentConfig {
   }
   const ingestToken = requireEnv('PI_OPS_INGEST_TOKEN');
   const operatorToken = requireEnv('PI_OPS_OPERATOR_TOKEN');
-  const piRuntimeToken = process.env['PI_OPS_PI_RUNTIME_TOKEN'];
+  const externalRuntime = resolveExternalRuntimeSettings();
   assertDistinctTokens([
     { name: 'PI_OPS_INGEST_TOKEN', value: ingestToken },
     { name: 'PI_OPS_OPERATOR_TOKEN', value: operatorToken },
-    ...(piRuntimeToken ? [{ name: 'PI_OPS_PI_RUNTIME_TOKEN', value: piRuntimeToken }] : []),
+    ...(externalRuntime.externalRuntimeEnabled && externalRuntime.piRuntimeToken
+      ? [{ name: 'PI_OPS_PI_RUNTIME_TOKEN', value: externalRuntime.piRuntimeToken }]
+      : []),
   ]);
   return {
     port: integerEnv('PI_OPS_AGENT_PORT', 8080, { max: 65_535 }),
@@ -250,16 +256,17 @@ export function loadConfig(): AgentConfig {
       min: 256,
       max: 100_000,
     }),
-    ...(process.env['PI_OPS_PI_RUNTIME_URL']
-      ? { piRuntimeUrl: process.env['PI_OPS_PI_RUNTIME_URL'] }
+    externalRuntimeEnabled: externalRuntime.externalRuntimeEnabled,
+    ...(externalRuntime.externalRuntimeEnabled
+      ? {
+        piRuntimeUrl: externalRuntime.piRuntimeUrl,
+        piRuntimeToken: externalRuntime.piRuntimeToken,
+        piRuntimeCallbackUrl: externalRuntime.piRuntimeCallbackUrl,
+      }
       : {}),
-    ...(piRuntimeToken ? { piRuntimeToken } : {}),
     piRuntimeTimeoutMs: integerEnv('PI_OPS_PI_RUNTIME_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,
     }),
-    ...(process.env['PI_OPS_PI_RUNTIME_CALLBACK_URL']
-      ? { piRuntimeCallbackUrl: process.env['PI_OPS_PI_RUNTIME_CALLBACK_URL'] }
-      : {}),
     ...(process.env['PI_OPS_NOTIFICATION_WEBHOOK_URL']
       ? { notificationWebhookUrl: process.env['PI_OPS_NOTIFICATION_WEBHOOK_URL'] }
       : {}),
@@ -288,7 +295,39 @@ export function loadConfig(): AgentConfig {
       min: 0,
       max: 60 * 60 * 1000,
     }),
+    investigationStaleTimeoutMs: integerEnv('PI_OPS_INVESTIGATION_STALE_TIMEOUT_MS', 15 * 60 * 1000, {
+      max: 7 * 24 * 60 * 60 * 1000,
+    }),
   };
+}
+
+export function resolveExternalRuntimeSettings(env: NodeJS.ProcessEnv = process.env): {
+  externalRuntimeEnabled: boolean;
+  piRuntimeUrl?: string;
+  piRuntimeToken?: string;
+  piRuntimeCallbackUrl?: string;
+} {
+  const url = present(env['PI_OPS_PI_RUNTIME_URL']);
+  const token = present(env['PI_OPS_PI_RUNTIME_TOKEN']);
+  const callback = present(env['PI_OPS_PI_RUNTIME_CALLBACK_URL']);
+  const count = [url, token, callback].filter(Boolean).length;
+  if (count === 0) return { externalRuntimeEnabled: false };
+  if (count === 3 && url && token && callback) {
+    return {
+      externalRuntimeEnabled: true,
+      piRuntimeUrl: url,
+      piRuntimeToken: token,
+      piRuntimeCallbackUrl: callback,
+    };
+  }
+  throw new Error(
+    'PI_OPS_PI_RUNTIME_URL, PI_OPS_PI_RUNTIME_TOKEN, and PI_OPS_PI_RUNTIME_CALLBACK_URL must all be set together',
+  );
+}
+
+function present(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function assertDistinctTokens(tokens: Array<{ name: string; value: string }>): void {

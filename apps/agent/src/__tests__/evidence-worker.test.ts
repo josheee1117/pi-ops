@@ -24,6 +24,8 @@ function makeConfig(
     operatorToken: 'operator-token',
     investigationRetryMaxAttempts: 3,
     investigationRetryBackoffMs: 0,
+    investigationStaleTimeoutMs: 60_000,
+    externalRuntimeEnabled: false,
     sqlitePath,
     nodeId: 'central',
     maxBodySize: 1024 * 1024,
