@@ -2,6 +2,11 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 12 DataAsset local health target
+
+- Node Agent may probe `data-asset-dev-jdk17` via `host.docker.internal:18089/actuator/health`
+- docker.sock evidence allowlist includes that container name
+
 ## Phase 12 real Pi verification command
 
 - `pnpm smoke:pi` requires gitignored provider/model credentials and refuses FakeRuntimeModel

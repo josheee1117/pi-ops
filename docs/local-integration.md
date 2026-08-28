@@ -40,7 +40,13 @@ SQLite:
 
 Node Agent Docker access: `/var/run/docker.sock`.
 
-Allowed container: `pi-ops-drill`.
+Allowed containers: `pi-ops-drill`, `data-asset-dev-jdk17`.
+
+Optional DataAsset health target (Node Agent → host port):
+
+```text
+http://host.docker.internal:18089/actuator/health
+```
 
 ## Health
 
