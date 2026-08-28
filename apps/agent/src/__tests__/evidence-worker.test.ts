@@ -21,6 +21,9 @@ function makeConfig(
   return {
     port: 0,
     ingestToken: 'ingest-token',
+    operatorToken: 'operator-token',
+    investigationRetryMaxAttempts: 3,
+    investigationRetryBackoffMs: 0,
     sqlitePath,
     nodeId: 'central',
     maxBodySize: 1024 * 1024,
@@ -168,7 +171,7 @@ describe('durable evidence jobs', () => {
     store.close();
   });
 
-  it('completes a health.failure job when the HTTP probe hangs', async () => {
+  it('does not complete a health.failure job when Node Agent never returns', async () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event: OpsEvent = {
@@ -223,11 +226,11 @@ describe('durable evidence jobs', () => {
     );
     const jobId = `job-${incident.incidentId}`;
     await worker.runOnce();
-    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
-    assert.equal(completed, incident.incidentId);
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'PENDING');
+    assert.equal(completed, undefined);
     const probe = store.listEvidence(incident.incidentId).find((item) => item.kind === 'http.probe');
-    assert.equal(probe?.status, 'succeeded');
-    assert.equal((probe?.data as { healthy?: boolean } | null)?.healthy, false);
+    assert.equal(probe?.status, 'failed');
+    assert.equal(probe?.failureClass, 'retryable');
     store.close();
   });
 

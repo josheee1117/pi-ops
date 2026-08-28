@@ -301,5 +301,5 @@ export function createApp(
 
 function operatorAuthorized(c: { req: { header(name: string): string | undefined } }, config: AgentConfig): boolean {
   const auth = c.req.header('Authorization');
-  return Boolean(auth && auth === `Bearer ${config.ingestToken}`);
+  return Boolean(auth && auth === `Bearer ${config.operatorToken}`);
 }

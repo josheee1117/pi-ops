@@ -11,6 +11,7 @@ import { createMemoryRetriever } from './memory-retriever.js';
 import { createHttpPiRuntimeClient } from './http-pi-runtime-client.js';
 import { createInvestigationEvidenceService } from './investigation-evidence.js';
 import { createInvestigationLoopService } from './investigation-loop.js';
+import { createInvestigationReconciler } from './investigation-reconciler.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import { createReasoningJobWorker } from './reasoning-worker.js';
 import { createNotificationJobWorker } from './notification-worker.js';
@@ -23,6 +24,7 @@ const incidentEngine = createIncidentEngine(store, {
   aggregationWindowMs: config.aggregationWindowMs,
   reasonerType: config.reasonerType,
   reasonerVersion: config.reasonerType === 'pi' ? PI_REASONER_VERSION : '1',
+  scheduleLocalReasoning: !config.piRuntimeUrl,
 });
 let replayedEvents = 0;
 while (true) {
@@ -49,15 +51,21 @@ const runtimeClient = config.piRuntimeUrl && config.piRuntimeToken && config.piR
   : createNoopPiRuntimeClient();
 const investigationLoop = createInvestigationLoopService(store, { runtime: runtimeClient });
 const investigationEvidence = createInvestigationEvidenceService(store, config, evidenceOrchestrator);
+const investigationReconciler = createInvestigationReconciler({
+  store,
+  loop: investigationLoop,
+  enabled: Boolean(config.piRuntimeUrl),
+  maxAttempts: config.investigationRetryMaxAttempts,
+  backoffMs: config.investigationRetryBackoffMs,
+  pollIntervalMs: config.evidenceJobPollIntervalMs,
+});
 const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator, {
-  onCompleted: async (incidentId) => {
-    if (!config.piRuntimeUrl) return;
-    const { session } = investigationLoop.start(incidentId);
-    const submitted = await investigationLoop.submit(session.id);
-    console.log(`[pi-ops-agent] investigation submitted session=${submitted.id} incident=${incidentId} runtimeRequestId=${submitted.runtimeRequestId}`);
+  onCompleted: () => {
+    void investigationReconciler.reconcile();
   },
 });
 evidenceWorker.start();
+investigationReconciler.start();
 const reasoners: Reasoner[] = [createFakeReasoner()];
 if (config.reasonerType === 'pi') {
   reasoners.push(createPiReasoner({

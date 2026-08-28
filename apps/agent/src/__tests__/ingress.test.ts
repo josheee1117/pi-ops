@@ -17,6 +17,9 @@ import type { AgentConfig } from '../config.js';
 const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
   port: 0,
   ingestToken: 'test-token',
+  operatorToken: 'operator-token',
+  investigationRetryMaxAttempts: 3,
+  investigationRetryBackoffMs: 0,
   nodeId: 'test-node',
   maxBodySize: 1024 * 1024,
   aggregationWindowMs: 5 * 60 * 1000,

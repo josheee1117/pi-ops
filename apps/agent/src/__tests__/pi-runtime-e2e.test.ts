@@ -12,6 +12,9 @@ import { createEventStore, type EvidenceRecord, type IncidentRow } from '../stor
 const CONFIG: AgentConfig = {
   port: 0,
   ingestToken: 'test-token',
+  operatorToken: 'operator-token',
+  investigationRetryMaxAttempts: 3,
+  investigationRetryBackoffMs: 0,
   sqlitePath: ':memory:',
   nodeId: 'test-node',
   maxBodySize: 1024 * 1024,

@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ENV_FILE="$ROOT/deploy/local/.env"
 COMPOSE=(docker compose -f "$ROOT/deploy/local/docker-compose.yml" --env-file "$ROOT/deploy/local/compose.env")
 INGEST=local-ingest-token
+OPERATOR=local-operator-token
 PI_OPS=http://127.0.0.1:18080
 DRILL=http://127.0.0.1:18088
 RUNTIME_HOST=http://127.0.0.1:18091
@@ -93,10 +94,10 @@ curl -fsS -X POST "$DRILL/fail" >/dev/null
 
 incident_id=""
 for _ in $(seq 1 40); do
-  payload=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents")
+  payload=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents")
   incident_id=$(PAYLOAD="$payload" python3 - <<'PY'
 import json, os
-rows = [i for i in json.loads(os.environ["PAYLOAD"]).get("incidents") or [] if i["type"]=="health.failure" and i["state"]=="OPEN"]
+rows = [i for i in json.loads(os.environ["PAYLOAD"]).get("incidents") or [] if i.get("type")=="health.failure" and i.get("state")=="OPEN" and i.get("service")=="pi-ops-drill" and i.get("nodeId")=="local-dev"]
 print(rows[-1]["id"] if rows else "")
 PY
 )
@@ -109,7 +110,7 @@ echo "incident $incident_id"
 session_status=""
 detail=""
 for _ in $(seq 1 100); do
-  detail=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id")
+  detail=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
   session_status=$(DETAIL="$detail" python3 - <<'PY'
 import json, os
 s = json.loads(os.environ["DETAIL"]).get("sessions") or []

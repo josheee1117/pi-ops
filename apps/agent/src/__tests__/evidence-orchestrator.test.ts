@@ -13,6 +13,9 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
   return {
     port: 0,
     ingestToken: 'ingest-token',
+    operatorToken: 'operator-token',
+    investigationRetryMaxAttempts: 3,
+    investigationRetryBackoffMs: 0,
     sqlitePath: ':memory:',
     nodeId: 'central',
     maxBodySize: 1024 * 1024,
@@ -843,14 +846,14 @@ describe('evidence orchestration', () => {
     store.close();
   });
 
-  it('records an unreachable health.failure probe as collected unhealth, not a retry', async () => {
+  it('records Node Agent http.probe unhealth as succeeded Evidence', async () => {
     const store = createEventStore(':memory:');
     const incident = store.createIncident({
       service: 'data-asset',
       node_id: 'test-svc-02',
       type: 'health.failure',
       state: 'OPEN',
-      fingerprint: 'fp-probe-hang',
+      fingerprint: 'fp-probe-unhealthy',
       first_seen: '2026-08-20T12:00:00.000Z',
       last_seen: '2026-08-20T12:00:00.000Z',
       event_count: 1,
@@ -859,20 +862,18 @@ describe('evidence orchestration', () => {
     const seenTimeouts: number[] = [];
     const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
       const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
-      if (query.type === 'http.probe') {
-        if (typeof query.timeout === 'number') seenTimeouts.push(query.timeout);
-        return await new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
-        });
-      }
+      if (query.type === 'http.probe' && typeof query.timeout === 'number') seenTimeouts.push(query.timeout);
+      const data = query.type === 'http.probe'
+        ? { url: query.url, method: 'GET', error: 'fetch failed', healthy: false }
+        : { ok: true };
       return new Response(JSON.stringify({
         id: `evd-${query.type}`,
         incidentId: query.incidentId,
         nodeId: 'test-svc-02',
-        source: query.type.split('.')[0],
+        source: query.type.startsWith('docker.') ? 'docker' : query.type === 'http.probe' ? 'health' : 'host',
         kind: query.type,
         collectedAt: '2026-08-20T12:00:01.000Z',
-        data: { ok: true },
+        data,
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }) as FetchLike;
 
@@ -899,7 +900,87 @@ describe('evidence orchestration', () => {
     assert.equal(probe?.status, 'succeeded');
     assert.equal((probe?.data as { healthy?: boolean } | null)?.healthy, false);
     assert.ok(seenTimeouts.length > 0);
-    assert.ok(seenTimeouts.every((timeout) => timeout > 0 && timeout <= 40));
+    assert.ok(seenTimeouts.every((timeout) => timeout > 0 && timeout < 40));
+    store.close();
+  });
+
+  it('keeps Node Agent unavailability as retryable failed Evidence', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'data-asset',
+      node_id: 'test-svc-02',
+      type: 'health.failure',
+      state: 'OPEN',
+      fingerprint: 'fp-node-down',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const fetchImpl = (async () => {
+      throw new Error('connect ECONNREFUSED');
+    }) as FetchLike;
+    const summary = await createEvidenceOrchestrator(makeConfig(), store, fetchImpl).collectForIncident(
+      incident,
+      makeEvent({
+        source: 'health',
+        service: 'data-asset',
+        type: 'health.failure',
+        severity: 'error',
+        attributes: {
+          detector: 'http.health',
+          url: 'http://data-asset:8089/actuator/health',
+          method: 'GET',
+          containerName: 'data-asset-dev-jdk17',
+        },
+      }),
+    );
+    const probe = store.listEvidence(incident.id).find((item) => item.kind === 'http.probe');
+    assert.ok(summary.retryableFailures > 0);
+    assert.equal(probe?.status, 'failed');
+    assert.equal(probe?.failureClass, 'retryable');
+    assert.notEqual((probe?.data as { healthy?: boolean } | null)?.healthy, false);
+    store.close();
+  });
+
+  it('keeps a hanging Pi-Ops to Node Agent request as retryable', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'data-asset',
+      node_id: 'test-svc-02',
+      type: 'health.failure',
+      state: 'OPEN',
+      fingerprint: 'fp-outer-timeout',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const fetchImpl = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      })) as FetchLike;
+    const summary = await createEvidenceOrchestrator(
+      makeConfig({ evidenceTimeoutMs: 20 }),
+      store,
+      fetchImpl,
+    ).collectForIncident(incident, makeEvent({
+      source: 'health',
+      service: 'data-asset',
+      type: 'health.failure',
+      severity: 'error',
+      attributes: {
+        detector: 'http.health',
+        url: 'http://data-asset:8089/actuator/health',
+        method: 'GET',
+        containerName: 'data-asset-dev-jdk17',
+      },
+    }));
+    const probe = store.listEvidence(incident.id).find((item) => item.kind === 'http.probe');
+    assert.ok(summary.retryableFailures > 0);
+    assert.equal(probe?.status, 'failed');
+    assert.equal(probe?.failureClass, 'retryable');
+    assert.match(probe?.error ?? '', /timed out/);
     store.close();
   });
 

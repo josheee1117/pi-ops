@@ -4,6 +4,8 @@ import { loadConfig } from '../config.js';
 
 const CONFIG_KEYS = [
   'PI_OPS_INGEST_TOKEN',
+  'PI_OPS_OPERATOR_TOKEN',
+  'PI_OPS_PI_RUNTIME_TOKEN',
   'PI_OPS_SQLITE_PATH',
   'PI_OPS_NODE_AGENTS',
   'PI_OPS_AGENT_PORT',
@@ -44,6 +46,7 @@ function withConfigEnv(values: Record<string, string | undefined>, run: () => vo
   try {
     for (const key of CONFIG_KEYS) delete process.env[key];
     process.env['PI_OPS_INGEST_TOKEN'] = 'ingest-token';
+    process.env['PI_OPS_OPERATOR_TOKEN'] = 'operator-token';
     process.env['PI_OPS_SQLITE_PATH'] = ':memory:';
     for (const [key, value] of Object.entries(values)) {
       if (value === undefined) delete process.env[key];
@@ -88,6 +91,12 @@ describe('loadConfig node-agent registry', () => {
       ]),
     }, () => {
       assert.throws(() => loadConfig(), /Duplicate node-agent config/);
+    });
+  });
+
+  it('rejects identical ingest and operator tokens', () => {
+    withConfigEnv({ PI_OPS_OPERATOR_TOKEN: 'ingest-token' }, () => {
+      assert.throws(() => loadConfig(), /must be distinct/);
     });
   });
 

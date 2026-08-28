@@ -845,7 +845,7 @@ export interface EventStore {
   createIncidentFromEvent(
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
-    reasoning?: { reasonerType: string; reasonerVersion: string },
+    reasoning?: { reasonerType: string; reasonerVersion: string } | null,
   ): IncidentRow;
 
   /** Update an existing incident's mutable fields. */
@@ -2313,7 +2313,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
   const createIncidentFromEventTransaction = db.transaction((
     incident: Omit<IncidentRow, 'id'>,
     event: OpsEvent,
-    reasoning: { reasonerType: string; reasonerVersion: string },
+    reasoning: { reasonerType: string; reasonerVersion: string } | null,
   ): IncidentRow => {
     const id = generateId('inc');
     insertIncident(id, incident);
@@ -2329,14 +2329,16 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       created_at: now,
       updated_at: now,
     });
-    insertReasoningJobStmt.run({
-      id: `rj-${id}`,
-      incident_id: id,
-      reasoner_type: reasoning.reasonerType,
-      reasoner_version: reasoning.reasonerVersion,
-      created_at: now,
-      updated_at: now,
-    });
+    if (reasoning) {
+      insertReasoningJobStmt.run({
+        id: `rj-${id}`,
+        incident_id: id,
+        reasoner_type: reasoning.reasonerType,
+        reasoner_version: reasoning.reasonerVersion,
+        created_at: now,
+        updated_at: now,
+      });
+    }
     const created = { id, ...incident };
     insertNotification(buildNotificationJob({
       type: 'INCIDENT_OPEN',
@@ -2581,7 +2583,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     createIncidentFromEvent(
       incident: Omit<IncidentRow, 'id'>,
       event: OpsEvent,
-      reasoning: { reasonerType: string; reasonerVersion: string } = {
+      reasoning: { reasonerType: string; reasonerVersion: string } | null = {
         reasonerType: 'fake',
         reasonerVersion: '1',
       },

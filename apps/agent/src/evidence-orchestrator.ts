@@ -182,29 +182,6 @@ function httpProbeTimeoutMs(config: AgentConfig, query: EvidenceQueryRequest): n
   return budget;
 }
 
-function unreachableHttpProbeEvidence(
-  incident: IncidentRow,
-  query: EvidenceQueryRequest,
-  id: string,
-  message: string,
-): Evidence {
-  return {
-    id,
-    incidentId: incident.id,
-    nodeId: incident.node_id,
-    source: 'health',
-    kind: 'http.probe',
-    collectedAt: new Date().toISOString(),
-    status: 'succeeded',
-    data: {
-      url: query.url,
-      method: query.method ?? 'GET',
-      error: message,
-      healthy: false,
-    },
-  };
-}
-
 async function readBoundedBody(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) return '';
 
@@ -307,18 +284,6 @@ export function createEvidenceOrchestrator(
         const message = controller.signal.aborted
           ? `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`
           : `Node-agent connection failed: ${error instanceof Error ? error.message : String(error)}`;
-        if (query.type === 'http.probe') {
-          try {
-            store.insertEvidence({
-              ...unreachableHttpProbeEvidence(incident, query, evidenceId, message),
-              id: evidenceId,
-              status: 'succeeded',
-            });
-          } catch (persistError) {
-            throw new PersistenceFailure(persistError);
-          }
-          return 'succeeded';
-        }
         throw retryableFailure(message);
       }
 
@@ -352,20 +317,9 @@ export function createEvidenceOrchestrator(
           );
         }
         if (controller.signal.aborted) {
-          const message = `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`;
-          if (query.type === 'http.probe') {
-            try {
-              store.insertEvidence({
-                ...unreachableHttpProbeEvidence(incident, query, evidenceId, message),
-                id: evidenceId,
-                status: 'succeeded',
-              });
-            } catch (persistError) {
-              throw new PersistenceFailure(persistError);
-            }
-            return 'succeeded';
-          }
-          throw retryableFailure(message);
+          throw retryableFailure(
+            `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`,
+          );
         }
         if (error instanceof ResponseTooLargeError) throw terminalFailure(message);
         throw retryableFailure(`Node-agent response stream failed: ${message}`);

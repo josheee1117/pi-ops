@@ -12,6 +12,8 @@ export interface IncidentConfig {
   /** Reasoner assigned to newly created ReasoningJobs. */
   reasonerType?: string;
   reasonerVersion?: string;
+  /** When false, Incident creation does not schedule a local ReasoningJob. */
+  scheduleLocalReasoning?: boolean;
 }
 
 export type IncidentResult =
@@ -193,10 +195,12 @@ export function createIncidentEngine(
         last_seen: timestamp,
         event_count: 1,
         severity: event.severity,
-      }, event, {
-        reasonerType: config.reasonerType ?? 'fake',
-        reasonerVersion: config.reasonerVersion ?? '1',
-      });
+      }, event, config.scheduleLocalReasoning === false
+        ? null
+        : {
+          reasonerType: config.reasonerType ?? 'fake',
+          reasonerVersion: config.reasonerVersion ?? '1',
+        });
       reconcileFingerprint(fingerprint);
 
       return {

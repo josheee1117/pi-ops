@@ -361,6 +361,23 @@ describe('HTTP probe evidence', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  it('returns succeeded unhealth when the target is unreachable', async () => {
+    const result = await createProbeEvidenceProvider().query(
+      {
+        type: 'http.probe',
+        incidentId: 'inc-1',
+        url: 'http://127.0.0.1:1/health',
+        method: 'GET',
+        timeout: 200,
+      },
+      makeConfig(),
+    );
+    const data = result.data as { healthy?: boolean; error?: string; status?: number };
+    assert.equal(data.healthy, false);
+    assert.equal(data.status, undefined);
+    assert.ok(data.error);
+  });
 });
 
 // ── Docker log provider ──────────────────────────────────────────────────────

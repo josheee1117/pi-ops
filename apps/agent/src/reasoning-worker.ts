@@ -134,6 +134,7 @@ export function createReasoningJobWorker(
   }
 
   async function drain(): Promise<void> {
+    if (config.piRuntimeUrl) return;
     const jobs = store.listPendingReasoningJobs(config.reasoningJobBatchSize);
     for (const job of jobs) {
       if (!store.markReasoningJobRunning(job.id)) continue;

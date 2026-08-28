@@ -2,18 +2,17 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 12A architecture closure
+
+- Node Agent owns HTTP target observation; Pi-Ops transport failure stays retryable
+- ingest / operator / runtime tokens are distinct and fail closed
+- external Pi Runtime is the only reasoning plane when `PI_OPS_PI_RUNTIME_URL` is set
+- completed Evidence without an InvestigationSession is reconciled from SQLite
+- default `pnpm smoke:local` uses only `pi-ops-drill`
+
 ## Phase 12 本机工作与验收记录
 
-- 做了什么、验证了什么、何为假成功：`docs/evolution/phase12-local-work-log.md`
-
-## Phase 12 health.failure probe hang
-
-- An unreachable `http.probe` is collected unhealth (`healthy: false`), not a retryable job that never starts investigation
-
-## Phase 12 DataAsset local health target
-
-- Node Agent may probe `data-asset-dev-jdk17` via `host.docker.internal:18089/actuator/health`
-- docker.sock evidence allowlist includes that container name
+- historical experiments vs accepted semantics: `docs/evolution/phase12-local-work-log.md`
 
 ## Phase 12 real Pi verification command
 

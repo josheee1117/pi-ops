@@ -9,6 +9,7 @@ export interface NodeAgentEndpoint {
 export interface AgentConfig {
   port: number;
   ingestToken: string;
+  operatorToken: string;
   sqlitePath: string;
   nodeId: string;
   /** Maximum request body size in bytes (default 1 MB). */
@@ -71,6 +72,10 @@ export interface AgentConfig {
   notificationJobPollIntervalMs?: number;
   notificationJobMaxAttempts?: number;
   notificationJobBatchSize?: number;
+  /** Bounded InvestigationSession retries for the same context snapshot. */
+  investigationRetryMaxAttempts: number;
+  /** Minimum delay between FAILED attempts of the same snapshot. */
+  investigationRetryBackoffMs: number;
 }
 
 function requireEnv(key: string): string {
@@ -167,9 +172,18 @@ export function loadConfig(): AgentConfig {
   if (reasonerType === 'pi' && (!piProvider || !piModel)) {
     throw new Error('PI_OPS_PI_PROVIDER and PI_OPS_PI_MODEL are required when PI_OPS_REASONER_TYPE=pi');
   }
+  const ingestToken = requireEnv('PI_OPS_INGEST_TOKEN');
+  const operatorToken = requireEnv('PI_OPS_OPERATOR_TOKEN');
+  const piRuntimeToken = process.env['PI_OPS_PI_RUNTIME_TOKEN'];
+  assertDistinctTokens([
+    { name: 'PI_OPS_INGEST_TOKEN', value: ingestToken },
+    { name: 'PI_OPS_OPERATOR_TOKEN', value: operatorToken },
+    ...(piRuntimeToken ? [{ name: 'PI_OPS_PI_RUNTIME_TOKEN', value: piRuntimeToken }] : []),
+  ]);
   return {
     port: integerEnv('PI_OPS_AGENT_PORT', 8080, { max: 65_535 }),
-    ingestToken: requireEnv('PI_OPS_INGEST_TOKEN'),
+    ingestToken,
+    operatorToken,
     sqlitePath: requireEnv('PI_OPS_SQLITE_PATH'),
     nodeId: process.env['PI_OPS_NODE_ID'] ?? 'default',
     maxBodySize: integerEnv('PI_OPS_MAX_BODY_SIZE', 1024 * 1024, {
@@ -239,9 +253,7 @@ export function loadConfig(): AgentConfig {
     ...(process.env['PI_OPS_PI_RUNTIME_URL']
       ? { piRuntimeUrl: process.env['PI_OPS_PI_RUNTIME_URL'] }
       : {}),
-    ...(process.env['PI_OPS_PI_RUNTIME_TOKEN']
-      ? { piRuntimeToken: process.env['PI_OPS_PI_RUNTIME_TOKEN'] }
-      : {}),
+    ...(piRuntimeToken ? { piRuntimeToken } : {}),
     piRuntimeTimeoutMs: integerEnv('PI_OPS_PI_RUNTIME_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,
     }),
@@ -269,7 +281,24 @@ export function loadConfig(): AgentConfig {
     notificationJobBatchSize: integerEnv('PI_OPS_NOTIFICATION_JOB_BATCH_SIZE', 20, {
       max: 1000,
     }),
+    investigationRetryMaxAttempts: integerEnv('PI_OPS_INVESTIGATION_RETRY_MAX_ATTEMPTS', 3, {
+      max: 20,
+    }),
+    investigationRetryBackoffMs: integerEnv('PI_OPS_INVESTIGATION_RETRY_BACKOFF_MS', 5000, {
+      min: 0,
+      max: 60 * 60 * 1000,
+    }),
   };
+}
+
+function assertDistinctTokens(tokens: Array<{ name: string; value: string }>): void {
+  for (let i = 0; i < tokens.length; i += 1) {
+    for (let j = i + 1; j < tokens.length; j += 1) {
+      if (tokens[i]!.value === tokens[j]!.value) {
+        throw new Error(`${tokens[i]!.name} and ${tokens[j]!.name} must be distinct`);
+      }
+    }
+  }
 }
 
 function parseReasonerType(): 'fake' | 'pi' {

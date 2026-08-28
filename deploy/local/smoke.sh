@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 COMPOSE=(docker compose -f "$ROOT/deploy/local/docker-compose.yml" --env-file "$ROOT/deploy/local/compose.env")
 INGEST=local-ingest-token
+OPERATOR=local-operator-token
 RUNTIME=local-runtime-token
 NODE=local-node-token
 PI_OPS=http://127.0.0.1:18080
@@ -48,8 +49,8 @@ curl -fsS -X POST "$DRILL/fail" >/dev/null
 
 incident_id=""
 for _ in $(seq 1 40); do
-  payload=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents")
-  incident_id=$(PAYLOAD="$payload" python3 -c 'import json,os; rows=[i for i in json.loads(os.environ["PAYLOAD"]).get("incidents") or [] if i["type"]=="health.failure"]; open=[i for i in rows if i["state"]=="OPEN"]; pick=(open or sorted(rows, key=lambda i: i.get("lastSeen") or ""))[-1] if (open or rows) else None; print(pick["id"] if pick else "")')
+  payload=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents")
+  incident_id=$(PAYLOAD="$payload" python3 -c 'import json,os; rows=[i for i in json.loads(os.environ["PAYLOAD"]).get("incidents") or [] if i.get("type")=="health.failure" and i.get("service")=="pi-ops-drill" and i.get("nodeId")=="local-dev"]; open=[i for i in rows if i["state"]=="OPEN"]; pick=(open or sorted(rows, key=lambda i: i.get("lastSeen") or ""))[-1] if (open or rows) else None; print(pick["id"] if pick else "")')
   if [[ -n "$incident_id" ]]; then break; fi
   sleep 2
 done
@@ -60,7 +61,7 @@ echo "== wait investigation =="
 session_status=""
 detail=""
 for _ in $(seq 1 40); do
-  detail=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id")
+  detail=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
   session_status=$(DETAIL="$detail" python3 -c 'import json,os; sessions=json.loads(os.environ["DETAIL"]).get("sessions") or []; print(sessions[0]["status"] if sessions else "")')
   if [[ "$session_status" == "COMPLETED" || "$session_status" == "FAILED" ]]; then break; fi
   sleep 3
@@ -69,8 +70,8 @@ echo "session $session_status"
 [[ "$session_status" == "COMPLETED" ]] || { echo "$detail"; exit 1; }
 
 echo "== evidence + model-safe =="
-safe=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id/evidence?view=safe")
-raw=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id/evidence?view=raw")
+safe=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id/evidence?view=safe")
+raw=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id/evidence?view=raw")
 SAFE="$safe" python3 -c 'import json,os; data=json.loads(os.environ["SAFE"]); kinds={item["kind"] for item in data["evidence"]}; assert "host.memory" in kinds, kinds; blob=json.dumps(data); assert "super-secret" not in blob; print("safe kinds", sorted(kinds))'
 RAW="$raw" python3 -c 'import json,os; data=json.loads(os.environ["RAW"]); assert data["view"]=="raw"; assert any(item["kind"]=="host.memory" for item in data["evidence"]); print("raw host.memory preserved")'
 
@@ -78,7 +79,7 @@ echo "== restore + recovery =="
 curl -fsS -X POST "$DRILL/ok" >/dev/null
 state=""
 for _ in $(seq 1 40); do
-  detail=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id")
+  detail=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
   state=$(DETAIL="$detail" python3 -c 'import json,os; print(json.loads(os.environ["DETAIL"])["incident"]["state"])')
   if [[ "$state" == "RECOVERED" ]]; then break; fi
   sleep 2
@@ -86,7 +87,7 @@ done
 [[ "$state" == "RECOVERED" ]] || { echo "not recovered: $state"; exit 1; }
 
 echo "== notifications =="
-detail=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id")
+detail=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
 DETAIL="$detail" python3 -c 'import json,os; types={item["type"] for item in json.loads(os.environ["DETAIL"])["notifications"]}; needed={"INCIDENT_OPEN","INVESTIGATION_COMPLETED","INCIDENT_RECOVERED"}; assert needed <= types, types; print("notification types", sorted(types))'
 sink=$(curl -fsS "$SINK/notifications")
 SINK_JSON="$sink" python3 -c 'import json,os; items=json.loads(os.environ["SINK_JSON"])["items"]; assert items, "no webhook deliveries";
@@ -96,7 +97,7 @@ assert all(item["idempotencyKey"]==item["notificationId"] for item in items); pr
 echo "== persistence restart =="
 "${COMPOSE[@]}" restart pi-ops
 wait_http "$PI_OPS/health"
-again=$(curl -fsS -H "Authorization: Bearer $INGEST" "$PI_OPS/v1/ops/incidents/$incident_id")
+again=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
 AGAIN="$again" python3 -c 'import json,os; data=json.loads(os.environ["AGAIN"]); assert data["incident"]["state"]=="RECOVERED"; assert data["sessions"]; assert data["notifications"]; print("pi-ops restart preserved incident", data["incident"]["id"])'
 "${COMPOSE[@]}" restart pi-runtime
 wait_http "$RUNTIME_URL/health"

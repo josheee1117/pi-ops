@@ -53,6 +53,9 @@ function agentConfig(sqlitePath: string): AgentConfig {
   return {
     port: 0,
     ingestToken: 'ingest-token',
+    operatorToken: 'operator-token',
+    investigationRetryMaxAttempts: 3,
+    investigationRetryBackoffMs: 0,
     sqlitePath,
     nodeId: 'central',
     maxBodySize: 1024 * 1024,
