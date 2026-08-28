@@ -2,6 +2,10 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 12 本机工作与验收记录
+
+- 做了什么、验证了什么、何为假成功：`docs/evolution/phase12-local-work-log.md`
+
 ## Phase 12 health.failure probe hang
 
 - An unreachable `http.probe` is collected unhealth (`healthy: false`), not a retryable job that never starts investigation
