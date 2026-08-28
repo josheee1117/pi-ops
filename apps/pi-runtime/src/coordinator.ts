@@ -174,8 +174,10 @@ async function runRound(
       usage.outputTokens += result.outputTokens;
       findingsByRole.set(role, result.finding);
       specialistStatus[role] = 'completed';
-    } catch {
+    } catch (error) {
       specialistStatus[role] = 'failed';
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`[pi-runtime] specialist ${role} failed: ${message}`);
     }
   }
 }
@@ -333,7 +335,10 @@ async function synthesizeWithModel(
   const response = await model.invoke({
     system: [
       'COORDINATOR_SYNTHESIS',
-      'Return JSON InvestigationReport only. Do not persist chain-of-thought.',
+      'Return ONLY one JSON object. No markdown. No extra text.',
+      'Required keys: hypothesis, supportingEvidenceIds, contradictingEvidenceIds, confidence, recommendation.',
+      'supportingEvidenceIds and contradictingEvidenceIds must be strings from the provided evidenceIds.',
+      'confidence is 0 to 1. Do not persist chain-of-thought.',
       POLICY,
     ].join('\n'),
     user: JSON.stringify({
@@ -346,8 +351,8 @@ async function synthesizeWithModel(
   });
   usage.inputTokens += response.inputTokens ?? 0;
   usage.outputTokens += response.outputTokens ?? 0;
-  const parsed = investigationReportInputSchema.safeParse(parseModelJson(response.text));
-  if (!parsed.success) throw new Error('invalid coordinator synthesis');
+  const parsed = investigationReportInputSchema.safeParse(normalizeReportPayload(parseModelJson(response.text)));
+  if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
   const supporting = parsed.data.supportingEvidenceIds.filter((id) => currentIds.has(id));
   const contradicting = parsed.data.contradictingEvidenceIds.filter((id) => currentIds.has(id));
   if (
@@ -386,4 +391,25 @@ function advisoryHistory(context: RuntimeInvestigationContext): string | undefin
 
 function unique(ids: string[]): string[] {
   return [...new Set(ids)];
+}
+
+function normalizeReportPayload(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const record = { ...(data as Record<string, unknown>) };
+  if (record.hypothesis && typeof record.hypothesis !== 'string') {
+    const hypothesis = record.hypothesis as Record<string, unknown>;
+    record.hypothesis = typeof hypothesis.statement === 'string'
+      ? hypothesis.statement
+      : typeof hypothesis.text === 'string'
+        ? hypothesis.text
+        : JSON.stringify(record.hypothesis);
+  }
+  if (typeof record.recommendation !== 'string' && record.recommendation) {
+    record.recommendation = JSON.stringify(record.recommendation);
+  }
+  if (typeof record.confidence === 'string') {
+    const parsed = Number(record.confidence);
+    if (Number.isFinite(parsed)) record.confidence = parsed;
+  }
+  return record;
 }

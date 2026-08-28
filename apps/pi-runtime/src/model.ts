@@ -103,7 +103,16 @@ export function parseModelJson(text: string): unknown {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fenced?.[1]?.trim() ?? trimmed;
-  return JSON.parse(raw) as unknown;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(raw.slice(start, end + 1)) as unknown;
+    }
+    throw new Error('model output is not valid JSON');
+  }
 }
 
 function hypothesisFor(role: SpecialistRole, context: RuntimeInvestigationContext): string {

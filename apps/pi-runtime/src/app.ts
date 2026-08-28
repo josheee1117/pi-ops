@@ -42,7 +42,12 @@ export function createPiRuntimeApp(
   const now = options.now ?? (() => new Date().toISOString());
   const app = new Hono();
 
-  app.get('/health', (c) => c.json({ status: 'ok' }));
+  app.get('/health', (c) => c.json({
+    status: 'ok',
+    modelMode: model.provider === 'fake' ? 'FAKE' : 'REAL',
+    provider: model.provider,
+    model: model.model,
+  }));
   app.get('/ready', (c) => c.json({ status: 'ready' }));
 
   app.get('/v1/tasks/:runtimeRequestId', (c) => {
@@ -142,6 +147,7 @@ export function createPiRuntimeApp(
         runtimeTaskId: task.runtimeTaskId,
         sessionId: task.sessionId,
       });
+      console.log(`[pi-runtime] investigation ${runtimeRequestId} status=${outcome.status} provider=${outcome.provider} model=${outcome.model} error=${outcome.error ?? ''} specialists=${outcome.selectedSpecialists.join(',')} calls=${model.networkCalls} tokens=${outcome.inputTokens}/${outcome.outputTokens}`);
     } catch (error) {
       const timedOut = error instanceof ExecutionTimeoutError || (error instanceof Error && error.message === 'execution timeout');
       outcome = {
@@ -156,6 +162,7 @@ export function createPiRuntimeApp(
         inputTokens: 0,
         outputTokens: 0,
       };
+      console.log(`[pi-runtime] investigation ${runtimeRequestId} status=failed error=${outcome.error} calls=${model.networkCalls}`);
     }
     const current = tasks.getByRequestId(runtimeRequestId);
     if (current && (current.executionStatus === 'completed' || current.executionStatus === 'failed') && current.result) {

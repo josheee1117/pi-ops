@@ -219,12 +219,30 @@ export function createApp(
         status: item.status,
         collectedAt: item.collectedAt,
       })),
-      sessions: sessions.map((session) => ({
-        id: session.id,
-        status: session.status,
-        runtimeRequestId: session.runtimeRequestId,
-        reportId: store.getInvestigationReportBySessionId(session.id)?.id,
-      })),
+      sessions: sessions.map((session) => {
+        const report = store.getInvestigationReportBySessionId(session.id);
+        const audits = store.listInvestigationEvidenceAudits(session.id);
+        return {
+          id: session.id,
+          status: session.status,
+          runtimeRequestId: session.runtimeRequestId,
+          reportId: report?.id,
+          report: report ? {
+            hypothesis: report.hypothesis,
+            confidence: report.confidence,
+            recommendation: report.recommendation,
+            supportingEvidenceIds: report.supportingEvidenceIds,
+            contradictingEvidenceIds: report.contradictingEvidenceIds,
+          } : undefined,
+          evidenceAudits: audits.map((audit) => ({
+            requestId: audit.requestId,
+            evidenceType: audit.evidenceType,
+            status: audit.status,
+            evidenceIds: audit.evidenceIds,
+            specialistRoles: audit.specialistRoles,
+          })),
+        };
+      }),
       notifications: store.listNotificationJobs(incident.id).map((job) => ({
         id: job.id,
         type: job.type,

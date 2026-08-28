@@ -1,0 +1,7 @@
+services:
+  pi-ops:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PI_OPS_PI_RUNTIME_URL: http://host.docker.internal:18091
+      PI_OPS_PI_RUNTIME_CALLBACK_URL: http://127.0.0.1:18080/v1/investigation-results

@@ -74,9 +74,25 @@ curl -X POST http://127.0.0.1:18080/v1/ops/investigations \
 
 ## Smoke
 
+Deterministic (FakeRuntimeModel):
+
 ```bash
 bash deploy/local/smoke.sh
 ```
+
+Real Pi provider (not CI). Requires gitignored `deploy/local/.env`:
+
+```text
+PI_OPS_PI_PROVIDER=...
+PI_OPS_PI_MODEL=...
+PI_OPS_PI_API_KEY=...
+```
+
+```bash
+pnpm smoke:pi
+```
+
+If provider/model/key are missing, this command fails closed and does not fall back to FakeRuntimeModel.
 
 This is **not** part of `pnpm test`.
 

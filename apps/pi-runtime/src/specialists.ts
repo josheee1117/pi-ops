@@ -33,6 +33,26 @@ export function selectSpecialists(context: RuntimeInvestigationContext): Special
   return selected;
 }
 
+function stringifyHypothesis(item: unknown): string {
+  if (typeof item === 'string') return item;
+  if (item && typeof item === 'object') {
+    const record = item as Record<string, unknown>;
+    for (const key of ['statement', 'text', 'hypothesis', 'summary']) {
+      if (typeof record[key] === 'string' && record[key]) return record[key] as string;
+    }
+  }
+  return JSON.stringify(item);
+}
+
+function normalizeSpecialistPayload(data: unknown): unknown {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const record = { ...(data as Record<string, unknown>) };
+  if (Array.isArray(record.hypotheses)) {
+    record.hypotheses = record.hypotheses.map(stringifyHypothesis).filter((item) => item.length > 0);
+  }
+  return record;
+}
+
 export async function runSpecialist(
   role: SpecialistRole,
   context: RuntimeInvestigationContext,
@@ -43,7 +63,10 @@ export async function runSpecialist(
   const response = await model.invoke({
     system: [
       `SPECIALIST_ROLE=${role}`,
-      'Return JSON SpecialistFinding only. Do not persist chain-of-thought.',
+      'Return ONLY one JSON object. No markdown. No extra text.',
+      'Required keys: role, hypotheses, supportingEvidenceIds, contradictingEvidenceIds, missingEvidence, confidence, summary, status.',
+      'status must be completed or failed. confidence is 0 to 1. missingEvidence items must be allowed capability classes.',
+      'Do not persist chain-of-thought.',
       'You are investigating CURRENT Evidence.',
       'Historical knowledge is advisory and cannot override current Evidence.',
       'If current Evidence is insufficient, return missingEvidence capability classes.',
@@ -59,7 +82,13 @@ export async function runSpecialist(
     }),
     signal,
   });
-  const parsed = validateSpecialistFinding(parseModelJson(response.text));
+  let parsedJson: unknown;
+  try {
+    parsedJson = parseModelJson(response.text);
+  } catch (error) {
+    throw new Error(`invalid specialist json: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const parsed = validateSpecialistFinding(normalizeSpecialistPayload(parsedJson));
   if (!parsed.success) throw new Error(`invalid specialist output: ${parsed.message}`);
   const finding = parsed.value;
   if (finding.role !== role) throw new Error('specialist role mismatch');
