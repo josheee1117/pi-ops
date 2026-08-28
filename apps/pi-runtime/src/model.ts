@@ -89,7 +89,7 @@ export function deterministicFinding(
   const kinds = new Set(context.evidence.map((item) => item.kind));
   return {
     role,
-    hypotheses: [hypothesisFor(role, context.incident.type)],
+    hypotheses: [hypothesisFor(role, context)],
     supportingEvidenceIds,
     contradictingEvidenceIds: [],
     missingEvidence: missingFor(role, kinds),
@@ -106,7 +106,12 @@ export function parseModelJson(text: string): unknown {
   return JSON.parse(raw) as unknown;
 }
 
-function hypothesisFor(role: SpecialistRole, type: string): string {
+function hypothesisFor(role: SpecialistRole, context: RuntimeInvestigationContext): string {
+  const percent = memoryUsedPercent(context);
+  if (percent !== undefined && (role === 'container_host' || role === 'jvm' || role === 'database')) {
+    return percent >= 50 ? 'memory pressure observed' : 'memory pressure not observed';
+  }
+  const type = context.incident.type;
   if (role === 'database') return 'SQL or database contention on the current incident';
   if (role === 'jvm') return 'JVM resource pressure on the current incident';
   if (role === 'container_host') {
@@ -116,11 +121,26 @@ function hypothesisFor(role: SpecialistRole, type: string): string {
   return `application-level ${type} on the current incident`;
 }
 
+function memoryUsedPercent(context: RuntimeInvestigationContext): number | undefined {
+  for (const item of context.evidence) {
+    if (item.kind !== 'host.memory' || !item.data || typeof item.data !== 'object') continue;
+    const record = item.data as { usedPercent?: unknown; usagePercent?: unknown };
+    if (typeof record.usedPercent === 'number') return record.usedPercent;
+    if (typeof record.usagePercent === 'number') return record.usagePercent;
+    if (typeof record.usagePercent === 'string') {
+      const parsed = Number(record.usagePercent);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
 function missingFor(role: SpecialistRole, kinds: Set<string>): SpecialistFinding['missingEvidence'] {
-  if (role === 'database' && !kinds.has('docker.stats')) return ['docker.stats'];
+  if (role === 'container_host' && !kinds.has('host.memory')) return ['host.memory'];
+  if (role === 'database' && !kinds.has('host.memory')) return ['host.memory'];
   if (role === 'jvm' && !kinds.has('host.memory')) return ['host.memory'];
   if (role === 'container_host' && !kinds.has('docker.inspect')) return ['docker.inspect'];
-  if (!(RUNTIME_ALLOWED_EVIDENCE_TYPES as readonly string[]).includes('docker.inspect')) return [];
+  if (role === 'database' && !kinds.has('docker.stats')) return ['docker.stats'];
   return [];
 }
 

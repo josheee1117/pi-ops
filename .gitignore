@@ -12,3 +12,4 @@ coverage/
 .idea/
 .vscode/
 .pi-astack/
+deploy/local/data/

@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:smoke": "tsx --test src/smoke/pi-reasoner.smoke.ts",
-    "lint": "echo 'lint not configured yet'"
+    "lint": "echo 'lint not configured yet'",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.2",

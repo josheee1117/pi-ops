@@ -2,6 +2,12 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 12A local deployment baseline
+
+- Docker Compose topology: Pi-Ops, Pi Runtime, Node Agent, disposable `pi-ops-drill`, notification sink
+- real process boundaries, durable SQLite volumes, local incident drill and dynamic Evidence round-trip
+- not remote test-infra
+
 ## Phase 11 security closure
 
 - one `toRuntimeSafeEvidence` projection for initial InvestigationContext and dynamic Runtime Evidence

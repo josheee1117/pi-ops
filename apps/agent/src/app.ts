@@ -11,6 +11,10 @@ import {
 import type { createInvestigationLoopService } from './investigation-loop.js';
 import type { createInvestigationEvidenceService } from './investigation-evidence.js';
 import type { NotificationJobWorker } from './notification-worker.js';
+import {
+  MODEL_SAFE_MAX_LOG_LINES,
+  toRuntimeSafeEvidence,
+} from './incident-context.js';
 
 class RequestBodyTooLargeError extends Error {}
 
@@ -176,5 +180,108 @@ export function createApp(
     }
   });
 
+  app.get('/v1/ops/incidents', (c) => {
+    if (!operatorAuthorized(c, config)) return c.json({ error: 'unauthorized' }, 401);
+    return c.json({
+      incidents: store.listIncidents().map((incident) => ({
+        id: incident.id,
+        service: incident.service,
+        nodeId: incident.node_id,
+        type: incident.type,
+        state: incident.state,
+        eventCount: incident.event_count,
+        firstSeen: incident.first_seen,
+        lastSeen: incident.last_seen,
+      })),
+    });
+  });
+
+  app.get('/v1/ops/incidents/:id', (c) => {
+    if (!operatorAuthorized(c, config)) return c.json({ error: 'unauthorized' }, 401);
+    const incident = store.getIncident(c.req.param('id'));
+    if (!incident) return c.json({ error: 'not found' }, 404);
+    const sessions = store.listAllInvestigationSessions().filter((session) => session.incidentId === incident.id);
+    const evidence = store.listEvidence(incident.id);
+    return c.json({
+      incident: {
+        id: incident.id,
+        service: incident.service,
+        nodeId: incident.node_id,
+        type: incident.type,
+        state: incident.state,
+        eventCount: incident.event_count,
+        firstSeen: incident.first_seen,
+        lastSeen: incident.last_seen,
+      },
+      evidence: evidence.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        status: item.status,
+        collectedAt: item.collectedAt,
+      })),
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        status: session.status,
+        runtimeRequestId: session.runtimeRequestId,
+        reportId: store.getInvestigationReportBySessionId(session.id)?.id,
+      })),
+      notifications: store.listNotificationJobs(incident.id).map((job) => ({
+        id: job.id,
+        type: job.type,
+        status: job.status,
+        notificationId: job.payload.notificationId,
+        createdAt: job.createdAt,
+      })),
+    });
+  });
+
+  app.get('/v1/ops/incidents/:id/evidence', (c) => {
+    if (!operatorAuthorized(c, config)) return c.json({ error: 'unauthorized' }, 401);
+    const incident = store.getIncident(c.req.param('id'));
+    if (!incident) return c.json({ error: 'not found' }, 404);
+    const view = c.req.query('view') === 'raw' ? 'raw' : 'safe';
+    const rows = store.listEvidence(incident.id);
+    return c.json({
+      view,
+      evidence: rows.map((item) => (
+        view === 'raw'
+          ? { id: item.id, kind: item.kind, status: item.status, collectedAt: item.collectedAt, data: item.data }
+          : toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES)
+      )),
+    });
+  });
+
+  app.post('/v1/ops/investigations', async (c) => {
+    if (!operatorAuthorized(c, config)) return c.json({ error: 'unauthorized' }, 401);
+    if (!investigationLoop) return c.json({ error: 'investigation loop unavailable' }, 503);
+    let body: unknown;
+    try {
+      body = await readJsonBody(c.req.raw, config.maxBodySize);
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    const incidentId = body && typeof body === 'object' && 'incidentId' in body
+      ? String((body as { incidentId?: unknown }).incidentId ?? '')
+      : '';
+    if (!incidentId) return c.json({ error: 'incidentId is required' }, 400);
+    try {
+      const { session } = investigationLoop.start(incidentId);
+      const submitted = await investigationLoop.submit(session.id);
+      return c.json({
+        sessionId: submitted.id,
+        status: submitted.status,
+        runtimeRequestId: submitted.runtimeRequestId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json({ error: message }, 400);
+    }
+  });
+
   return app;
+}
+
+function operatorAuthorized(c: { req: { header(name: string): string | undefined } }, config: AgentConfig): boolean {
+  const auth = c.req.header('Authorization');
+  return Boolean(auth && auth === `Bearer ${config.ingestToken}`);
 }

@@ -39,15 +39,6 @@ if (replayedEvents > 0) {
 }
 incidentEngine.reconcilePendingRecoveries();
 const evidenceOrchestrator = createEvidenceOrchestrator(config, store);
-const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator);
-evidenceWorker.start();
-const reasoners: Reasoner[] = [createFakeReasoner()];
-if (config.reasonerType === 'pi') {
-  reasoners.push(createPiReasoner({
-    config,
-    client: await createPiSdkClient(config),
-  }));
-}
 const runtimeClient = config.piRuntimeUrl && config.piRuntimeToken && config.piRuntimeCallbackUrl
   ? createHttpPiRuntimeClient({
     baseUrl: config.piRuntimeUrl,
@@ -58,6 +49,22 @@ const runtimeClient = config.piRuntimeUrl && config.piRuntimeToken && config.piR
   : createNoopPiRuntimeClient();
 const investigationLoop = createInvestigationLoopService(store, { runtime: runtimeClient });
 const investigationEvidence = createInvestigationEvidenceService(store, config, evidenceOrchestrator);
+const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrator, {
+  onCompleted: async (incidentId) => {
+    if (!config.piRuntimeUrl) return;
+    const { session } = investigationLoop.start(incidentId);
+    const submitted = await investigationLoop.submit(session.id);
+    console.log(`[pi-ops-agent] investigation submitted session=${submitted.id} incident=${incidentId} runtimeRequestId=${submitted.runtimeRequestId}`);
+  },
+});
+evidenceWorker.start();
+const reasoners: Reasoner[] = [createFakeReasoner()];
+if (config.reasonerType === 'pi') {
+  reasoners.push(createPiReasoner({
+    config,
+    client: await createPiSdkClient(config),
+  }));
+}
 const reasoningWorker = createReasoningJobWorker(
   config,
   store,

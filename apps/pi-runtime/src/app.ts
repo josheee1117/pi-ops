@@ -45,6 +45,23 @@ export function createPiRuntimeApp(
   app.get('/health', (c) => c.json({ status: 'ok' }));
   app.get('/ready', (c) => c.json({ status: 'ready' }));
 
+  app.get('/v1/tasks/:runtimeRequestId', (c) => {
+    const auth = c.req.header('Authorization');
+    if (!auth || auth !== `Bearer ${config.token}`) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const task = tasks.getByRequestId(c.req.param('runtimeRequestId'));
+    if (!task) return c.json({ error: 'not found' }, 404);
+    return c.json({
+      runtimeRequestId: task.runtimeRequestId,
+      runtimeTaskId: task.runtimeTaskId,
+      executionStatus: task.executionStatus,
+      deliveryStatus: task.deliveryStatus,
+      error: task.result?.error ?? task.lastError,
+      hypothesis: task.result?.report?.hypothesis,
+    });
+  });
+
   app.post('/v1/investigations', async (c) => {
     const auth = c.req.header('Authorization');
     if (!auth || auth !== `Bearer ${config.token}`) {

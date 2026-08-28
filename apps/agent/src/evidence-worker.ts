@@ -13,6 +13,7 @@ export function createEvidenceJobWorker(
   config: AgentConfig,
   store: EventStore,
   orchestrator: EvidenceOrchestrator,
+  options: { onCompleted?: (incidentId: string) => void | Promise<void> } = {},
 ): EvidenceJobWorker {
   let timer: ReturnType<typeof setInterval> | undefined;
   let activeRun: Promise<void> | undefined;
@@ -40,6 +41,11 @@ export function createEvidenceJobWorker(
           );
         } else {
           store.markEvidenceJobCompleted(job.id);
+          if (options.onCompleted) {
+            void Promise.resolve(options.onCompleted(job.incidentId)).catch((error) => {
+              console.error(`[agent] investigation start after evidence failed: ${error instanceof Error ? error.message : String(error)}`);
+            });
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

@@ -14,11 +14,16 @@ export function createHostEvidenceProvider(): HostEvidenceProvider {
 
       switch (request.type) {
         case 'host.memory': {
+          const total = os.totalmem();
+          const free = os.freemem();
+          const used = total - free;
+          const usedPercent = total > 0 ? (used / total) * 100 : 0;
           data = {
-            total: os.totalmem(),
-            free: os.freemem(),
-            used: os.totalmem() - os.freemem(),
-            usagePercent: ((os.totalmem() - os.freemem()) / os.totalmem() * 100).toFixed(2),
+            total,
+            free,
+            used,
+            usedPercent,
+            usagePercent: usedPercent.toFixed(2),
             uptime: os.uptime(),
           };
           break;

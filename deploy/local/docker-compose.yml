@@ -1,0 +1,88 @@
+name: pi-ops-local
+
+services:
+  pi-ops-drill:
+    build: ./drill
+    container_name: pi-ops-drill
+    ports:
+      - "18088:8088"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8088/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  notification-sink:
+    build: ./sink
+    volumes:
+      - ./data/notifications:/data
+    ports:
+      - "18099:8099"
+
+  pi-runtime:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["node", "apps/pi-runtime/dist/index.js"]
+    env_file: compose.env
+    environment:
+      PI_OPS_PI_RUNTIME_SQLITE_PATH: /data/pi-runtime/runtime.sqlite
+      PI_OPS_PI_RUNTIME_CALLBACK_URL: http://pi-ops:8080/v1/investigation-results
+    volumes:
+      - ./data/pi-runtime:/data/pi-runtime
+    ports:
+      - "18090:8090"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pi-ops-node-agent:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["node", "apps/node-agent/dist/index.js"]
+    env_file: compose.env
+    environment:
+      PI_OPS_AGENT_URL: http://pi-ops:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "18081:8081"
+    depends_on:
+      pi-ops-drill:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pi-ops:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["node", "apps/agent/dist/index.js"]
+    env_file: compose.env
+    environment:
+      PI_OPS_SQLITE_PATH: /data/pi-ops/pi-ops.sqlite
+      PI_OPS_PI_RUNTIME_URL: http://pi-runtime:8090
+      PI_OPS_PI_RUNTIME_CALLBACK_URL: http://pi-ops:8080/v1/investigation-results
+      PI_OPS_NOTIFICATION_WEBHOOK_URL: http://notification-sink:8099/notify
+    volumes:
+      - ./data/pi-ops:/data/pi-ops
+    ports:
+      - "18080:8080"
+    depends_on:
+      pi-runtime:
+        condition: service_healthy
+      pi-ops-node-agent:
+        condition: service_healthy
+      notification-sink:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20

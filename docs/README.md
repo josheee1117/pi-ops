@@ -26,6 +26,7 @@ The current implementation source of truth is:
 22. `adr/ADR-0027-durable-operational-notification-delivery.md`
 23. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
 24. `evolution/timeline.md`
+25. `local-integration.md`
 
 The architecture intentionally separates:
 

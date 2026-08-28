@@ -7,10 +7,15 @@
   "engines": {
     "node": ">=22"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  },
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm --filter @pi-ops/protocol build && pnpm -r typecheck",
     "test": "pnpm --filter @pi-ops/protocol build && pnpm -r test",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "start:local": "docker compose -f deploy/local/docker-compose.yml --env-file deploy/local/compose.env up --build",
+    "smoke:local": "bash deploy/local/smoke.sh"
   }
 }
