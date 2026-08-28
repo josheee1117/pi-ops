@@ -174,6 +174,37 @@ function querySource(type: EvidenceQueryRequest['type']): string {
   return 'health';
 }
 
+function httpProbeTimeoutMs(config: AgentConfig, query: EvidenceQueryRequest): number {
+  const budget = Math.max(1, config.evidenceTimeoutMs - 500);
+  if (typeof query.timeout === 'number' && query.timeout > 0) {
+    return Math.min(query.timeout, budget);
+  }
+  return budget;
+}
+
+function unreachableHttpProbeEvidence(
+  incident: IncidentRow,
+  query: EvidenceQueryRequest,
+  id: string,
+  message: string,
+): Evidence {
+  return {
+    id,
+    incidentId: incident.id,
+    nodeId: incident.node_id,
+    source: 'health',
+    kind: 'http.probe',
+    collectedAt: new Date().toISOString(),
+    status: 'succeeded',
+    data: {
+      url: query.url,
+      method: query.method ?? 'GET',
+      error: message,
+      healthy: false,
+    },
+  };
+}
+
 async function readBoundedBody(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) return '';
 
@@ -259,6 +290,9 @@ export function createEvidenceOrchestrator(
 
     try {
       let response: Response;
+      const payload = query.type === 'http.probe'
+        ? { ...query, timeout: httpProbeTimeoutMs(config, query) }
+        : query;
       try {
         response = await fetchImpl(`${endpoint.url}/v1/evidence/query`, {
           method: 'POST',
@@ -266,13 +300,25 @@ export function createEvidenceOrchestrator(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${endpoint.token}`,
           },
-          body: JSON.stringify(query),
+          body: JSON.stringify(payload),
           signal: controller.signal,
         });
       } catch (error) {
         const message = controller.signal.aborted
           ? `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`
           : `Node-agent connection failed: ${error instanceof Error ? error.message : String(error)}`;
+        if (query.type === 'http.probe') {
+          try {
+            store.insertEvidence({
+              ...unreachableHttpProbeEvidence(incident, query, evidenceId, message),
+              id: evidenceId,
+              status: 'succeeded',
+            });
+          } catch (persistError) {
+            throw new PersistenceFailure(persistError);
+          }
+          return 'succeeded';
+        }
         throw retryableFailure(message);
       }
 
@@ -306,9 +352,20 @@ export function createEvidenceOrchestrator(
           );
         }
         if (controller.signal.aborted) {
-          throw retryableFailure(
-            `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`,
-          );
+          const message = `Node-agent request timed out after ${config.evidenceTimeoutMs}ms`;
+          if (query.type === 'http.probe') {
+            try {
+              store.insertEvidence({
+                ...unreachableHttpProbeEvidence(incident, query, evidenceId, message),
+                id: evidenceId,
+                status: 'succeeded',
+              });
+            } catch (persistError) {
+              throw new PersistenceFailure(persistError);
+            }
+            return 'succeeded';
+          }
+          throw retryableFailure(message);
         }
         if (error instanceof ResponseTooLargeError) throw terminalFailure(message);
         throw retryableFailure(`Node-agent response stream failed: ${message}`);

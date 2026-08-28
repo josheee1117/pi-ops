@@ -168,6 +168,69 @@ describe('durable evidence jobs', () => {
     store.close();
   });
 
+  it('completes a health.failure job when the HTTP probe hangs', async () => {
+    const store = createEventStore(':memory:');
+    const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
+    const event: OpsEvent = {
+      schemaVersion: 1,
+      id: 'evt-health-hang',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'health',
+      nodeId: 'test-svc-02',
+      service: 'data-asset',
+      type: 'health.failure',
+      severity: 'error',
+      message: 'Health check failed',
+      attributes: {
+        detector: 'http.health',
+        url: 'http://data-asset:8089/actuator/health',
+        method: 'GET',
+        containerName: 'data-asset-dev-jdk17',
+      },
+    };
+    const incident = engine.processEvent(event, event.time);
+    assert.ok(incident.incidentId);
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const query = JSON.parse(String(init?.body)) as { type: string; incidentId: string };
+      if (query.type === 'http.probe') {
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      }
+      return new Response(JSON.stringify({
+        id: `node-${query.type}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: query.type.split('.')[0],
+        kind: query.type,
+        collectedAt: '2026-08-20T12:01:00.000Z',
+        data: { ok: true },
+      }), { status: 200 });
+    }) as FetchLike;
+    const config = makeConfig(':memory:', {
+      evidenceTimeoutMs: 40,
+      nodeAgents: new Map([[
+        'test-svc-02',
+        { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'token' },
+      ]]),
+    });
+    let completed: string | undefined;
+    const worker = createEvidenceJobWorker(
+      config,
+      store,
+      createEvidenceOrchestrator(config, store, fetchImpl),
+      { onCompleted: (incidentId) => { completed = incidentId; } },
+    );
+    const jobId = `job-${incident.incidentId}`;
+    await worker.runOnce();
+    assert.equal(store.getEvidenceJob(jobId)?.state, 'COMPLETED');
+    assert.equal(completed, incident.incidentId);
+    const probe = store.listEvidence(incident.incidentId).find((item) => item.kind === 'http.probe');
+    assert.equal(probe?.status, 'succeeded');
+    assert.equal((probe?.data as { healthy?: boolean } | null)?.healthy, false);
+    store.close();
+  });
+
   it('retries timeout collection and completes on the second attempt', async () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });

@@ -411,5 +411,23 @@ function normalizeReportPayload(data: unknown): unknown {
     const parsed = Number(record.confidence);
     if (Number.isFinite(parsed)) record.confidence = parsed;
   }
+  record.supportingEvidenceIds = asIdList(record.supportingEvidenceIds);
+  record.contradictingEvidenceIds = asIdList(record.contradictingEvidenceIds);
   return record;
+}
+
+function asIdList(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (typeof item === 'string' && item.trim()) return [item.trim()];
+      if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
+        return [(item as { id: string }).id];
+      }
+      return [];
+    });
+  }
+  if (typeof value === 'string') {
+    return value.split(/[,\n]+/).map((item) => item.trim()).filter(Boolean);
+  }
+  return value;
 }

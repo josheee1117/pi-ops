@@ -843,6 +843,66 @@ describe('evidence orchestration', () => {
     store.close();
   });
 
+  it('records an unreachable health.failure probe as collected unhealth, not a retry', async () => {
+    const store = createEventStore(':memory:');
+    const incident = store.createIncident({
+      service: 'data-asset',
+      node_id: 'test-svc-02',
+      type: 'health.failure',
+      state: 'OPEN',
+      fingerprint: 'fp-probe-hang',
+      first_seen: '2026-08-20T12:00:00.000Z',
+      last_seen: '2026-08-20T12:00:00.000Z',
+      event_count: 1,
+      severity: 'error',
+    });
+    const seenTimeouts: number[] = [];
+    const fetchImpl = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const query = JSON.parse(String(init?.body)) as EvidenceQueryRequest;
+      if (query.type === 'http.probe') {
+        if (typeof query.timeout === 'number') seenTimeouts.push(query.timeout);
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        });
+      }
+      return new Response(JSON.stringify({
+        id: `evd-${query.type}`,
+        incidentId: query.incidentId,
+        nodeId: 'test-svc-02',
+        source: query.type.split('.')[0],
+        kind: query.type,
+        collectedAt: '2026-08-20T12:00:01.000Z',
+        data: { ok: true },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as FetchLike;
+
+    const summary = await createEvidenceOrchestrator(
+      makeConfig({ evidenceTimeoutMs: 40 }),
+      store,
+      fetchImpl,
+    ).collectForIncident(incident, makeEvent({
+      source: 'health',
+      service: 'data-asset',
+      type: 'health.failure',
+      severity: 'error',
+      attributes: {
+        detector: 'http.health',
+        url: 'http://data-asset:8089/actuator/health',
+        method: 'GET',
+        containerName: 'data-asset-dev-jdk17',
+      },
+    }));
+
+    const probe = store.listEvidence(incident.id).find((item) => item.kind === 'http.probe');
+    assert.equal(summary.retryableFailures, 0);
+    assert.equal(summary.succeeded, 3);
+    assert.equal(probe?.status, 'succeeded');
+    assert.equal((probe?.data as { healthy?: boolean } | null)?.healthy, false);
+    assert.ok(seenTimeouts.length > 0);
+    assert.ok(seenTimeouts.every((timeout) => timeout > 0 && timeout <= 40));
+    store.close();
+  });
+
   it('redacts node tokens from persisted error messages', async () => {
     const store = createEventStore(':memory:');
     const incident = store.createIncident({

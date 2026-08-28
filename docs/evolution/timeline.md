@@ -2,6 +2,10 @@
 
 Milestone history for dual-source v0.1. Architecture remains ADR-0001 unless a later ADR supersedes it.
 
+## Phase 12 health.failure probe hang
+
+- An unreachable `http.probe` is collected unhealth (`healthy: false`), not a retryable job that never starts investigation
+
 ## Phase 12 DataAsset local health target
 
 - Node Agent may probe `data-asset-dev-jdk17` via `host.docker.internal:18089/actuator/health`
