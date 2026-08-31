@@ -2,14 +2,22 @@
 
 Deterministic development-time governance for Pi-Ops tests. This tool is not part of the Pi-Ops production runtime.
 
-The model is:
+The v1 architecture is:
 
 ```text
-Feature -> Invariant -> required Evidence -> existing Test Catalog -> REUSE / GAP
-                     + Architecture Guards + governed roots + impact propagation
+Git Diff
+  -> governed-root / architecture policy
+  -> Feature + impact graph
+  -> Invariant + Evidence floor
+  -> Test Catalog (potential proofs)
+  -> selected ExecutionPlan
+  -> real test/command execution
+  -> realized Evidence
+  -> immutable run artifact
+  -> automatic Gate PASS / fail closed
 ```
 
-The goal is not maximum test count. A feature is considered testable only when its required invariants have the required evidence grades.
+The goal is not maximum test count. **Catalog Proof != Realized Proof**: catalog metadata says a test can prove a claim; only a successful execution in the current gate run realizes that proof. Consequently **Planner READY != Gate PASS**.
 
 ## Evidence levels
 
@@ -35,7 +43,7 @@ Historical regression proofs are marked `PINNED` in the catalog so future budget
 
 - **Floors are claims.** Durability, security, and transport-ownership floors are not satisfied by mock-only evidence. Unclosed slots surface as `NEEDS_EVIDENCE` - the planner never lowers a floor.
 - **Unmapped production changes fail.** Governed roots are `apps/*/src/**`, `packages/*/src/**`, `deploy/local/**`, `deploy/docker/**`. A changed file under a root that matches no Feature yields `UNMAPPED_PRODUCTION_CHANGE` (non-READY; `--strict` exits non-zero). Tests, docs, governance tooling, smoke scripts, and local data are ignored; `deploy/local/smoke.sh` / `smoke-pi.sh` are test infrastructure but still map to `local.integration` for planning.
-- **No ghost tests.** `validate` fails when a catalog `testName` no longer exists (line-anchored `it(`/`test(` parse; comments do not count), when `location.file` is missing, or when a `command` references a missing package script/file (`pnpm <script>` / `bash <file>` are the verified forms; anything else is `UNVERIFIED_COMMAND`).
+- **No ghost tests.** `validate` uses a lexical scanner for executable static `it('…')` / `test('…')` declarations. Comments, strings, templates, missing names, and ambiguous duplicate names cannot satisfy catalog metadata. Command entries support only validated `pnpm <script>`, `pnpm run <script>`, and `bash <file>` forms; the resolved script must reference the declared Evidence artifact or validation returns `CATALOG_COMMAND_TARGET_MISMATCH`.
 - **Impact propagation.** Shared contracts pull dependent Features into the plan (`protocol.contract`, `configuration.fail-closed`, `evidence.model-safe-projection` declare `impacts`). Output annotates `reason=DIRECT` / `reason=IMPACTED_BY <feature>`. Cycles terminate; duplicates collapse.
 - **Budget is engine state.** `evaluateMaintenanceBudget` computes planned delta (REUSE 0, STRENGTHEN 1, CREATE 4 defaults) and reports `WITHIN_BUDGET` / `BUDGET_EXCEEDED` without ever touching floors.
 
@@ -67,9 +75,20 @@ node tools/test-governance/src/cli.mjs plan --strict --base origin/main
 
 # Self-test + config + architecture + plan
 pnpm test:governance
+
+# Execute only selected proofs (policy + execution; skips Gate 0 self/typecheck)
+pnpm test:run -- --files apps/agent/src/app.ts --max-gate 3
+
+# Full Gate 0..3: policy, self-tests, typecheck, selected execution, Evidence artifact
+pnpm test:gate -- --base HEAD~1 --head HEAD --max-gate 3
+
+# Gate 4 requires BOTH explicit max gate and live-provider consent
+pnpm test:gate -- --max-gate 4 --allow-live-provider
 ```
 
 `test:plan` reports `NEEDS_EVIDENCE` / `UNMAPPED_PRODUCTION_CHANGE` honestly and fails only with `--strict`. Architecture violations always fail `test:arch`.
+
+`test:run` and `test:gate` emit a fresh directory at `artifacts/test-evidence/<HEAD_SHA>/<RUN_ID>/` containing `plan.json`, `execution-plan.json`, `execution.json`, `evidence.json`, `summary.md`, and bounded per-run logs. Artifacts are never read back as proof. Final Gate states are `PASS`, `POLICY_BLOCKED`, `EXECUTION_FAILED`, `EVIDENCE_NOT_REALIZED`, `LIVE_PROVIDER_REQUIRED`, and `INTERNAL_ERROR`.
 
 ## Current machine gaps
 
@@ -81,8 +100,8 @@ As of this revision the planner honestly reports three A-level floor gaps (see `
 - `config/catalog.json` - reusable test/smoke proofs with per-proof evidence levels. `ACTIVE` and `PINNED` entries are eligible for planning.
 - `config/architecture-guards.json` - deterministic import/text constraints. `requiredText` guards are weak canaries by design; semantics live in tests.
 
-The planner greedily selects the smallest useful existing catalog set. It never lowers an evidence floor to satisfy a budget. This tool does not create, delete, quarantine, or execute tests automatically.
+The planner greedily selects the smallest useful existing catalog set. It never lowers an evidence floor to satisfy a budget. The selected runner deduplicates identical commands and groups named tests per owning test file, executes the real Node/tsx test file with TAP, and requires every selected static name to be observed as passed. Exit code 0 with no observed selected test is not PASS.
 
-## Next phase
+GitHub Actions runs the deterministic Gate through Gate 3 on pull requests, pushes to `main`, and manual dispatches, then uploads Evidence artifacts with `if: always()`. It uses no provider secrets, live model, or remote servers. Gate 4 remains explicit opt-in.
 
-Close the three P1 machine gaps (STRENGTHEN smoke for model-safe, then MULTI_PROCESS transport/stale proofs), then add selected-test execution and evidence-result artifacts. Test consolidation/retirement must require dominance proof; an LLM recommendation alone must never delete a regression proof.
+Test consolidation/retirement is out of scope. Dominance proof and architecture review remain mandatory; an LLM recommendation alone never deletes a regression proof.

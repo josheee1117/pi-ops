@@ -267,6 +267,24 @@ test('catalog validation fails on a ghost testName', () => {
   assert.ok(errors.some((error) => error.includes('CATALOG_GHOST_TEST')));
 });
 
+test('catalog validation fails when a selected test name is ambiguous', () => {
+  const catalog = {
+    schemaVersion: 1,
+    entries: [{
+      id: 'ambiguous',
+      featureId: feature.id,
+      status: 'ACTIVE',
+      location: { file: 'apps/agent/src/__tests__/real.test.ts', testName: 'same name' },
+      proofs: [{ invariantId: 'INV-GEN-01', level: 'C' }],
+    }],
+  };
+  const errors = validateCatalogArtifacts(catalog, {
+    fileExists: () => true,
+    readFile: () => "it('same name', () => {});\ntest('same name', () => {});",
+  });
+  assert.ok(errors.some((error) => error.includes('CATALOG_AMBIGUOUS_TEST')));
+});
+
 test('catalog validation fails on missing location file', () => {
   const catalog = {
     schemaVersion: 1,

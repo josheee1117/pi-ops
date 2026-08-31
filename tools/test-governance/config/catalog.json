@@ -1435,7 +1435,7 @@
       ]
     },
     {
-      "id": "locint-smoke-pi-script",
+      "id": "locint-smoke-pi-failclosed",
       "featureId": "local.integration",
       "status": "PINNED",
       "historicalRegression": true,
@@ -1443,16 +1443,18 @@
       "executionClass": "UNIT",
       "runtimeClass": "fast",
       "location": {
-        "file": "deploy/local/smoke-pi.sh"
+        "file": "deploy/local/smoke-pi.failclosed.test.mjs",
+        "testName": "smoke-pi.sh fails closed without provider credentials"
       },
       "proofs": [
         {
           "invariantId": "INV-LOCINT-03",
-          "level": "C"
+          "level": "C",
+          "source": "executes smoke-pi.sh in a temp sandbox layout without credentials and asserts BLOCKED"
         }
       ],
       "limitations": [
-        "Script inspection / fail-closed path; live provider is not ordinary CI."
+        "Does not exercise a live provider; the full live run stays Gate 4."
       ]
     },
     {

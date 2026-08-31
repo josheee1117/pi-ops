@@ -262,6 +262,9 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
     if (entry.location?.testName && !entry.location?.file) {
       errors.push(`${entry.id}: location.file is required when location.testName is set`);
     }
+    if (!entry.location?.testName && !entry.command) {
+      errors.push(`${entry.id}: entry must declare location.testName or command to be executable`);
+    }
     for (const proof of entry.proofs ?? []) {
       if (invariantOwners.get(proof.invariantId) !== entry.featureId) {
         errors.push(`${entry.id}: proof ${proof.invariantId} does not belong to ${entry.featureId}`);
@@ -297,8 +300,11 @@ export function validateCatalogArtifacts(catalogDoc, options = {}) {
     if (entry.location?.testName) {
       const source = typeof options.readFile === 'function' ? options.readFile(file) : '';
       const names = extractTestNames(source ?? '');
-      if (!names.includes(entry.location.testName)) {
+      const matches = names.filter((name) => name === entry.location.testName).length;
+      if (matches === 0) {
         errors.push(`${entry.id}: CATALOG_GHOST_TEST ${entry.location.testName}`);
+      } else if (matches > 1) {
+        errors.push(`${entry.id}: CATALOG_AMBIGUOUS_TEST ${entry.location.testName}`);
       }
     }
     if (entry.command) {

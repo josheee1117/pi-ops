@@ -19,6 +19,8 @@
     "smoke:local": "bash deploy/local/smoke.sh",
     "smoke:pi": "bash deploy/local/smoke-pi.sh",
     "test:plan": "node tools/test-governance/src/cli.mjs plan",
+    "test:run": "node tools/test-governance/src/cli.mjs run",
+    "test:gate": "node tools/test-governance/src/cli.mjs gate",
     "test:arch": "node tools/test-governance/src/cli.mjs arch",
     "test:governance:self": "node --test tools/test-governance/src/*.test.mjs",
     "test:governance": "pnpm test:governance:self && node tools/test-governance/src/cli.mjs validate && pnpm test:arch && pnpm test:plan"

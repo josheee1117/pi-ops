@@ -3,11 +3,21 @@
 Tests are Evidence for Invariants, not coverage scores.
 
 ```text
-Feature -> Invariant -> required Evidence floor -> catalog Proof -> REUSE / STRENGTHEN / CREATE / GAP
-                     + Architecture Guards + governed roots + impact propagation
+Git Diff
+  -> Policy / governed roots / Architecture Guards
+  -> Feature + impact graph
+  -> Invariant + required Evidence floor
+  -> Test Catalog (potential Evidence)
+  -> selected ExecutionPlan
+  -> real execution
+  -> realized Evidence
+  -> commit/run Evidence Artifact
+  -> automatic Gate
 ```
 
 Machine config: `tools/test-governance/`. Human maps: this directory. Regenerate machine gap truth with `node tools/test-governance/src/cli.mjs gaps`.
+
+**Potential Proof != Realized Proof.** The Test Catalog is capability metadata only. A proof is realized only when its selected backing test or command executes and passes in the current run. **Planner READY != Gate PASS**: READY means a valid potential plan exists; PASS means every required A/B/C slot was realized by this run.
 
 ## Evidence levels (A/B/C)
 
@@ -57,7 +67,7 @@ Shared contracts propagate. `protocol.contract` impacts ingress/evidence-collect
 
 ## Catalog integrity (no ghost tests)
 
-`validate` fails closed when a catalog `location.testName` no longer exists in the referenced file (deterministic line-anchored `it(`/`test(` string-literal parse; comments do not satisfy it), when `location.file` is missing, or when a `command` references a package script or file that does not exist (`pnpm <script>` and `bash <file>` are the verified forms; anything else is `UNVERIFIED_COMMAND` and fails).
+`validate` uses a deterministic lexical scanner and accepts only unambiguous executable static `it('…')`, `it("…")`, `test('…')`, or `test("…")` names. Line/block comments, ordinary strings, templates, dynamic names, deleted names, and duplicate names cannot satisfy a Catalog Proof. Commands support only `pnpm <script>`, `pnpm run <script>`, and `bash <file>`; a pnpm script must actually reference its declared `location.file`, otherwise `CATALOG_COMMAND_TARGET_MISMATCH` fails validation.
 
 ## Catalog status
 
@@ -69,17 +79,32 @@ Shared contracts propagate. `protocol.contract` impacts ingress/evidence-collect
 
 `forbiddenImport` guards are structural (import graph). `requiredText` guards are **weak canaries only** - they assert a reference still exists in a file, never route wiring or semantics; descriptions say so explicitly. Route-level auth and canonical-config semantics are enforced by the auth-matrix and config/reconciler tests, not by substring checks.
 
-## Gates
+## Execution and Gates
 
 | Gate | Target | Contents |
 |------|--------|----------|
-| 0 Static | < 30s | typecheck, `test:arch`, governance validate |
-| 1 Fast | <= 90s | unit/component + cheap PINNED |
-| 2 Integration | <= 3 min | SQLite, in-process HTTP, Runtime callback |
-| 3 Multi-process | <= 5 min | `smoke:local` when A-level multi-process proof is required |
-| 4 Live | n/a | `smoke:pi` only for provider-adapter changes; fail-closed; never ordinary CI |
+| 0 Static | < 30s | governance validation/self-tests, Architecture Guards, typecheck |
+| 1 Fast | <= 90s | selected UNIT/COMPONENT proofs + cheap PINNED |
+| 2 Integration | <= 3 min | selected SQLite, in-process HTTP, Runtime callback proofs |
+| 3 Multi-process | <= 5 min | selected MULTI_PROCESS/SMOKE proofs such as `smoke:local` |
+| 4 Live | n/a | LIVE_PROVIDER only with `--max-gate 4 --allow-live-provider` |
 
-Ordinary governance requires **no** live LLM and **no** remote servers.
+Named tests run from their owning workspace via Node 22 / package-local `tsx --test` and TAP. Whole-file execution is allowed only because the runner verifies every selected exact test name in TAP; zero observed, skipped, failed, or ambiguous tests realize nothing. Identical commands execute once; identical selected names in a file are deduplicated. A successful command can realize all catalog entries bound to that exact validated command/artifact.
+
+Every invocation writes a fresh `artifacts/test-evidence/<HEAD_SHA>/<RUN_ID>/` with policy plan, execution plan, actual results, per-invariant potential/realized Evidence, deterministic summary, and bounded logs. Old artifacts are never input to evaluation.
+
+Final Gate states:
+
+```text
+PASS
+POLICY_BLOCKED
+EXECUTION_FAILED
+EVIDENCE_NOT_REALIZED
+LIVE_PROVIDER_REQUIRED
+INTERNAL_ERROR
+```
+
+Policy errors stop execution. Only execution status `PASSED` realizes Evidence; A/B/C levels never substitute for one another. Ordinary governance requires **no** live LLM and **no** remote servers. GitHub Actions runs through Gate 3 without provider secrets and always uploads artifacts.
 
 ## What a test must answer
 
