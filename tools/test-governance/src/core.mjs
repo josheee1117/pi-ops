@@ -56,13 +56,15 @@ export function resolveAffectedFeatures(changedFiles, features) {
       for (const file of matchedFiles) {
         if (!existing.matchedFiles.includes(file)) existing.matchedFiles.push(file);
       }
-      if (reason === 'DIRECT') existing.reason = 'DIRECT';
-      else if (existing.reason !== 'DIRECT') {
+      if (reason === 'DIRECT') {
+        existing.reason = 'DIRECT';
+      } else if (existing.reason !== 'DIRECT') {
         const labels = new Set(
-          existing.reason === 'DIRECT' ? [] : existing.reason.replace(/^IMPACTED_BY /, '').split(',').filter(Boolean),
+          existing.reason.replace(/^IMPACTED_BY /, '').split(',').filter(Boolean),
         );
-        const added = reason.replace(/^IMPACTED_BY /, '');
-        for (const item of added.split(',')) if (item) labels.add(item);
+        for (const item of reason.replace(/^IMPACTED_BY /, '').split(',')) {
+          if (item) labels.add(item);
+        }
         existing.reason = `IMPACTED_BY ${[...labels].sort().join(',')}`;
       }
       return;
@@ -85,9 +87,10 @@ export function resolveAffectedFeatures(changedFiles, features) {
     const feature = byId.get(id);
     for (const impactId of feature?.impacts ?? []) {
       const impacted = byId.get(impactId);
-      if (!impacted || seen.has(impactId)) continue;
+      if (!impacted) continue;
+      const isNew = !seen.has(impactId);
       add(impacted, [], `IMPACTED_BY ${id}`);
-      if (!queued.has(impactId)) {
+      if (isNew && !queued.has(impactId)) {
         queued.add(impactId);
         queue.push(impactId);
       }
@@ -96,12 +99,60 @@ export function resolveAffectedFeatures(changedFiles, features) {
   return ordered;
 }
 
+/**
+ * Lexical scanner for executable test declarations.
+ * Counts only it('name') / it("name") / test('name') / test("name") whose
+ * first argument is a string literal appearing as real code. Comments,
+ * string literals, and template literals never contribute declarations,
+ * so a test name that exists only inside a comment/string/template is a ghost.
+ */
 export function extractTestNames(source) {
   const names = [];
-  const lineRe = /^[ \t]*(?:it|test)\(\s*(['"])((?:\\.|[^\\])*?)\1/gm;
-  let match;
-  while ((match = lineRe.exec(source)) !== null) {
-    names.push(match[2].replace(/\\(['"])/g, '$1'));
+  const n = source.length;
+  let i = 0;
+  let codeTail = '';
+
+  function recordCode(text) {
+    codeTail = (codeTail + text).slice(-64);
+  }
+
+  while (i < n) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < n && source[i] !== '\n') i += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
+      i = Math.min(n, i + 2);
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      const quote = ch;
+      i += 1;
+      let content = '';
+      while (i < n) {
+        const c = source[i];
+        if (c === '\\') {
+          content += source[i + 1] ?? '';
+          i += 2;
+          continue;
+        }
+        if (c === quote) break;
+        content += c;
+        i += 1;
+      }
+      i = Math.min(n, i + 1);
+      if (/(?:^|[^A-Za-z0-9_$.])(?:it|test)\s*\(\s*$/.test(codeTail)) {
+        names.push(content);
+      }
+      recordCode('""');
+      continue;
+    }
+    recordCode(ch);
+    i += 1;
   }
   return names;
 }
@@ -111,8 +162,13 @@ export function validateKnownCommand(command, options = {}) {
   if (!trimmed) return 'command is empty';
   const pnpm = trimmed.match(/^pnpm(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/);
   if (pnpm) {
-    if (!options.packageScripts || !(pnpm[1] in options.packageScripts)) {
-      return `missing package script: ${pnpm[1]}`;
+    const scriptName = pnpm[1];
+    const scriptText = options.packageScripts?.[scriptName];
+    if (typeof scriptText !== 'string') {
+      return `missing package script: ${scriptName}`;
+    }
+    if (options.declaredFile && !scriptText.includes(options.declaredFile)) {
+      return `CATALOG_COMMAND_TARGET_MISMATCH: script ${scriptName} does not reference declared artifact ${options.declaredFile}`;
     }
     return null;
   }
@@ -120,6 +176,9 @@ export function validateKnownCommand(command, options = {}) {
   if (bash) {
     if (typeof options.fileExists === 'function' && !options.fileExists(bash[1])) {
       return `command file missing: ${bash[1]}`;
+    }
+    if (options.declaredFile && options.declaredFile !== bash[1]) {
+      return `CATALOG_COMMAND_TARGET_MISMATCH: bash target ${bash[1]} does not match declared artifact ${options.declaredFile}`;
     }
     return null;
   }
@@ -243,7 +302,11 @@ export function validateCatalogArtifacts(catalogDoc, options = {}) {
       }
     }
     if (entry.command) {
-      const commandError = validateKnownCommand(entry.command, options);
+      const commandError = validateKnownCommand(entry.command, {
+        packageScripts: options.packageScripts,
+        fileExists: options.fileExists,
+        declaredFile: entry.location?.file,
+      });
       if (commandError) errors.push(`${entry.id}: ${commandError}`);
     }
   }

@@ -800,6 +800,7 @@
       "riskScore": 11,
       "maintenanceBudget": 10,
       "paths": [
+        "apps/agent/src/smoke/**",
         "deploy/local/**",
         "apps/agent/src/index.ts",
         "apps/pi-runtime/src/index.ts",

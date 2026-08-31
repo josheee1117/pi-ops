@@ -144,6 +144,58 @@ test('impact cycles terminate and deduplicate deterministically', () => {
   assert.equal(result[1].reason, 'IMPACTED_BY a');
 });
 
+test('multiple impact parents merge into one deterministic reason', () => {
+  const mk = (id, paths, impacts) => ({
+    id, riskClass: 'low', riskScore: 1, maintenanceBudget: 1, paths, impacts: impacts ?? [],
+    invariants: [{ id: `INV-${id.toUpperCase()}`, statement: id, requiredEvidence: { C: 1 } }],
+  });
+  const protocol = mk('protocol.contract', ['packages/protocol/src/**'], ['runtime.boundary']);
+  const modelSafe = mk('evidence.model-safe-projection', ['apps/agent/src/incident-context.ts'], ['runtime.boundary']);
+  const boundary = mk('runtime.boundary', ['apps/pi-runtime/src/**']);
+  const result = resolveAffectedFeatures(
+    ['packages/protocol/src/index.ts', 'apps/agent/src/incident-context.ts'],
+    [protocol, modelSafe, boundary],
+  );
+  const boundaryItem = result.find((item) => item.feature.id === 'runtime.boundary');
+  assert.ok(boundaryItem);
+  assert.equal(
+    boundaryItem.reason,
+    'IMPACTED_BY evidence.model-safe-projection,protocol.contract',
+  );
+  assert.equal(result.filter((item) => item.feature.id === 'runtime.boundary').length, 1);
+});
+
+test('DIRECT takes precedence over merged impact reasons', () => {
+  const mk = (id, paths, impacts) => ({
+    id, riskClass: 'low', riskScore: 1, maintenanceBudget: 1, paths, impacts: impacts ?? [],
+    invariants: [{ id: `INV-${id.toUpperCase()}`, statement: id, requiredEvidence: { C: 1 } }],
+  });
+  const protocol = mk('protocol.contract', ['packages/protocol/src/**'], ['runtime.boundary']);
+  const boundary = mk('runtime.boundary', ['apps/pi-runtime/src/**']);
+  const result = resolveAffectedFeatures(
+    ['packages/protocol/src/index.ts', 'apps/pi-runtime/src/model.ts'],
+    [protocol, boundary],
+  );
+  const boundaryItem = result.find((item) => item.feature.id === 'runtime.boundary');
+  assert.equal(boundaryItem.reason, 'DIRECT');
+  assert.deepEqual(boundaryItem.matchedFiles, ['apps/pi-runtime/src/model.ts']);
+});
+
+test('smoke test files map directly to local.integration', () => {
+  const localIntegration = {
+    id: 'local.integration',
+    riskClass: 'high',
+    riskScore: 11,
+    maintenanceBudget: 10,
+    paths: ['apps/agent/src/smoke/**', 'deploy/local/**'],
+    invariants: [{ id: 'INV-LOCINT-01', statement: 'smoke chain', requiredEvidence: { A: 1 } }],
+  };
+  const result = resolveAffectedFeatures(['apps/agent/src/smoke/pi-reasoner.smoke.ts'], [localIntegration]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].feature.id, 'local.integration');
+  assert.equal(result[0].reason, 'DIRECT');
+});
+
 test('config validation rejects invalid impact feature ids', () => {
   const doc = {
     schemaVersion: 1,
@@ -165,6 +217,35 @@ test('extractTestNames finds declared test names but not comments or describe bl
     "});",
   ].join('\n');
   assert.deepEqual(extractTestNames(source), ['real test', 'mjs test']);
+});
+
+test('block-commented test declarations are ghosts', () => {
+  const source = [
+    "/*",
+    "it('block ghost', () => {});",
+    "*/",
+    "it('real one', () => {});",
+  ].join('\n');
+  assert.deepEqual(extractTestNames(source), ['real one']);
+});
+
+test('test-like strings and templates are ghosts', () => {
+  const source = [
+    'const x = "it(\'string ghost\', () => {})";',
+    'const y = `test(\'template ghost\', () => {})`;',
+    "const z = 'test(\'quoted ghost\', 1)';",
+    'it("double quoted real", () => {});',
+  ].join('\n');
+  assert.deepEqual(extractTestNames(source), ['double quoted real']);
+});
+
+test('property and word-suffixed it( calls are not test declarations', () => {
+  const source = [
+    "obj.it('property call', 1);",
+    "submit('suffixed submit', 1);",
+    "it('real', 1);",
+  ].join('\n');
+  assert.deepEqual(extractTestNames(source), ['real']);
 });
 
 test('catalog validation fails on a ghost testName', () => {
@@ -205,6 +286,38 @@ test('known pnpm command validates against package scripts', () => {
   const scripts = { 'smoke:local': 'bash x.sh' };
   assert.equal(validateKnownCommand('pnpm smoke:local', { packageScripts: scripts }), null);
   assert.match(validateKnownCommand('pnpm smoke:nope', { packageScripts: scripts }), /missing package script/);
+});
+
+test('pnpm command must reference its declared evidence artifact', () => {
+  const scripts = { 'smoke:local': 'bash deploy/local/smoke.sh' };
+  assert.equal(
+    validateKnownCommand('pnpm smoke:local', { packageScripts: scripts, declaredFile: 'deploy/local/smoke.sh' }),
+    null,
+  );
+  assert.match(
+    validateKnownCommand('pnpm smoke:local', { packageScripts: { 'smoke:local': 'echo OK' }, declaredFile: 'deploy/local/smoke.sh' }),
+    /CATALOG_COMMAND_TARGET_MISMATCH/,
+  );
+});
+
+test('pnpm run form is accepted and still bound', () => {
+  const scripts = { 'smoke:local': 'bash deploy/local/smoke.sh' };
+  assert.equal(validateKnownCommand('pnpm run smoke:local', { packageScripts: scripts, declaredFile: 'deploy/local/smoke.sh' }), null);
+  assert.match(
+    validateKnownCommand('pnpm run smoke:local', { packageScripts: scripts, declaredFile: 'other.sh' }),
+    /CATALOG_COMMAND_TARGET_MISMATCH/,
+  );
+});
+
+test('bash command target must match the declared artifact', () => {
+  assert.equal(
+    validateKnownCommand('bash deploy/local/smoke.sh', { fileExists: () => true, declaredFile: 'deploy/local/smoke.sh' }),
+    null,
+  );
+  assert.match(
+    validateKnownCommand('bash other.sh', { fileExists: () => true, declaredFile: 'deploy/local/smoke.sh' }),
+    /CATALOG_COMMAND_TARGET_MISMATCH/,
+  );
 });
 
 test('bash command validates against the file system', () => {
