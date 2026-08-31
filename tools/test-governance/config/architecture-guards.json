@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "guards": [
+    {
+      "id": "ARCH-RUNTIME-NODE-AGENT",
+      "description": "Pi Runtime must not depend on Node Agent implementation.",
+      "kind": "forbiddenImport",
+      "scope": ["apps/pi-runtime/src/**"],
+      "patterns": ["node-agent", "apps/node-agent"]
+    },
+    {
+      "id": "ARCH-RUNTIME-NO-HOST-EXEC",
+      "description": "Pi Runtime must not gain shell, Docker socket, or Docker client capabilities.",
+      "kind": "forbiddenText",
+      "scope": ["apps/pi-runtime/src/**"],
+      "patterns": ["node:child_process", "/var/run/docker.sock", "dockerode"]
+    },
+    {
+      "id": "ARCH-NODE-NO-REASONER",
+      "description": "Node Agent is an observation plane and must not depend on Pi Runtime/reasoner implementations.",
+      "kind": "forbiddenImport",
+      "scope": ["apps/node-agent/src/**"],
+      "patterns": ["pi-runtime", "reasoner", "RuntimeModel"]
+    },
+    {
+      "id": "ARCH-AGENT-NO-RUNTIME-IMPLEMENTATION",
+      "description": "Pi-Ops control plane must not import Pi Runtime coordinator/specialist implementation modules.",
+      "kind": "forbiddenImport",
+      "scope": ["apps/agent/src/**"],
+      "patterns": ["apps/pi-runtime", "pi-runtime/src/coordinator", "pi-runtime/src/specialists"]
+    },
+    {
+      "id": "ARCH-EXTERNAL-RUNTIME-CANONICAL-INDEX",
+      "description": "Agent startup must use the canonical externalRuntimeEnabled decision.",
+      "kind": "requiredText",
+      "scope": ["apps/agent/src/index.ts"],
+      "patterns": ["externalRuntimeEnabled"]
+    },
+    {
+      "id": "ARCH-EXTERNAL-RUNTIME-CANONICAL-WORKER",
+      "description": "Legacy ReasoningWorker must use the same canonical externalRuntimeEnabled decision.",
+      "kind": "requiredText",
+      "scope": ["apps/agent/src/reasoning-worker.ts"],
+      "patterns": ["externalRuntimeEnabled"]
+    },
+    {
+      "id": "ARCH-DYNAMIC-EVIDENCE-MODEL-SAFE",
+      "description": "Dynamic Runtime Evidence must cross the model-safe projection before leaving Pi-Ops.",
+      "kind": "requiredText",
+      "scope": ["apps/agent/src/investigation-evidence.ts"],
+      "patterns": ["toRuntimeSafeEvidence"]
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "recon-dynamic-evidence-unit",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 1,
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "does not start a new investigation when dynamic Evidence is added to a COMPLETED generation"
+      },
+      "proofs": [
+        { "invariantId": "INV-GEN-01", "level": "C" }
+      ]
+    },
+    {
+      "id": "recon-generation-requeue",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 1,
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "starts exactly one new investigation after a new deterministic Evidence generation"
+      },
+      "proofs": [
+        { "invariantId": "INV-GEN-02", "level": "A" }
+      ]
+    },
+    {
+      "id": "recon-stale-submitted",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 1,
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "fails a stale SUBMITTED session and later retries within budget"
+      },
+      "proofs": [
+        { "invariantId": "INV-STALE-01", "level": "C" }
+      ]
+    },
+    {
+      "id": "recon-stale-running",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 1,
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "fails a stale RUNNING session"
+      },
+      "proofs": [
+        { "invariantId": "INV-STALE-01", "level": "C" }
+      ]
+    },
+    {
+      "id": "recon-crash-reopen",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 2,
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "repairs the crash gap after reopening SQLite and does not redispatch COMPLETED generations"
+      },
+      "proofs": [
+        { "invariantId": "INV-CRASH-01", "level": "A" }
+      ]
+    },
+    {
+      "id": "recon-authoritative-result-unit",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 1,
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "keeps one authoritative ReasoningResult from the InvestigationSession"
+      },
+      "proofs": [
+        { "invariantId": "INV-AUTH-01", "level": "C" }
+      ]
+    },
+    {
+      "id": "phase12-local-smoke",
+      "featureId": "investigation.reconciliation",
+      "status": "PINNED",
+      "maintenanceCost": 4,
+      "command": "pnpm smoke:local",
+      "proofs": [
+        { "invariantId": "INV-GEN-01", "level": "A" },
+        { "invariantId": "INV-AUTH-01", "level": "A" }
+      ]
+    }
+  ]
+}

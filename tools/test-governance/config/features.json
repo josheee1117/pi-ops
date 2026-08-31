@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "evidenceLevels": {
+    "A": "Direct result evidence: externally observable system state, real SQLite state, process/HTTP state, or a real boundary relevant to the claim.",
+    "B": "Process evidence: structured audit, logs, request correlation, or lifecycle trace.",
+    "C": "Simulation evidence: mock, fake clock, fake runtime, stub transport, or isolated deterministic substitute."
+  },
+  "features": [
+    {
+      "id": "investigation.reconciliation",
+      "riskClass": "critical",
+      "riskScore": 12,
+      "maintenanceBudget": 12,
+      "paths": [
+        "apps/agent/src/investigation-reconciler.ts",
+        "apps/agent/src/investigation-loop.ts",
+        "apps/agent/src/evidence-worker.ts",
+        "apps/agent/src/store.ts",
+        "apps/agent/src/reasoning-worker.ts",
+        "apps/agent/src/index.ts"
+      ],
+      "invariants": [
+        {
+          "id": "INV-GEN-01",
+          "statement": "Dynamic Investigation Evidence belongs to the current EvidenceJob generation and must not trigger another automatic Investigation.",
+          "requiredEvidence": { "A": 1, "C": 1 }
+        },
+        {
+          "id": "INV-GEN-02",
+          "statement": "Only deterministic Evidence requeue advances EvidenceJob.generation and permits one new automatic Investigation generation.",
+          "requiredEvidence": { "A": 1 }
+        },
+        {
+          "id": "INV-STALE-01",
+          "statement": "SUBMITTED and RUNNING InvestigationSessions become FAILED after the stale timeout and retry remains bounded by maxAttempts.",
+          "requiredEvidence": { "C": 2 }
+        },
+        {
+          "id": "INV-CRASH-01",
+          "statement": "Completed deterministic Evidence with no successful Investigation is reconciled after restart without duplicating an already completed generation.",
+          "requiredEvidence": { "A": 1 }
+        },
+        {
+          "id": "INV-AUTH-01",
+          "statement": "External-runtime mode has one authoritative reasoning result path and does not create a parallel legacy local reasoning result.",
+          "requiredEvidence": { "A": 1, "C": 1 }
+        }
+      ]
+    }
+  ]
+}

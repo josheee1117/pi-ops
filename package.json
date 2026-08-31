@@ -17,6 +17,10 @@
     "lint": "pnpm -r lint",
     "start:local": "docker compose -f deploy/local/docker-compose.yml --env-file deploy/local/compose.env up --build",
     "smoke:local": "bash deploy/local/smoke.sh",
-    "smoke:pi": "bash deploy/local/smoke-pi.sh"
+    "smoke:pi": "bash deploy/local/smoke-pi.sh",
+    "test:plan": "node tools/test-governance/src/cli.mjs plan",
+    "test:arch": "node tools/test-governance/src/cli.mjs arch",
+    "test:governance:self": "node --test tools/test-governance/src/*.test.mjs",
+    "test:governance": "pnpm test:governance:self && node tools/test-governance/src/cli.mjs validate && pnpm test:arch && pnpm test:plan"
   }
 }
