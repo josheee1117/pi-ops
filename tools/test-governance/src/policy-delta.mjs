@@ -10,7 +10,6 @@ import { canonicalizeCommand, catalogEntryKind } from './core.mjs';
  * Weakening fails closed (GOVERNANCE_POLICY_WEAKENING); strengthening passes.
  */
 const FLOOR_LEVELS = ['A', 'B', 'C'];
-const WEAKER_GUARD_KIND = new Set(['forbiddenImport', 'forbiddenText']);
 
 function sourceKeyOf(entry, packageScripts) {
   const kind = catalogEntryKind(entry);
@@ -27,26 +26,6 @@ function sourceKeyOf(entry, packageScripts) {
 
 function proofKeyOf(entry, proof, packageScripts) {
   return `${proof.invariantId}\u0000${proof.level}\u0000${sourceKeyOf(entry, packageScripts)}`;
-}
-
-function invariantProofSignatures(catalog, invariantId, packageScripts) {
-  const signatures = [];
-  for (const entry of catalog?.entries ?? []) {
-    for (const proof of entry.proofs ?? []) {
-      if (proof.invariantId !== invariantId) continue;
-      signatures.push(`${entry.id}\u0000${entry.status ?? 'ACTIVE'}\u0000${proofKeyOf(entry, proof, packageScripts)}`);
-    }
-  }
-  return signatures.sort();
-}
-
-function pinnedInvariantIds(catalog) {
-  const pinned = new Set();
-  for (const entry of catalog?.entries ?? []) {
-    if ((entry.status ?? 'ACTIVE') !== 'PINNED') continue;
-    for (const proof of entry.proofs ?? []) pinned.add(proof.invariantId);
-  }
-  return pinned;
 }
 
 function listRemovedAndAdded(baseItems, headItems) {
@@ -71,7 +50,8 @@ export function evaluatePolicyDelta({
 
   compareGuards(baseGuards, headGuards, record);
   compareGovernedRoots(baseFeatures, headFeatures, record);
-  compareFeatures(baseFeatures, headFeatures, { baseCatalog, headCatalog, record, packageScripts: options.packageScripts });
+  compareUnmappedIgnore(baseFeatures, headFeatures, record);
+  compareFeatures(baseFeatures, headFeatures, record);
   compareCatalog(baseCatalog, headCatalog, { record, packageScripts: options.packageScripts });
 
   const blockingChanges = changes.filter((change) => change.blocking);
@@ -94,8 +74,10 @@ function compareGuards(baseGuards, headGuards, record) {
       continue;
     }
     if (base.kind !== head.kind) {
-      const weakened = WEAKER_GUARD_KIND.has(base.kind) && head.kind === 'requiredText';
-      record(weakened, 'GUARD_KIND_CHANGED', `architecture guard ${base.id} kind ${base.kind} -> ${head.kind}`);
+      // Kind changes are never auto-classified as stronger/weaker: e.g.
+      // forbiddenText -> forbiddenImport can lose protection for patterns
+      // that are not import specifiers.
+      record(true, 'POLICY_REVIEW_REQUIRED', `architecture guard ${base.id} kind ${base.kind} -> ${head.kind}`);
     }
     const { removed: scopeRemoved, added: scopeAdded } = listRemovedAndAdded(base.scope ?? [], head.scope ?? []);
     if (scopeRemoved.length > 0) {
@@ -126,11 +108,23 @@ function compareGovernedRoots(baseFeatures, headFeatures, record) {
   for (const root of added) record(false, 'GOVERNED_ROOT_ADDED', `added governed root ${root}`);
 }
 
-function compareFeatures(baseFeatures, headFeatures, context) {
+/**
+ * unmappedIgnore is an exemption surface: every added ignore pattern removes
+ * production files from UNMAPPED_PRODUCTION_CHANGE detection and weakens
+ * governance. Exact-set comparison only; no glob containment reasoning.
+ */
+function compareUnmappedIgnore(baseFeatures, headFeatures, record) {
+  const baseIgnore = baseFeatures?.unmappedIgnore ?? [];
+  const headIgnore = headFeatures?.unmappedIgnore ?? [];
+  const { removed, added } = listRemovedAndAdded(baseIgnore, headIgnore);
+  for (const pattern of removed) record(false, 'UNMAPPED_IGNORE_REDUCED', `removed unmappedIgnore pattern ${pattern}`);
+  for (const pattern of added) record(true, 'UNMAPPED_IGNORE_EXPANDED', `added unmappedIgnore pattern ${pattern}`);
+}
+
+function compareFeatures(baseFeatures, headFeatures, record) {
   const baseList = baseFeatures?.features ?? [];
   const headList = headFeatures?.features ?? [];
   const headById = new Map(headList.map((feature) => [feature.id, feature]));
-  const { record, baseCatalog, headCatalog, packageScripts } = context;
 
   for (const base of baseList) {
     const head = headById.get(base.id);
@@ -146,7 +140,7 @@ function compareFeatures(baseFeatures, headFeatures, context) {
     for (const impact of impactsRemoved) record(true, 'IMPACT_EDGE_REMOVED', `${base.id}: removed impact edge ${impact}`);
     for (const impact of impactsAdded) record(false, 'IMPACT_EDGE_ADDED', `${base.id}: added impact edge ${impact}`);
 
-    compareInvariants(base, head, { baseCatalog, headCatalog, record, packageScripts });
+    compareInvariants(base, head, record);
   }
   const baseIds = new Set(baseList.map((feature) => feature.id));
   for (const head of headList) {
@@ -154,8 +148,7 @@ function compareFeatures(baseFeatures, headFeatures, context) {
   }
 }
 
-function compareInvariants(base, head, context) {
-  const { baseCatalog, headCatalog, record, packageScripts } = context;
+function compareInvariants(base, head, record) {
   const baseInvariants = new Map((base.invariants ?? []).map((invariant) => [invariant.id, invariant]));
   const headInvariants = new Map((head.invariants ?? []).map((invariant) => [invariant.id, invariant]));
 
@@ -175,20 +168,10 @@ function compareInvariants(base, head, context) {
       }
     }
     if ((baseInvariant.statement ?? '') !== (headInvariant.statement ?? '')) {
-      const floorChanged = FLOOR_LEVELS.some((level) => (baseInvariant.requiredEvidence?.[level] ?? 0) !== (headInvariant.requiredEvidence?.[level] ?? 0));
-      const proofsChanged = invariantProofSignatures(baseCatalog, id, packageScripts).join('\u0001')
-        !== invariantProofSignatures(headCatalog, id, packageScripts).join('\u0001');
-      const pinnedReferenced = pinnedInvariantIds(baseCatalog).has(id) || pinnedInvariantIds(headCatalog).has(id);
-
-      // ponytail: pure wording changes on a non-PINNED invariant with unchanged
-      // floor and unchanged Proof mapping are surfaced, not blocking; every
-      // dangerous combination (floor moved, Proof mapping moved, PINNED claim)
-      // fails closed. Review-by-machine of natural language is out of scope.
-      if (floorChanged || proofsChanged || pinnedReferenced) {
-        record(true, 'POLICY_REVIEW_REQUIRED', `invariant ${id} statement changed together with its floor, Proof mapping, or PINNED status: "${baseInvariant.statement}" -> "${headInvariant.statement}"`);
-      } else {
-        record(false, 'POLICY_REVIEW_REQUIRED', `invariant ${id} statement changed (floor and Proof mapping unchanged): "${baseInvariant.statement}" -> "${headInvariant.statement}"`);
-      }
+      // Any statement change on an existing invariant id requires review:
+      // the machine cannot distinguish wording clarification from semantic
+      // weakening, so both block automatic PASS.
+      record(true, 'POLICY_REVIEW_REQUIRED', `invariant ${id} statement changed: "${baseInvariant.statement}" -> "${headInvariant.statement}"`);
     }
   }
   for (const id of headInvariants.keys()) {

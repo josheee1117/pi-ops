@@ -104,6 +104,11 @@ export async function runGate(options) {
       packageScripts: config.packageScripts ?? {},
     });
     status = resolveGateStatus({ policyStatus: plan.status, executionResults, evidence });
+    if ((files ?? []).length > 0 && status === 'PASS') {
+      // Explicit-files runs skip the base policy delta and the trust surface;
+      // they must never masquerade as a trusted commit PASS.
+      status = 'EXPLICIT_FILES_UNTRUSTED';
+    }
     return finalize();
   } catch (gateError) {
     error = gateError instanceof Error ? gateError.message : String(gateError);
@@ -151,6 +156,11 @@ export async function runGate(options) {
 
 function describePolicyFailure(plan) {
   const reasons = [];
+  if (plan.trustSurface && plan.trustSurface.status !== 'PASS') {
+    for (const change of plan.trustSurface.blockingChanges ?? []) {
+      reasons.push(`trust surface ${change.kind}: ${change.detail}`);
+    }
+  }
   if (plan.policyDelta && plan.policyDelta.status !== 'PASS') {
     for (const change of plan.policyDelta.blockingChanges ?? []) {
       reasons.push(`policy delta ${change.kind}: ${change.detail}`);

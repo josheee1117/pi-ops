@@ -48,7 +48,8 @@ Each Feature has `riskClass` (low/medium/high/critical) and `riskScore` 0-15 fro
 ## Planner result states (precedence order)
 
 ```text
-GOVERNANCE_POLICY_WEAKENING
+GOVERNANCE_REVIEW_REQUIRED
+> GOVERNANCE_POLICY_WEAKENING
 > ARCHITECTURE_VIOLATION
 > UNMAPPED_PRODUCTION_CHANGE
 > NEEDS_EVIDENCE
@@ -56,6 +57,7 @@ GOVERNANCE_POLICY_WEAKENING
 > READY
 ```
 
+- **GOVERNANCE_REVIEW_REQUIRED** - the Governance Trust Surface changed (engine, workflow, protected package.json entrypoints) or the trust root was removed/changed after bootstrap. The automatic Gate cannot approve its own engine; exact reason kinds are retained in the artifact.
 - **GOVERNANCE_POLICY_WEAKENING** - the Policy Delta Guard found the commit weakening the rules that judge it, or the BASE policy could not be read (fail closed). Exact reasons are listed in the plan, the gate output, and `policy-delta.json`.
 
 - **ARCHITECTURE_VIOLATION** - an architecture guard matched.
@@ -70,15 +72,27 @@ The Gate evaluates HEAD using HEAD policy. To prevent a commit from weakening th
 
 Blocked as `GOVERNANCE_POLICY_WEAKENING`:
 
-- removed architecture guards, removed forbidden/required patterns, shrunk guard scope, forbidden guards downgraded to requiredText canaries;
-- removed governed roots;
+- removed architecture guards, removed forbidden/required patterns, shrunk guard scope, **any kind change on an existing guard** (never auto-classified as stronger/weaker);
+- removed governed roots, **any added unmappedIgnore pattern** (an exemption surface; exact-set comparison, no glob containment reasoning);
 - removed Features, Feature paths, or impact edges;
 - removed Invariants, lowered Evidence floors (A1→A0, C2→C1);
+- **any statement change on an existing Invariant id** (the machine cannot distinguish wording clarification from semantic weakening);
 - deleted PINNED entries, PINNED→ACTIVE/QUARANTINED/DOMINATED/RETIRED, historicalRegression true→false, removed Proofs or changed backing sources of PINNED entries;
-- Evidence-grade changes (C→B/A, B→A) on an unchanged Proof Source;
-- invariant statement changes entangled with a floor change, a Proof-mapping change, or a PINNED reference (a pure wording clarification with unchanged floor and Proof mapping is surfaced as `POLICY_REVIEW_REQUIRED` without blocking).
+- Evidence-grade changes (C→B/A, B→A) on an unchanged Proof Source.
 
-Allowed: new guards, broader scope, additional patterns, new governed roots, new Features/paths/impacts, new Invariants, higher floors, new Proofs, new PINNED regressions. If BASE policy cannot be read or parsed, the plan fails closed (`BASE_POLICY_UNREADABLE`).
+Allowed: new guards, broader scope, additional patterns, new governed roots, reduced unmappedIgnore, new Features/paths/impacts, new Invariants, higher floors, new Proofs, new PINNED regressions. If BASE policy cannot be read or parsed, the plan fails closed (`BASE_POLICY_UNREADABLE`).
+
+## Governance Trust Surface
+
+The engine that enforces governance is itself review-gated; a commit cannot approve its own engine:
+
+- `tools/test-governance/src/**` changed → `GOVERNANCE_ENGINE_CHANGE_REQUIRES_REVIEW` (governance self-tests included);
+- `.github/workflows/test-governance.yml` changed → `GOVERNANCE_WORKFLOW_CHANGE_REQUIRES_REVIEW`;
+- root `package.json` protected fields changed → `GOVERNANCE_ENTRYPOINT_CHANGE_REQUIRES_REVIEW`: `scripts.test:gate`, `scripts.test:plan`, `scripts.test:run`, `scripts.test:arch`, `scripts.test:governance`, `scripts.test:governance:self`, `packageManager`, `engines.node`, `dependencies.typescript`, `devDependencies.typescript`. Unrelated package.json changes (description, other scripts) pass; new unprotected scripts are surfaced only.
+
+Trust-root bootstrap is structural and one-time: BASE without `trustRootVersion` → HEAD with `trustRootVersion: 1` yields non-blocking `TRUST_ROOT_BOOTSTRAP` (that migration commit may change the engine). Once BASE carries `trustRootVersion: 1`, any trust-surface change, version removal, or version change blocks `GOVERNANCE_REVIEW_REQUIRED`. No environment bypass, no SHA hardcoding, no actor/branch identity.
+
+`test:plan --files` / `test:run --files` remain advisory (delta + trust surface skipped with a note). A full `test:gate --files` cannot return a trusted `PASS`: it reports `EXPLICIT_FILES_UNTRUSTED` instead. Only a real `base..head` gate can PASS.
 
 ## Feature impact propagation
 

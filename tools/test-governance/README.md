@@ -47,11 +47,12 @@ Historical regression proofs are marked `PINNED` in the catalog so future budget
 - **Commands are canonical.** Command entries support only `pnpm <script>`, `pnpm run <script>`, and repository-relative `bash <file>`. A pnpm script must be exactly `bash <declared location.file>`; compound shell commands fail closed. The ExecutionPlan carries validated executable/argv rather than a shell string.
 - **Proof sources are unique.** The same test or canonical command/artifact cannot fill the same invariant+level slot twice through catalog aliases; validation rejects it and realized-Evidence evaluation deduplicates it again.
 - **Catalog execution is unambiguous.** Every entry is exactly one of TEST (`location.file` + `testName`) or COMMAND (`command` + `location.file`), and `executionClass` is mandatory. Unknown classes never default to Gate 1.
+- **Governance Trust Surface.** The engine that enforces governance (`tools/test-governance/src/**`), the CI workflow (`.github/workflows/test-governance.yml`), and the protected root package.json entrypoints (`test:gate` / `test:plan` / `test:run` / `test:arch` / `test:governance` / `test:governance:self`, `packageManager`, `engines.node`, the `typescript` dependency) are review-gated: a commit that changes them can never auto-approve itself (`GOVERNANCE_REVIEW_REQUIRED`). Trust-root bootstrap is structural and one-time: BASE without `trustRootVersion` -> HEAD with `trustRootVersion: 1` is allowed once (`TRUST_ROOT_BOOTSTRAP`); after that, removing or changing the version blocks.
 - **Policy Delta Guard.** Every real `base..head` plan compares the parsed governance policy at BASE (via `git show <base>:<file>`) against HEAD policy. Weakening - removed guards/patterns/scope, removed governed roots, removed Features/paths/impact edges, removed Invariants, lowered Evidence floors, deleted or demoted PINNED proofs, flipped historicalRegression, Evidence-grade changes on unchanged Proof Sources, statement changes entangled with floor/Proof-mapping changes - fails closed as `GOVERNANCE_POLICY_WEAKENING`. Strengthening (new guards, broader scope, new roots/paths/impacts, higher floors, new Proofs) passes. Unreadable BASE policy fails closed.
 - **Impact propagation.** Shared contracts pull dependent Features into the plan (`protocol.contract`, `configuration.fail-closed`, `evidence.model-safe-projection` declare `impacts`). Output annotates `reason=DIRECT` / `reason=IMPACTED_BY <feature>`. Multiple parents are retained deterministically; cycles terminate; duplicates collapse.
 - **Budget is engine state.** `evaluateMaintenanceBudget` computes planned delta (REUSE 0, STRENGTHEN 1, CREATE 4 defaults) and reports `WITHIN_BUDGET` / `BUDGET_EXCEEDED` without ever touching floors.
 
-Planner state precedence: `GOVERNANCE_POLICY_WEAKENING` > `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`.
+Planner state precedence: `GOVERNANCE_REVIEW_REQUIRED` > `GOVERNANCE_POLICY_WEAKENING` > `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`.
 
 ## Commands
 
@@ -92,7 +93,7 @@ pnpm test:gate -- --max-gate 4 --allow-live-provider
 
 `test:plan` reports `NEEDS_EVIDENCE` / `UNMAPPED_PRODUCTION_CHANGE` honestly and fails only with `--strict`. Architecture violations always fail `test:arch`.
 
-`test:run` and `test:gate` emit a fresh directory at `artifacts/test-evidence/<HEAD_SHA>/<RUN_ID>/` containing `plan.json`, `execution-plan.json`, `execution.json`, `evidence.json`, `summary.md`, and bounded per-run logs. Artifacts are never read back as proof. Final Gate states are `PASS`, `POLICY_BLOCKED`, `EXECUTION_FAILED`, `EVIDENCE_NOT_REALIZED`, `LIVE_PROVIDER_REQUIRED`, and `INTERNAL_ERROR`.
+`test:run` and `test:gate` emit a fresh directory at `artifacts/test-evidence/<HEAD_SHA>/<RUN_ID>/` containing `plan.json`, `execution-plan.json`, `execution.json`, `evidence.json`, `policy-delta.json`, `summary.md`, and bounded per-run logs. Artifacts are never read back as proof. Final Gate states are `PASS`, `GOVERNANCE_REVIEW_REQUIRED`, `GOVERNANCE_POLICY_WEAKENING`, `POLICY_BLOCKED`, `EXECUTION_FAILED`, `EVIDENCE_NOT_REALIZED`, `LIVE_PROVIDER_REQUIRED`, `EXPLICIT_FILES_UNTRUSTED`, and `INTERNAL_ERROR`. `--files` runs are advisory: they skip the BASE policy delta and trust surface, so a full gate over `--files` reports `EXPLICIT_FILES_UNTRUSTED` instead of `PASS`; only a real `base..head` range can produce a trusted commit PASS.
 
 ## Current machine gaps
 

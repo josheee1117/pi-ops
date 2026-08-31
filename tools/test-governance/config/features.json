@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "trustRootVersion": 1,
   "evidenceLevels": {
     "A": "Direct result evidence: externally observable system state, real SQLite state, process/HTTP state, or a real boundary relevant to the claim.",
     "B": "Process evidence: structured audit, logs, request correlation, or lifecycle trace.",

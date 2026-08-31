@@ -27,6 +27,9 @@ function planArtifact(plan) {
     policyDelta: plan.policyDelta
       ? { status: plan.policyDelta.status, blockingChanges: plan.policyDelta.blockingChanges ?? [] }
       : null,
+    trustSurface: plan.trustSurface
+      ? { status: plan.trustSurface.status, blockingChanges: plan.trustSurface.blockingChanges ?? [] }
+      : null,
     changedFiles: plan.changedFiles,
     directFeatures: (plan.features ?? []).filter((item) => item.reason === 'DIRECT').map((item) => item.feature.id),
     impactedFeatures: (plan.features ?? []).filter((item) => item.reason !== 'DIRECT')
@@ -77,14 +80,17 @@ function executionArtifact(results) {
 }
 
 function policyDeltaArtifact(plan) {
-  if (!plan?.policyDelta) return null;
+  if (!plan?.policyDelta && !plan?.trustSurface) return null;
   return {
     schemaVersion: 1,
-    basePolicy: plan.policyDelta.basePolicy ?? null,
-    headPolicy: plan.policyDelta.headPolicy ?? null,
-    policyDeltaStatus: plan.policyDelta.status,
-    blockingPolicyChanges: plan.policyDelta.blockingChanges ?? [],
-    changes: plan.policyDelta.changes ?? [],
+    basePolicy: plan.policyDelta?.basePolicy ?? null,
+    headPolicy: plan.policyDelta?.headPolicy ?? null,
+    policyDeltaStatus: plan.policyDelta?.status ?? null,
+    blockingPolicyChanges: plan.policyDelta?.blockingChanges ?? [],
+    trustSurfaceStatus: plan.trustSurface?.status ?? null,
+    blockingTrustSurfaceChanges: plan.trustSurface?.blockingChanges ?? [],
+    trustSurfaceChanges: plan.trustSurface?.changes ?? [],
+    changes: plan.policyDelta?.changes ?? [],
   };
 }
 
@@ -98,6 +104,13 @@ function buildSummary({ runId, headSha, gateStatus, plan, executionPlan, executi
   lines.push(`- Head: \`${plan?.head ?? 'n/a'}\``);
   lines.push(`- Policy Delta: **${plan?.policyDelta?.status ?? 'n/a'}**`);
   for (const change of plan?.policyDelta?.blockingChanges ?? []) {
+    lines.push(`  - ${change.kind}: ${change.detail}`);
+  }
+  lines.push(`- Governance Trust Surface: **${plan?.trustSurface?.status ?? 'n/a'}**`);
+  if (plan?.trustSurface?.trustRoot?.bootstrap) {
+    lines.push(`  - TRUST_ROOT_BOOTSTRAP: trustRootVersion ${plan.trustSurface.trustRoot.head} becomes authoritative from this commit`);
+  }
+  for (const change of plan?.trustSurface?.blockingChanges ?? []) {
     lines.push(`  - ${change.kind}: ${change.detail}`);
   }
   lines.push(`- Final status: **${gateStatus}**`);

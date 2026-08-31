@@ -4,6 +4,7 @@ const LEVELS = ['A', 'B', 'C'];
 export const EXECUTION_CLASSES = ['UNIT', 'COMPONENT', 'INTEGRATION', 'MULTI_PROCESS', 'SMOKE', 'LIVE_PROVIDER'];
 export const RUNTIME_CLASSES = ['fast', 'integration', 'smoke', 'live'];
 export const PLAN_STATUS_PRECEDENCE = [
+  'GOVERNANCE_REVIEW_REQUIRED',
   'GOVERNANCE_POLICY_WEAKENING',
   'ARCHITECTURE_VIOLATION',
   'UNMAPPED_PRODUCTION_CHANGE',
@@ -288,6 +289,9 @@ export function changedPathsOf(changes) {
 export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc, options = {}) {
   const errors = [];
   if (featureDoc?.schemaVersion !== 1) errors.push('features.schemaVersion must be 1');
+  if (featureDoc?.trustRootVersion !== undefined && featureDoc.trustRootVersion !== 1) {
+    errors.push('features.trustRootVersion must be 1');
+  }
   if (catalogDoc?.schemaVersion !== 1) errors.push('catalog.schemaVersion must be 1');
   if (guardDoc?.schemaVersion !== 1) errors.push('architecture-guards.schemaVersion must be 1');
   const governedRoots = featureDoc?.governedRoots;
@@ -550,7 +554,8 @@ export function collectMachineGaps(features, catalogEntries) {
   });
 }
 
-export function resolvePlanStatus({ policyWeakening = false, architectureViolations = [], unmappedProductionFiles = [], hasGaps = false, budgetExceeded = false }) {
+export function resolvePlanStatus({ trustSurfaceBlocked = false, policyWeakening = false, architectureViolations = [], unmappedProductionFiles = [], hasGaps = false, budgetExceeded = false }) {
+  if (trustSurfaceBlocked) return 'GOVERNANCE_REVIEW_REQUIRED';
   if (policyWeakening) return 'GOVERNANCE_POLICY_WEAKENING';
   if (architectureViolations.length > 0) return 'ARCHITECTURE_VIOLATION';
   if (unmappedProductionFiles.length > 0) return 'UNMAPPED_PRODUCTION_CHANGE';

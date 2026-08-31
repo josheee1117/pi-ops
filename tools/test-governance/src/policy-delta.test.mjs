@@ -98,18 +98,20 @@ test('4. adding a guard is allowed', () => {
   assert.ok(delta.changes.some((change) => change.kind === 'GUARD_ADDED'));
 });
 
-test('a forbidden guard downgraded to a requiredText canary blocks', () => {
-  const base = baseState({ guards: [guard('G1', 'forbiddenImport', ['apps/**'], ['evil'])] });
-  const head = baseState({ guards: [guard('G1', 'requiredText', ['apps/**'], ['evil'])] });
-  const delta = evaluate(base, head);
-  assert.equal(delta.status, 'GOVERNANCE_POLICY_WEAKENING');
-  assert.deepEqual(kinds(delta), ['GUARD_KIND_CHANGED']);
-});
-
-test('strengthening a requiredText canary into a forbidden guard is allowed', () => {
-  const base = baseState({ guards: [guard('G1', 'requiredText', ['apps/**'], ['canary'])] });
-  const head = baseState({ guards: [guard('G1', 'forbiddenText', ['apps/**'], ['canary'])] });
-  assert.equal(evaluate(base, head).status, 'PASS');
+test('guard kind changes always require review', () => {
+  const pairs = [
+    ['forbiddenImport', 'requiredText'],
+    ['forbiddenText', 'requiredText'],
+    ['requiredText', 'forbiddenText'],
+    ['forbiddenText', 'forbiddenImport'],
+  ];
+  for (const [before, after] of pairs) {
+    const base = baseState({ guards: [guard('G1', before, ['apps/**'], ['canary'])] });
+    const head = baseState({ guards: [guard('G1', after, ['apps/**'], ['canary'])] });
+    const delta = evaluate(base, head);
+    assert.equal(delta.status, 'GOVERNANCE_POLICY_WEAKENING', `${before} -> ${after}`);
+    assert.deepEqual(kinds(delta), ['POLICY_REVIEW_REQUIRED'], `${before} -> ${after}`);
+  }
 });
 
 // ── governed roots ───────────────────────────────────────────────────────────
@@ -126,6 +128,36 @@ test('adding a governed root is allowed', () => {
   const base = baseState({ features: ONE_FEATURE, governedRoots: ['apps/*/src/**'] });
   const head = baseState({ features: ONE_FEATURE, governedRoots: ['apps/*/src/**', 'packages/*/src/**'] });
   assert.equal(evaluate(base, head).status, 'PASS');
+});
+
+// ── unmappedIgnore exemption surface ────────────────────────────────────────
+
+function evaluateIgnoreDelta(baseIgnore, headIgnore) {
+  return evaluatePolicyDelta({
+    baseFeatures: { schemaVersion: 1, governedRoots: ['apps/*/src/**'], features: [], unmappedIgnore: baseIgnore },
+    headFeatures: { schemaVersion: 1, governedRoots: ['apps/*/src/**'], features: [], unmappedIgnore: headIgnore },
+    baseCatalog: { schemaVersion: 1, entries: [] },
+    headCatalog: { schemaVersion: 1, entries: [] },
+    baseGuards: { schemaVersion: 1, guards: [] },
+    headGuards: { schemaVersion: 1, guards: [] },
+  });
+}
+
+test('expanding unmappedIgnore blocks', () => {
+  const delta = evaluateIgnoreDelta(['docs/**'], ['docs/**', 'apps/**']);
+  assert.equal(delta.status, 'GOVERNANCE_POLICY_WEAKENING');
+  assert.deepEqual(kinds(delta), ['UNMAPPED_IGNORE_EXPANDED']);
+});
+
+test('reducing unmappedIgnore is allowed strengthening', () => {
+  const delta = evaluateIgnoreDelta(['docs/**', 'apps/generated/**'], ['docs/**']);
+  assert.equal(delta.status, 'PASS');
+  assert.ok(delta.changes.some((change) => change.kind === 'UNMAPPED_IGNORE_REDUCED'));
+});
+
+test('an unchanged unmappedIgnore set passes', () => {
+  const delta = evaluateIgnoreDelta(['docs/**', 'tools/**'], ['docs/**', 'tools/**']);
+  assert.equal(delta.status, 'PASS');
 });
 
 // ── features / invariants / floors ───────────────────────────────────────────
@@ -216,18 +248,40 @@ test('14. changing an invariant statement together with its Proof mapping blocks
   assert.deepEqual(kinds(delta), ['POLICY_REVIEW_REQUIRED']);
 });
 
-test('a pure wording clarification with unchanged floor and Proof mapping is surfaced, not blocking', () => {
+test('any existing invariant statement change blocks, even wording-only', () => {
   const base = baseState({
-    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'claim wording one', { A: 1 })])],
+    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'claim A', { A: 1 })])],
     catalog: [testEntry('e1', { proofs: [{ invariantId: 'INV-ONE', level: 'A' }] })],
   });
   const head = baseState({
-    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'claim wording two', { A: 1 })])],
+    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'claim A.', { A: 1 })])],
     catalog: [testEntry('e1', { proofs: [{ invariantId: 'INV-ONE', level: 'A' }] })],
   });
   const delta = evaluate(base, head);
+  assert.equal(delta.status, 'GOVERNANCE_POLICY_WEAKENING');
+  assert.deepEqual(kinds(delta), ['POLICY_REVIEW_REQUIRED']);
+});
+
+test('semantic statement weakening with identical floor and Proofs blocks', () => {
+  const base = baseState({
+    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'Only a valid ingest token may POST /v1/events.', { A: 1 })])],
+    catalog: [testEntry('e1', { proofs: [{ invariantId: 'INV-ONE', level: 'A' }] })],
+  });
+  const head = baseState({
+    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'Requests should normally contain an ingest token.', { A: 1 })])],
+    catalog: [testEntry('e1', { proofs: [{ invariantId: 'INV-ONE', level: 'A' }] })],
+  });
+  assert.deepEqual(kinds(evaluate(base, head)), ['POLICY_REVIEW_REQUIRED']);
+});
+
+test('an unchanged statement and a new invariant are allowed', () => {
+  const base = baseState({ features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'claim A', { A: 1 })])] });
+  const head = baseState({
+    features: [feature('feature.one', ['a.ts'], [invariant('INV-ONE', 'claim A', { A: 1 }), invariant('INV-TWO', 'new claim', { C: 1 })])],
+  });
+  const delta = evaluate(base, head);
   assert.equal(delta.status, 'PASS');
-  assert.ok(delta.changes.some((change) => change.kind === 'POLICY_REVIEW_REQUIRED' && !change.blocking));
+  assert.ok(delta.changes.some((change) => change.kind === 'INVARIANT_ADDED'));
 });
 
 test('changing the statement of a PINNED-referenced invariant blocks', () => {

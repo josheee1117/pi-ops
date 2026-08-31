@@ -6,9 +6,9 @@ Actions: `REUSE` / `STRENGTHEN` / `CREATE`. No RETIRE in this phase.
 
 ## Planner result states
 
-`GOVERNANCE_POLICY_WEAKENING` > `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`
+`GOVERNANCE_REVIEW_REQUIRED` > `GOVERNANCE_POLICY_WEAKENING` > `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`
 
-The Policy Delta Guard compares the parsed governance policy at BASE with HEAD (`git show <base>:...`); weakening the rules that judge the same commit fails closed. See `docs/testing/test-strategy.md` for the full rule list.
+The Policy Delta Guard compares the parsed governance policy at BASE with HEAD (`git show <base>:...`); weakening the rules that judge the same commit fails closed. The Governance Trust Surface review-gates the enforcement engine itself (`tools/test-governance/src/**`, the CI workflow, and protected package.json entrypoints) with a one-time structural `trustRootVersion: 1` bootstrap. See `docs/testing/test-strategy.md` for the full rule lists.
 
 Governed production roots cover application/protocol source, local deployment, root dependency/workspace files, and workspace package manifests. A changed or deleted path under a governed root that matches no Feature contract yields `UNMAPPED_PRODUCTION_CHANGE` (fail-closed); both sides of a rename participate. Tests, docs, governance tooling, and smoke scripts are excluded from that check; `deploy/local/smoke.sh` and `smoke-pi.sh` are test infrastructure, not production behavior, though they still map to `local.integration` for planning.
 

@@ -12,12 +12,14 @@ import {
   resolvePlanStatus,
 } from './core.mjs';
 import { evaluatePolicyDelta } from './policy-delta.mjs';
+import { evaluateGovernanceTrustSurface } from './trust-surface.mjs';
 
 const POLICY_FILES = {
   features: 'tools/test-governance/config/features.json',
   catalog: 'tools/test-governance/config/catalog.json',
   guards: 'tools/test-governance/config/architecture-guards.json',
 };
+const PACKAGE_JSON = 'package.json';
 const EMPTY_BASE_POLICY = {
   features: { schemaVersion: 1, governedRoots: [], features: [] },
   catalog: { schemaVersion: 1, entries: [] },
@@ -74,7 +76,7 @@ export function createPlanning(root) {
    * an explicit bootstrap; a revision that cannot be read or parsed fails
    * closed.
    */
-  function readPolicyFileAt(rev, relativePath) {
+  function readFileAt(rev, relativePath) {
     let present = true;
     try {
       git(['cat-file', '-e', `${rev}:${relativePath}`]);
@@ -89,41 +91,82 @@ export function createPlanning(root) {
     }
   }
 
-  function evaluateBasePolicyDelta(config, options) {
+  function parseFileAt(file, rev, fallback) {
+    if (!file.present) return { value: fallback, bootstrapped: true };
+    if (file.error) throw new Error(`cannot read ${file.relativePath} at ${rev}: ${file.error}`);
+    try {
+      return { value: JSON.parse(file.text), bootstrapped: false };
+    } catch (error) {
+      throw new Error(`cannot parse ${file.relativePath} at ${rev}: ${error.message}`);
+    }
+  }
+
+  /**
+   * BASE -> HEAD governance comparison for a real revision range: parsed
+   * policy delta plus the governance trust surface. In explicit-files mode
+   * both are skipped (advisory planning only); the gate never treats that
+   * mode as a trusted commit PASS.
+   */
+  function evaluateBaseGovernance(config, options, changes) {
     if (options.files.length > 0) {
       return {
-        status: 'PASS',
-        basePolicy: null,
-        headPolicy: null,
-        changes: [{ kind: 'POLICY_DELTA_SKIPPED', blocking: false, detail: 'explicit-files planning has no base revision; the policy delta runs on real base..head ranges' }],
-        blockingChanges: [],
+        policyDelta: {
+          status: 'PASS',
+          basePolicy: null,
+          headPolicy: null,
+          changes: [{ kind: 'POLICY_DELTA_SKIPPED', blocking: false, detail: 'explicit-files planning has no base revision; the policy delta runs on real base..head ranges' }],
+          blockingChanges: [],
+        },
+        trustSurface: {
+          status: 'PASS',
+          changes: [{ kind: 'TRUST_SURFACE_SKIPPED', blocking: false, detail: 'explicit-files planning has no base revision; the trust surface runs on real base..head ranges' }],
+          blockingChanges: [],
+          trustRoot: null,
+        },
       };
     }
     const base = options.base;
+    const blockingBase = (detail) => ({
+      policyDelta: {
+        status: 'GOVERNANCE_POLICY_WEAKENING',
+        basePolicy: null,
+        headPolicy: null,
+        changes: [],
+        blockingChanges: [{ kind: 'BASE_POLICY_UNREADABLE', blocking: true, detail }],
+      },
+      trustSurface: {
+        status: 'GOVERNANCE_REVIEW_REQUIRED',
+        changes: [],
+        blockingChanges: [{ kind: 'BASE_POLICY_UNREADABLE', blocking: true, detail }],
+        trustRoot: null,
+      },
+    });
     try {
       git(['rev-parse', '--verify', `${base}^{commit}`]);
     } catch {
-      return blockingUnreadableBase(`base revision ${base} cannot be resolved; BASE governance policy is unreadable`);
+      return blockingBase(`base revision ${base} cannot be resolved; BASE governance policy is unreadable`);
     }
     const files = Object.fromEntries(
-      Object.entries(POLICY_FILES).map(([name, relativePath]) => [name, readPolicyFileAt(base, relativePath)]),
+      Object.entries(POLICY_FILES).map(([name, relativePath]) => [name, readFileAt(base, relativePath)]),
     );
+    files.packageJson = readFileAt(base, PACKAGE_JSON);
     try {
       const baseDocs = {};
       const bootstrapped = [];
       for (const [name, file] of Object.entries(files)) {
-        if (!file.present) {
-          bootstrapped.push(file.relativePath);
-          baseDocs[name] = EMPTY_BASE_POLICY[name];
-          continue;
-        }
-        if (file.error) throw new Error(`cannot read ${file.relativePath} at ${base}: ${file.error}`);
-        try {
-          baseDocs[name] = JSON.parse(file.text);
-        } catch (error) {
-          throw new Error(`cannot parse ${file.relativePath} at ${base}: ${error.message}`);
-        }
+        if (name === 'packageJson') continue;
+        const parsed = parseFileAt(file, base, EMPTY_BASE_POLICY[name]);
+        if (parsed.bootstrapped) bootstrapped.push(file.relativePath);
+        baseDocs[name] = parsed.value;
       }
+      const basePackageJson = parseFileAt(files.packageJson, base, {}).value;
+      let headPackageJson;
+      try {
+        headPackageJson = JSON.parse(readFileSync(resolve(root, PACKAGE_JSON), 'utf8'));
+      } catch (error) {
+        return blockingBase(`HEAD package.json is unreadable: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
       const delta = evaluatePolicyDelta({
         baseFeatures: baseDocs.features,
         headFeatures: config.features,
@@ -139,24 +182,24 @@ export function createPlanning(root) {
           detail: `${relativePath} did not exist at ${base}; treated as empty base policy`,
         });
       }
+      const trustSurface = evaluateGovernanceTrustSurface({
+        changes,
+        baseFeatures: baseDocs.features,
+        headFeatures: config.features,
+        basePackageJson,
+        headPackageJson,
+      });
       return {
-        ...delta,
-        basePolicy: { rev: base, files: Object.fromEntries(Object.entries(files).map(([name, file]) => [name, file.present])) },
-        headPolicy: { rev: options.head },
+        policyDelta: {
+          ...delta,
+          basePolicy: { rev: base, files: Object.fromEntries(Object.entries(files).map(([name, file]) => [name, file.present])) },
+          headPolicy: { rev: options.head },
+        },
+        trustSurface,
       };
     } catch (error) {
-      return blockingUnreadableBase(error instanceof Error ? error.message : String(error));
+      return blockingBase(error instanceof Error ? error.message : String(error));
     }
-  }
-
-  function blockingUnreadableBase(detail) {
-    return {
-      status: 'GOVERNANCE_POLICY_WEAKENING',
-      basePolicy: null,
-      headPolicy: null,
-      changes: [],
-      blockingChanges: [{ kind: 'BASE_POLICY_UNREADABLE', blocking: true, detail }],
-    };
   }
 
   function buildPlan(config, options) {
@@ -174,17 +217,19 @@ export function createPlanning(root) {
     }));
     const hasGaps = affected.some((item) => item.plan.gaps.length > 0);
     const budgetExceeded = affected.some((item) => item.plan.budgetStatus === 'BUDGET_EXCEEDED');
-    const policyDelta = evaluateBasePolicyDelta(config, options);
+    const { policyDelta, trustSurface } = evaluateBaseGovernance(config, options, changes);
     return {
       base: options.files.length > 0 ? '<explicit-files>' : options.base,
       head: options.head,
       changedFiles: files,
       changes,
       policyDelta,
+      trustSurface,
       architecture: { status: architectureViolations.length === 0 ? 'PASS' : 'FAIL', violations: architectureViolations },
       unmappedProductionFiles,
       features: affected,
       status: resolvePlanStatus({
+        trustSurfaceBlocked: trustSurface.status !== 'PASS',
         policyWeakening: policyDelta.status !== 'PASS',
         architectureViolations,
         unmappedProductionFiles,
