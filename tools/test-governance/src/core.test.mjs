@@ -302,8 +302,9 @@ test('catalog validation fails on missing location file', () => {
 
 test('known pnpm command validates against package scripts', () => {
   const scripts = { 'smoke:local': 'bash x.sh' };
-  assert.equal(validateKnownCommand('pnpm smoke:local', { packageScripts: scripts }), null);
-  assert.match(validateKnownCommand('pnpm smoke:nope', { packageScripts: scripts }), /missing package script/);
+  const options = { packageScripts: scripts, declaredFile: 'x.sh', fileExists: () => true };
+  assert.equal(validateKnownCommand('pnpm smoke:local', options), null);
+  assert.match(validateKnownCommand('pnpm smoke:nope', options), /missing package script/);
 });
 
 test('pnpm command must reference its declared evidence artifact', () => {

@@ -1,3 +1,5 @@
+import { proofSourceId } from './core.mjs';
+
 /**
  * Realized Evidence.
  *
@@ -5,11 +7,15 @@
  * A proof becomes REALIZED only when its backing run actually executed and
  * PASSED in the current gate run. Only PASSED realizes proofs; FAILED,
  * SKIPPED, NOT_RUN, and UNEXECUTABLE realize nothing.
+ *
+ * Realization also deduplicates by Proof Source identity, so two Catalog
+ * aliases for one real test/command can never fill two Evidence slots even
+ * if config validation were bypassed.
  */
 
 const LEVELS = ['A', 'B', 'C'];
 
-export function realizeEvidence({ features, executionResults }) {
+export function realizeEvidence({ features, executionResults, packageScripts = {} }) {
   const statusByEntry = new Map();
   for (const result of executionResults) {
     for (const [entryId, status] of Object.entries(result.entryStatuses ?? {})) {
@@ -24,12 +30,20 @@ export function realizeEvidence({ features, executionResults }) {
       const realized = { A: 0, B: 0, C: 0 };
       const realizers = [];
       let liveProviderBlocked = false;
+      const countedPotential = new Set();
+      const countedRealized = new Set();
       for (const entry of item.plan.selected ?? []) {
         for (const proof of entry.proofs ?? []) {
           if (proof.invariantId !== invariant.id) continue;
-          potential[proof.level] += 1;
+          const sourceId = proofSourceId(entry, proof, { packageScripts });
+          if (!countedPotential.has(sourceId)) {
+            countedPotential.add(sourceId);
+            potential[proof.level] += 1;
+          }
           const execution = statusByEntry.get(entry.id);
           if (execution?.status === 'PASSED') {
+            if (countedRealized.has(sourceId)) continue;
+            countedRealized.add(sourceId);
             realized[proof.level] += 1;
             realizers.push({ catalogEntryId: entry.id, runId: execution.runId, level: proof.level });
           } else if (execution?.status === 'NOT_RUN' && execution.gate === 4) {

@@ -56,18 +56,22 @@ ARCHITECTURE_VIOLATION
 ```
 
 - **ARCHITECTURE_VIOLATION** - an architecture guard matched.
-- **UNMAPPED_PRODUCTION_CHANGE** - a changed file under a governed production root matches no Feature contract. Governed roots: `apps/*/src/**`, `packages/*/src/**`, `deploy/local/**`, `deploy/docker/**`. Ignored (not production): `**/*.test.ts`, `**/*.test.mjs`, `**/__tests__/**`, `docs/**`, `tools/**`, `deploy/local/smoke.sh`, `deploy/local/smoke-pi.sh`, `deploy/local/data/**`, `deploy/local/.env`, `deploy/local/compose.env.dataasset`. Smoke scripts are test infrastructure; they still map to `local.integration` for planning, but never trigger unmapped failures. `--strict` exits non-zero on any non-READY state.
+- **UNMAPPED_PRODUCTION_CHANGE** - a changed file under a governed production root matches no Feature contract. Governed roots include application/protocol source, local deployment, root dependency/workspace files, and workspace package manifests. Git change discovery retains deleted paths and both sides of renames, so deleting or moving production code cannot disappear from planning. Ignored (not production): tests, docs, governance tooling, smoke scripts, local data, and local secrets. Smoke scripts are test infrastructure; they still map to `local.integration` for planning, but never trigger unmapped failures. `--strict` exits non-zero on any non-READY state.
 - **NEEDS_EVIDENCE** - at least one affected Feature has an unclosed floor slot.
 - **BUDGET_EXCEEDED** - planned maintenance delta exceeds the Feature budget. Budget is real engine state (`evaluateMaintenanceBudget`): REUSE = 0, STRENGTHEN = configured delta (default 1), CREATE = configured delta (default 4). Today's plans carry REUSE-only actions, so planned delta is 0; the state exists for future action plans and is self-tested.
 - **READY** - all affected floors closed, architecture clean, nothing unmapped.
 
 ## Feature impact propagation
 
-Shared contracts propagate. `protocol.contract` impacts ingress/evidence-collection/callback/dynamic-enrichment/runtime-boundary/node-observation; `configuration.fail-closed` impacts auth/runtime-boundary/reconciliation; `evidence.model-safe-projection` impacts dynamic-enrichment/runtime-boundary. Plan output annotates each Feature `reason=DIRECT` or `reason=IMPACTED_BY <feature>`. Cycles terminate deterministically; duplicate paths deduplicate.
+Shared contracts propagate. `protocol.contract` impacts ingress/evidence-collection/callback/dynamic-enrichment/runtime-boundary/node-observation; `configuration.fail-closed` impacts auth/runtime-boundary/reconciliation; `evidence.model-safe-projection` impacts dynamic-enrichment/runtime-boundary. `build.configuration` directly owns root/workspace manifests; package-local manifests also map to their relevant Runtime, Node Agent, or Protocol Feature so existing impact propagation continues. Plan output annotates each Feature `reason=DIRECT` or `reason=IMPACTED_BY <feature>`. Multiple impact parents are retained in deterministic order; cycles terminate; duplicate paths deduplicate.
 
-## Catalog integrity (no ghost tests)
+## Catalog integrity (no ghost or duplicate Proofs)
 
-`validate` uses a deterministic lexical scanner and accepts only unambiguous executable static `it('…')`, `it("…")`, `test('…')`, or `test("…")` names. Line/block comments, ordinary strings, templates, dynamic names, deleted names, and duplicate names cannot satisfy a Catalog Proof. Commands support only `pnpm <script>`, `pnpm run <script>`, and `bash <file>`; a pnpm script must actually reference its declared `location.file`, otherwise `CATALOG_COMMAND_TARGET_MISMATCH` fails validation.
+`validate` uses the TypeScript AST and accepts only unambiguous executable static `it('…')` / `test('…')` calls. Comments, strings, regex literals, member calls, dynamic templates, deleted names, and duplicate names cannot satisfy a Catalog Proof.
+
+Every Catalog entry is a strict union: TEST (`location.file` + `testName`) or COMMAND (`command` + `location.file`), never both, and always with a known `executionClass`. Commands support only `pnpm <script>`, `pnpm run <script>`, and repository-relative `bash <file>`; a pnpm script must resolve exactly to `bash <declared location.file>`. Compound shell forms fail closed, and the Runner receives canonical executable/argv.
+
+A Proof Source is identified by source + invariant + Evidence level. Exact Catalog aliases are rejected and realized Evidence deduplicates them defensively, so one real test cannot fill two required slots.
 
 ## Catalog status
 

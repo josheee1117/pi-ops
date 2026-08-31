@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   buildFeaturePlan,
+  changedPathsOf,
   evaluateGuardFile,
   findUnmappedProductionFiles,
   matchesPath,
+  parseNameStatus,
   resolveAffectedFeatures,
   resolvePlanStatus,
 } from './core.mjs';
@@ -24,10 +26,19 @@ export function createPlanning(root) {
     return output ? output.split('\n').filter(Boolean) : [];
   }
 
+  /**
+   * Structured change discovery. `--name-status --find-renames` keeps
+   * deletions and both sides of a rename visible; the previous
+   * `--name-only --diff-filter=ACMR` silently dropped deletions (fail-open).
+   */
+  function changedEntries(options) {
+    if (options.files.length > 0) return options.files.map((path) => ({ status: 'M', path }));
+    const output = git(['diff', '--name-status', '--find-renames', `${options.base}...${options.head}`]);
+    return parseNameStatus(output);
+  }
+
   function changedFiles(options) {
-    if (options.files.length > 0) return options.files;
-    const output = git(['diff', '--name-only', '--diff-filter=ACMR', `${options.base}...${options.head}`]);
-    return output ? output.split('\n').filter(Boolean) : [];
+    return changedPathsOf(changedEntries(options));
   }
 
   function evaluateArchitecture(guardDoc) {
@@ -46,7 +57,8 @@ export function createPlanning(root) {
   }
 
   function buildPlan(config, options) {
-    const files = changedFiles(options);
+    const changes = changedEntries(options);
+    const files = changedPathsOf(changes);
     const settings = {
       governedRoots: config.features.governedRoots ?? [],
       unmappedIgnore: config.features.unmappedIgnore ?? [],
@@ -63,6 +75,7 @@ export function createPlanning(root) {
       base: options.files.length > 0 ? '<explicit-files>' : options.base,
       head: options.head,
       changedFiles: files,
+      changes,
       architecture: { status: architectureViolations.length === 0 ? 'PASS' : 'FAIL', violations: architectureViolations },
       unmappedProductionFiles,
       features: affected,
@@ -73,6 +86,7 @@ export function createPlanning(root) {
   return {
     git,
     repoFiles,
+    changedEntries,
     changedFiles,
     evaluateArchitecture,
     buildPlan,

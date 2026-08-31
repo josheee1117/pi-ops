@@ -8,11 +8,11 @@ Actions: `REUSE` / `STRENGTHEN` / `CREATE`. No RETIRE in this phase.
 
 `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`
 
-Governed production roots: `apps/*/src/**`, `packages/*/src/**`, `deploy/local/**`, `deploy/docker/**`. A changed file under a governed root that matches no Feature contract yields `UNMAPPED_PRODUCTION_CHANGE` (fail-closed). Tests, docs, governance tooling, and smoke scripts are excluded from that check; `deploy/local/smoke.sh` and `smoke-pi.sh` are test infrastructure, not production behavior, though they still map to `local.integration` for planning.
+Governed production roots cover application/protocol source, local deployment, root dependency/workspace files, and workspace package manifests. A changed or deleted path under a governed root that matches no Feature contract yields `UNMAPPED_PRODUCTION_CHANGE` (fail-closed); both sides of a rename participate. Tests, docs, governance tooling, and smoke scripts are excluded from that check; `deploy/local/smoke.sh` and `smoke-pi.sh` are test infrastructure, not production behavior, though they still map to `local.integration` for planning.
 
 Shared-contract changes propagate: `protocol.contract` impacts ingress/evidence/callback/dynamic-enrichment/runtime-boundary/node-observation; `configuration.fail-closed` impacts auth/runtime-boundary/reconciliation; `evidence.model-safe-projection` impacts dynamic-enrichment/runtime-boundary. Plan output annotates each Feature with `reason=DIRECT` or `reason=IMPACTED_BY <feature>`.
 
-## Feature inventory (24)
+## Feature inventory (25)
 
 | ID | Risk | Score | Gate | Machine gaps |
 |----|------|------:|------|--------------|
@@ -40,6 +40,7 @@ Shared-contract changes propagate: `protocol.contract` impacts ingress/evidence/
 | configuration.fail-closed | high | 10 | 1 | none |
 | persistence.migration | high | 10 | 2 | none |
 | local.integration | high | 11 | 3-4 | none |
+| build.configuration | high | 9 | 1 | none |
 
 ---
 
@@ -336,7 +337,18 @@ Generated from `features.json` + `catalog.json`; regenerate with the governance 
 - **Catalog Proofs:** `locint-smoke-chain`, `locint-smoke-pi-script`
 - **Machine Gaps:** none
 
+### build.configuration
 
+- **Risk:** high (9)
+- **Gate:** 1
+- **Paths:** root package/lock/workspace/tsconfig files plus `apps/*/package.json` and `packages/*/package.json`
+- **Invariants:**
+  - `INV-BUILD-01` A1: The committed lockfile contains every workspace importer.
+  - `INV-BUILD-02` A1: Every workspace package keeps its tsconfig and typecheck/test script contract.
+  - `INV-BUILD-03` A1: Node 22 and pnpm 10.15.0 declarations remain consistent across manifest, Docker, and CI.
+- **Catalog Proofs:** `build-lockfile-covers-workspace`, `build-workspace-typecheck-contract`, `build-toolchain-consistency`
+- **Limit:** Configuration evidence only; these proofs do not claim application behavior.
+- **Machine Gaps:** none
 
 ---
 

@@ -1,4 +1,8 @@
+import ts from 'typescript';
+
 const LEVELS = ['A', 'B', 'C'];
+export const EXECUTION_CLASSES = ['UNIT', 'COMPONENT', 'INTEGRATION', 'MULTI_PROCESS', 'SMOKE', 'LIVE_PROVIDER'];
+export const RUNTIME_CLASSES = ['fast', 'integration', 'smoke', 'live'];
 export const PLAN_STATUS_PRECEDENCE = [
   'ARCHITECTURE_VIOLATION',
   'UNMAPPED_PRODUCTION_CHANGE',
@@ -100,92 +104,187 @@ export function resolveAffectedFeatures(changedFiles, features) {
 }
 
 /**
- * Lexical scanner for executable test declarations.
- * Counts only it('name') / it("name") / test('name') / test("name") whose
- * first argument is a string literal appearing as real code. Comments,
- * string literals, and template literals never contribute declarations,
- * so a test name that exists only inside a comment/string/template is a ghost.
+ * AST-backed discovery of executable test declarations.
+ *
+ * Only a CallExpression whose callee is exactly the identifier `it` or `test`
+ * and whose first argument is a static string (StringLiteral or
+ * NoSubstitutionTemplateLiteral) is an executable declaration. Regex
+ * literals, member calls (obj.it), suffixed identifiers (submit), comments,
+ * ordinary strings, and substituted templates cannot fabricate a test name.
  */
-export function extractTestNames(source) {
+export function extractTestNames(source, fileName = 'catalog-target.ts') {
+  const scriptKind = fileName.endsWith('.mjs') || fileName.endsWith('.js')
+    ? ts.ScriptKind.JS
+    : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(fileName, String(source ?? ''), ts.ScriptTarget.Latest, true, scriptKind);
   const names = [];
-  const n = source.length;
-  let i = 0;
-  let codeTail = '';
 
-  function recordCode(text) {
-    codeTail = (codeTail + text).slice(-64);
+  function staticName(argument) {
+    if (!argument) return null;
+    if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) return argument.text;
+    return null;
   }
 
-  while (i < n) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (ch === '/' && next === '/') {
-      while (i < n && source[i] !== '\n') i += 1;
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      i += 2;
-      while (i < n && !(source[i] === '*' && source[i + 1] === '/')) i += 1;
-      i = Math.min(n, i + 2);
-      continue;
-    }
-    if (ch === "'" || ch === '"' || ch === '`') {
-      const quote = ch;
-      i += 1;
-      let content = '';
-      while (i < n) {
-        const c = source[i];
-        if (c === '\\') {
-          content += source[i + 1] ?? '';
-          i += 2;
-          continue;
-        }
-        if (c === quote) break;
-        content += c;
-        i += 1;
+  function visit(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const callee = node.expression.text;
+      if (callee === 'it' || callee === 'test') {
+        const name = staticName(node.arguments[0]);
+        if (name !== null) names.push(name);
       }
-      i = Math.min(n, i + 1);
-      if (/(?:^|[^A-Za-z0-9_$.])(?:it|test)\s*\(\s*$/.test(codeTail)) {
-        names.push(content);
-      }
-      recordCode('""');
-      continue;
     }
-    recordCode(ch);
-    i += 1;
+    ts.forEachChild(node, visit);
   }
+
+  visit(sourceFile);
   return names;
 }
 
-export function validateKnownCommand(command, options = {}) {
-  const trimmed = String(command ?? '').trim();
-  if (!trimmed) return 'command is empty';
-  const pnpm = trimmed.match(/^pnpm(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/);
+const CANONICAL_BASH = /^bash[ \t]+([A-Za-z0-9._\-/]+)$/;
+const CANONICAL_PNPM = /^pnpm(?:[ \t]+run)?[ \t]+([A-Za-z0-9:_-]+)$/;
+
+function isSafeRelativeTarget(target) {
+  return !target.startsWith('/') && !target.split('/').includes('..');
+}
+
+function normalizeWhitespace(text) {
+  return String(text ?? '').trim().replace(/[ \t]+/g, ' ');
+}
+
+/**
+ * Canonicalize a Catalog command into an argv form the Runner can execute
+ * without a shell.
+ *
+ * Supported grammar is intentionally tiny:
+ *   bash <relative-file>
+ *   pnpm <script>          (script text must itself be `bash <declared file>`)
+ *   pnpm run <script>
+ *
+ * Compound shell strings (`||`, `&&`, `|`, `;`, redirects, `echo <path>`)
+ * never canonicalize, so a Catalog Proof cannot become valid merely because
+ * the artifact path appears somewhere in a shell string.
+ *
+ * Returns { canonical } or { error }.
+ */
+export function canonicalizeCommand(command, options = {}) {
+  const normalized = normalizeWhitespace(command);
+  if (!normalized) return { error: 'command is empty' };
+
+  const bash = normalized.match(CANONICAL_BASH);
+  if (bash) {
+    const target = bash[1];
+    if (!isSafeRelativeTarget(target)) return { error: `UNVERIFIED_COMMAND: bash target must be repository-relative: ${target}` };
+    if (typeof options.fileExists === 'function' && !options.fileExists(target)) {
+      return { error: `command file missing: ${target}` };
+    }
+    if (options.declaredFile && options.declaredFile !== target) {
+      return { error: `CATALOG_COMMAND_TARGET_MISMATCH: bash target ${target} does not match declared artifact ${options.declaredFile}` };
+    }
+    return {
+      canonical: {
+        executable: 'bash',
+        args: [target],
+        target,
+        display: `bash ${target}`,
+      },
+    };
+  }
+
+  const pnpm = normalized.match(CANONICAL_PNPM);
   if (pnpm) {
     const scriptName = pnpm[1];
     const scriptText = options.packageScripts?.[scriptName];
-    if (typeof scriptText !== 'string') {
-      return `missing package script: ${scriptName}`;
+    if (typeof scriptText !== 'string') return { error: `missing package script: ${scriptName}` };
+    const declaredFile = options.declaredFile;
+    if (!declaredFile) {
+      return { error: `CATALOG_COMMAND_TARGET_MISMATCH: script ${scriptName} has no declared artifact to bind` };
     }
-    if (options.declaredFile && !scriptText.includes(options.declaredFile)) {
-      return `CATALOG_COMMAND_TARGET_MISMATCH: script ${scriptName} does not reference declared artifact ${options.declaredFile}`;
+    if (normalizeWhitespace(scriptText) !== `bash ${declaredFile}`) {
+      return { error: `CATALOG_COMMAND_TARGET_MISMATCH: script ${scriptName} must be exactly "bash ${declaredFile}" but is "${normalizeWhitespace(scriptText)}"` };
     }
-    return null;
+    if (typeof options.fileExists === 'function' && !options.fileExists(declaredFile)) {
+      return { error: `command file missing: ${declaredFile}` };
+    }
+    return {
+      canonical: {
+        executable: 'pnpm',
+        args: ['run', scriptName],
+        target: declaredFile,
+        display: `pnpm run ${scriptName}`,
+      },
+    };
   }
-  const bash = trimmed.match(/^bash\s+(\S+)$/);
-  if (bash) {
-    if (typeof options.fileExists === 'function' && !options.fileExists(bash[1])) {
-      return `command file missing: ${bash[1]}`;
-    }
-    if (options.declaredFile && options.declaredFile !== bash[1]) {
-      return `CATALOG_COMMAND_TARGET_MISMATCH: bash target ${bash[1]} does not match declared artifact ${options.declaredFile}`;
-    }
-    return null;
-  }
-  return `UNVERIFIED_COMMAND: ${trimmed}`;
+
+  return { error: `UNVERIFIED_COMMAND: ${normalized}` };
 }
 
-export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
+export function validateKnownCommand(command, options = {}) {
+  return canonicalizeCommand(command, options).error ?? null;
+}
+
+export function catalogEntryKind(entry) {
+  const hasTestName = Boolean(entry?.location?.testName);
+  const hasCommand = Boolean(entry?.command);
+  if (hasTestName && hasCommand) return 'AMBIGUOUS';
+  if (hasTestName) return 'TEST';
+  if (hasCommand) return 'COMMAND';
+  return 'NONE';
+}
+
+/**
+ * Deterministic Proof Source identity. Two Catalog aliases that resolve to
+ * the same real test (or the same canonical command target) for the same
+ * invariant and level are one Proof Source and must count once.
+ */
+export function proofSourceId(entry, proof, options = {}) {
+  const kind = catalogEntryKind(entry);
+  if (kind === 'TEST') {
+    return ['TEST', entry.location.file, entry.location.testName, proof.invariantId, proof.level].join('\u0000');
+  }
+  if (kind === 'COMMAND') {
+    const canonical = canonicalizeCommand(entry.command, {
+      packageScripts: options.packageScripts,
+      declaredFile: entry.location?.file,
+    }).canonical;
+    const target = canonical?.target ?? normalizeWhitespace(entry.command);
+    return ['COMMAND', target, entry.location?.file ?? '', proof.invariantId, proof.level].join('\u0000');
+  }
+  return ['UNEXECUTABLE', entry?.id ?? '', proof.invariantId, proof.level].join('\u0000');
+}
+
+/**
+ * Parse `git diff --name-status --find-renames` output into structured
+ * changes. Deletions and both sides of a rename stay visible, so a removed
+ * production file can never silently leave governance.
+ */
+export function parseNameStatus(output) {
+  const changes = [];
+  for (const line of String(output ?? '').split('\n')) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t');
+    const code = parts[0]?.trim();
+    if (!code) continue;
+    const status = code[0];
+    if ((status === 'R' || status === 'C') && parts.length >= 3) {
+      changes.push({ status, oldPath: parts[1], newPath: parts[2] });
+      continue;
+    }
+    if (parts.length >= 2) changes.push({ status, path: parts[1] });
+  }
+  return changes;
+}
+
+export function changedPathsOf(changes) {
+  const paths = [];
+  for (const change of changes) {
+    for (const candidate of [change.path, change.oldPath, change.newPath]) {
+      if (candidate && !paths.includes(candidate)) paths.push(candidate);
+    }
+  }
+  return paths;
+}
+
+export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc, options = {}) {
   const errors = [];
   if (featureDoc?.schemaVersion !== 1) errors.push('features.schemaVersion must be 1');
   if (catalogDoc?.schemaVersion !== 1) errors.push('catalog.schemaVersion must be 1');
@@ -238,6 +337,7 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
   }
 
   const entryIds = new Set();
+  const proofSources = new Map();
   for (const entry of catalogDoc?.entries ?? []) {
     if (!entry.id) {
       errors.push('catalog entry id is required');
@@ -250,26 +350,37 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
     if (!['ACTIVE', 'PINNED', 'QUARANTINED', 'DOMINATED', 'RETIRED'].includes(status)) {
       errors.push(`${entry.id}: unknown status ${status}`);
     }
-    if (entry.executionClass && !['UNIT', 'COMPONENT', 'INTEGRATION', 'MULTI_PROCESS', 'SMOKE', 'LIVE_PROVIDER'].includes(entry.executionClass)) {
-      errors.push(`${entry.id}: unknown executionClass ${entry.executionClass}`);
+    if (!EXECUTION_CLASSES.includes(entry.executionClass)) {
+      errors.push(`${entry.id}: executionClass is required and must be one of ${EXECUTION_CLASSES.join('/')} (got ${entry.executionClass ?? 'none'})`);
     }
-    if (entry.runtimeClass && !['fast', 'integration', 'smoke', 'live'].includes(entry.runtimeClass)) {
+    if (entry.runtimeClass && !RUNTIME_CLASSES.includes(entry.runtimeClass)) {
       errors.push(`${entry.id}: unknown runtimeClass ${entry.runtimeClass}`);
     }
     if (entry.location?.file && typeof entry.location.file !== 'string') {
       errors.push(`${entry.id}: location.file must be a string`);
     }
-    if (entry.location?.testName && !entry.location?.file) {
-      errors.push(`${entry.id}: location.file is required when location.testName is set`);
+    const kind = catalogEntryKind(entry);
+    if (kind === 'AMBIGUOUS') {
+      errors.push(`${entry.id}: CATALOG_AMBIGUOUS_EXECUTION_SHAPE (location.testName and command are mutually exclusive)`);
+    } else if (kind === 'NONE') {
+      errors.push(`${entry.id}: entry must declare exactly one executable shape (location.testName or command)`);
     }
-    if (!entry.location?.testName && !entry.command) {
-      errors.push(`${entry.id}: entry must declare location.testName or command to be executable`);
+    if (!entry.location?.file) {
+      errors.push(`${entry.id}: location.file is required for every executable entry`);
     }
     for (const proof of entry.proofs ?? []) {
       if (invariantOwners.get(proof.invariantId) !== entry.featureId) {
         errors.push(`${entry.id}: proof ${proof.invariantId} does not belong to ${entry.featureId}`);
       }
       if (!LEVELS.includes(proof.level)) errors.push(`${entry.id}: unknown proof level ${proof.level}`);
+      if (kind !== 'TEST' && kind !== 'COMMAND') continue;
+      const sourceId = proofSourceId(entry, proof, { packageScripts: options.packageScripts });
+      const owner = proofSources.get(sourceId);
+      if (owner) {
+        errors.push(`${entry.id}: CATALOG_DUPLICATE_PROOF_SOURCE shares ${proof.invariantId}:${proof.level} with ${owner}`);
+      } else {
+        proofSources.set(sourceId, entry.id);
+      }
     }
   }
 
@@ -299,7 +410,7 @@ export function validateCatalogArtifacts(catalogDoc, options = {}) {
     }
     if (entry.location?.testName) {
       const source = typeof options.readFile === 'function' ? options.readFile(file) : '';
-      const names = extractTestNames(source ?? '');
+      const names = extractTestNames(source ?? '', file ?? 'catalog-target.ts');
       const matches = names.filter((name) => name === entry.location.testName).length;
       if (matches === 0) {
         errors.push(`${entry.id}: CATALOG_GHOST_TEST ${entry.location.testName}`);
@@ -308,12 +419,12 @@ export function validateCatalogArtifacts(catalogDoc, options = {}) {
       }
     }
     if (entry.command) {
-      const commandError = validateKnownCommand(entry.command, {
+      const { error } = canonicalizeCommand(entry.command, {
         packageScripts: options.packageScripts,
         fileExists: options.fileExists,
         declaredFile: entry.location?.file,
       });
-      if (commandError) errors.push(`${entry.id}: ${commandError}`);
+      if (error) errors.push(`${entry.id}: ${error}`);
     }
   }
   return errors;

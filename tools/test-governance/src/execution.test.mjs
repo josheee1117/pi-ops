@@ -12,6 +12,8 @@ import { collectMachineGaps, evaluateMaintenanceBudget, resolvePlanStatus } from
 
 const ROOT = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
 const FIXTURE = 'tools/test-governance/src/fixtures/runner-fixture.test.mjs';
+const COMMAND_OK = 'tools/test-governance/src/fixtures/command-ok.sh';
+const COMMAND_FAIL = 'tools/test-governance/src/fixtures/command-fail.sh';
 
 function catalogEntry(id, testName, level = 'C', executionClass = 'UNIT') {
   return {
@@ -68,18 +70,21 @@ test('execution plan fails closed when a selected entry is absent from the valid
 test('execution plan maps a selected command entry', () => {
   const entry = {
     id: 'command-pass', featureId: 'feature.one', executionClass: 'SMOKE',
-    command: "node -e \"process.exit(0)\"", proofs: [{ invariantId: 'INV-ONE', level: 'A' }],
+    command: `bash ${COMMAND_OK}`, location: { file: COMMAND_OK },
+    proofs: [{ invariantId: 'INV-ONE', level: 'A' }],
   };
   const plan = buildExecutionPlan({ plan: policyPlan([featureItem({ A: 1 }, [entry])]), catalogEntries: [entry] });
   assert.equal(plan.runs.length, 1);
   assert.equal(plan.runs[0].kind, 'COMMAND');
   assert.equal(plan.runs[0].gate, 3);
+  assert.equal(plan.runs[0].executable, 'bash');
+  assert.deepEqual(plan.runs[0].args, [COMMAND_OK]);
 });
 
 test('identical command entries deduplicate to one underlying run', () => {
   const entries = ['a', 'b'].map((id) => ({
-    id, featureId: 'feature.one', executionClass: 'UNIT', command: "node -e \"process.exit(0)\"",
-    proofs: [{ invariantId: 'INV-ONE', level: 'C' }],
+    id, featureId: 'feature.one', executionClass: 'UNIT', command: `bash ${COMMAND_OK}`,
+    location: { file: COMMAND_OK }, proofs: [{ invariantId: 'INV-ONE', level: 'C' }],
   }));
   const plan = buildExecutionPlan({ plan: policyPlan([featureItem({ C: 1 }, entries)]), catalogEntries: entries });
   assert.equal(plan.runs.length, 1);
@@ -95,8 +100,8 @@ test('identical exact tests deduplicate to one file run and one test name', () =
 
 test('runner executes a validated command once and maps its result to every entry', () => {
   const entries = ['command-a', 'command-b'].map((id) => ({
-    id, featureId: 'feature.one', executionClass: 'UNIT', command: "node -e \"process.stdout.write('command-proof')\"",
-    proofs: [{ invariantId: 'INV-ONE', level: 'C' }],
+    id, featureId: 'feature.one', executionClass: 'UNIT', command: `bash ${COMMAND_OK}`,
+    location: { file: COMMAND_OK }, proofs: [{ invariantId: 'INV-ONE', level: 'C' }],
   }));
   const executionPlan = buildExecutionPlan({ plan: policyPlan([featureItem({ C: 1 }, entries)]), catalogEntries: entries });
   const [result] = executeRuns(executionPlan, { repoRoot: ROOT });
@@ -108,8 +113,8 @@ test('runner executes a validated command once and maps its result to every entr
 
 test('a failing command realizes no successful execution', () => {
   const entry = {
-    id: 'command-fail', featureId: 'feature.one', executionClass: 'UNIT', command: "node -e \"process.exit(7)\"",
-    proofs: [{ invariantId: 'INV-ONE', level: 'C' }],
+    id: 'command-fail', featureId: 'feature.one', executionClass: 'UNIT', command: `bash ${COMMAND_FAIL}`,
+    location: { file: COMMAND_FAIL }, proofs: [{ invariantId: 'INV-ONE', level: 'C' }],
   };
   const executionPlan = buildExecutionPlan({ plan: policyPlan([featureItem({ C: 1 }, [entry])]), catalogEntries: [entry] });
   const [result] = executeRuns(executionPlan, { repoRoot: ROOT });

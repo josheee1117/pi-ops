@@ -23,6 +23,7 @@ function planArtifact(plan) {
     schemaVersion: 1,
     base: plan.base,
     head: plan.head,
+    changes: plan.changes ?? [],
     changedFiles: plan.changedFiles,
     directFeatures: (plan.features ?? []).filter((item) => item.reason === 'DIRECT').map((item) => item.feature.id),
     impactedFeatures: (plan.features ?? []).filter((item) => item.reason !== 'DIRECT')

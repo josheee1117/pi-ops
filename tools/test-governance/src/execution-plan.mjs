@@ -1,3 +1,5 @@
+import { canonicalizeCommand, catalogEntryKind } from './core.mjs';
+
 /**
  * ExecutionPlan: the deterministic bridge from a policy plan (selected
  * catalog entries) to executable runs. A catalog entry is POTENTIAL evidence
@@ -6,7 +8,8 @@
  * Deduplication:
  * - TEST_FILE runs are grouped per file (whole-file execution with TAP
  *   verification that every selected testName actually ran).
- * - COMMAND runs are grouped per validated command string.
+ * - COMMAND runs are grouped per canonical executable form (argv), never per
+ *   raw shell string, so shell control operators cannot reach the Runner.
  */
 
 export const EXECUTION_CLASS_GATE = {
@@ -19,7 +22,11 @@ export const EXECUTION_CLASS_GATE = {
 };
 
 export function gateForExecutionClass(executionClass) {
-  return EXECUTION_CLASS_GATE[executionClass] ?? 1;
+  const gate = EXECUTION_CLASS_GATE[executionClass];
+  if (gate === undefined) {
+    throw new Error(`UNKNOWN_EXECUTION_CLASS: ${executionClass ?? 'none'} (execution gate must never silently default)`);
+  }
+  return gate;
 }
 
 export function effectiveMaxGate(maxGate, allowLiveProvider) {
@@ -27,7 +34,7 @@ export function effectiveMaxGate(maxGate, allowLiveProvider) {
   return allowLiveProvider ? requested : Math.min(requested, 3);
 }
 
-export function buildExecutionPlan({ plan, catalogEntries, maxGate = 3, allowLiveProvider = false }) {
+export function buildExecutionPlan({ plan, catalogEntries, maxGate = 3, allowLiveProvider = false, packageScripts = {} }) {
   const entryById = new Map(catalogEntries.map((entry) => [entry.id, entry]));
   const fileGroups = new Map();
   const commandGroups = new Map();
@@ -36,16 +43,23 @@ export function buildExecutionPlan({ plan, catalogEntries, maxGate = 3, allowLiv
     for (const selected of item.plan.selected ?? []) {
       const entry = entryById.get(selected.id);
       if (!entry) throw new Error(`selected catalog entry is missing from validated catalog: ${selected.id}`);
-      if (entry.location?.testName) {
+      const kind = catalogEntryKind(entry);
+      if (kind === 'TEST') {
         const group = fileGroups.get(entry.location.file) ?? { entries: [] };
         group.entries.push({ id: entry.id, testName: entry.location.testName, executionClass: entry.executionClass });
         fileGroups.set(entry.location.file, group);
-      } else if (entry.command) {
-        const group = commandGroups.get(entry.command) ?? { entries: [] };
+      } else if (kind === 'COMMAND') {
+        const { canonical, error } = canonicalizeCommand(entry.command, {
+          packageScripts,
+          declaredFile: entry.location?.file,
+        });
+        if (error) throw new Error(`UNEXECUTABLE_CATALOG_COMMAND: ${entry.id}: ${error}`);
+        const key = JSON.stringify([canonical.executable, canonical.args]);
+        const group = commandGroups.get(key) ?? { canonical, entries: [] };
         group.entries.push({ id: entry.id, executionClass: entry.executionClass });
-        commandGroups.set(entry.command, group);
+        commandGroups.set(key, group);
       } else {
-        throw new Error(`UNEXECUTABLE_CATALOG_ENTRY: ${entry.id}`);
+        throw new Error(`UNEXECUTABLE_CATALOG_ENTRY: ${entry.id} (execution shape ${kind})`);
       }
     }
   }
@@ -59,9 +73,17 @@ export function buildExecutionPlan({ plan, catalogEntries, maxGate = 3, allowLiv
     }
     runs.push({ kind: 'TEST_FILE', file, testNames, entries: group.entries, gate });
   }
-  for (const [command, group] of commandGroups) {
+  for (const group of commandGroups.values()) {
     const gate = Math.max(...group.entries.map((entry) => gateForExecutionClass(entry.executionClass)));
-    runs.push({ kind: 'COMMAND', command, entries: group.entries, gate });
+    runs.push({
+      kind: 'COMMAND',
+      command: group.canonical.display,
+      executable: group.canonical.executable,
+      args: group.canonical.args,
+      commandTarget: group.canonical.target,
+      entries: group.entries,
+      gate,
+    });
   }
 
   const limit = effectiveMaxGate(maxGate, allowLiveProvider);
@@ -80,6 +102,7 @@ export function buildExecutionPlan({ plan, catalogEntries, maxGate = 3, allowLiv
     base: plan.base,
     head: plan.head,
     changedFiles: plan.changedFiles,
+    changes: plan.changes ?? null,
     policyStatus: plan.status,
     features: (plan.features ?? []).map((item) => ({ id: item.feature.id, reason: item.reason })),
     maxGate: limit,

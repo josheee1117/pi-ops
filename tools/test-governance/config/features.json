@@ -359,7 +359,8 @@
       "maintenanceBudget": 8,
       "paths": [
         "apps/pi-runtime/src/**",
-        "apps/agent/src/http-pi-runtime-client.ts"
+        "apps/agent/src/http-pi-runtime-client.ts",
+        "apps/pi-runtime/package.json"
       ],
       "invariants": [
         {
@@ -539,7 +540,8 @@
       "paths": [
         "apps/node-agent/src/detectors/**",
         "apps/node-agent/src/events/**",
-        "apps/node-agent/src/app.ts"
+        "apps/node-agent/src/app.ts",
+        "apps/node-agent/package.json"
       ],
       "invariants": [
         {
@@ -709,7 +711,8 @@
       "riskScore": 9,
       "maintenanceBudget": 6,
       "paths": [
-        "packages/protocol/src/**"
+        "packages/protocol/src/**",
+        "packages/protocol/package.json"
       ],
       "invariants": [
         {
@@ -830,13 +833,56 @@
           }
         }
       ]
+    },
+    {
+      "id": "build.configuration",
+      "riskClass": "high",
+      "riskScore": 9,
+      "maintenanceBudget": 6,
+      "paths": [
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "tsconfig.base.json",
+        "apps/*/package.json",
+        "packages/*/package.json"
+      ],
+      "invariants": [
+        {
+          "id": "INV-BUILD-01",
+          "statement": "The repository dependency graph installs reproducibly from the committed lockfile for every workspace package.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-BUILD-02",
+          "statement": "Every workspace package keeps a valid workspace/typecheck contract (tsconfig + typecheck/test scripts).",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-BUILD-03",
+          "statement": "The declared Node/pnpm toolchain contract stays consistent across manifests, Docker image, and CI.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        }
+      ]
     }
   ],
   "governedRoots": [
     "apps/*/src/**",
     "packages/*/src/**",
     "deploy/local/**",
-    "deploy/docker/**"
+    "deploy/docker/**",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "tsconfig.base.json",
+    "apps/*/package.json",
+    "packages/*/package.json"
   ],
   "unmappedIgnore": [
     "**/*.test.ts",

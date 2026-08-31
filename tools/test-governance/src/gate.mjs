@@ -90,9 +90,19 @@ export async function runGate(options) {
       return finalize();
     }
 
-    executionPlan = buildExecutionPlan({ plan, catalogEntries: config.catalog.entries, maxGate, allowLiveProvider });
+    executionPlan = buildExecutionPlan({
+      plan,
+      catalogEntries: config.catalog.entries,
+      maxGate,
+      allowLiveProvider,
+      packageScripts: config.packageScripts ?? {},
+    });
     executionResults = executeRuns(executionPlan, { repoRoot: root });
-    evidence = realizeEvidence({ features: plan.features, executionResults });
+    evidence = realizeEvidence({
+      features: plan.features,
+      executionResults,
+      packageScripts: config.packageScripts ?? {},
+    });
     status = resolveGateStatus({ policyStatus: plan.status, executionResults, evidence });
     return finalize();
   } catch (gateError) {

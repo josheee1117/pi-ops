@@ -1494,6 +1494,72 @@
           "source": "runtimeRequestId/session/task provenance on ReasoningResult"
         }
       ]
+    },
+    {
+      "id": "build-lockfile-covers-workspace",
+      "featureId": "build.configuration",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "tools/test-governance/src/toolchain.test.mjs",
+        "testName": "the committed lockfile covers every workspace package"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-BUILD-01",
+          "level": "A",
+          "source": "reads the committed pnpm-lock.yaml importers against the real workspace package set"
+        }
+      ],
+      "limitations": [
+        "Proves committed configuration consistency only; proves nothing about application behavior."
+      ]
+    },
+    {
+      "id": "build-workspace-typecheck-contract",
+      "featureId": "build.configuration",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "tools/test-governance/src/toolchain.test.mjs",
+        "testName": "every workspace package keeps the typecheck and test script contract"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-BUILD-02",
+          "level": "A",
+          "source": "reads every real workspace manifest and tsconfig from disk"
+        }
+      ],
+      "limitations": [
+        "Proves committed configuration consistency only; proves nothing about application behavior."
+      ]
+    },
+    {
+      "id": "build-toolchain-consistency",
+      "featureId": "build.configuration",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "tools/test-governance/src/toolchain.test.mjs",
+        "testName": "workspace manifests declare one consistent Node and pnpm toolchain"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-BUILD-03",
+          "level": "A",
+          "source": "reads real package.json, Dockerfile, and CI workflow toolchain declarations"
+        }
+      ],
+      "limitations": [
+        "Proves committed configuration consistency only; proves nothing about application behavior."
+      ]
     }
   ]
 }

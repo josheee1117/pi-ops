@@ -9,8 +9,10 @@ import { dirname, join, relative } from 'node:path';
  * TAP reporter, then verify from TAP that every selected testName actually
  * ran and passed. Exit code 0 with zero matched tests is NOT a pass.
  *
- * COMMAND runs execute the validated command through bash from the repo
- * root. Identical commands execute once per gate run.
+ * COMMAND runs execute a pre-canonicalized argv form (executable + args)
+ * from the repo root. `bash -c` is intentionally not used, so shell control
+ * operators can never reach execution. Identical canonical commands execute
+ * once per gate run.
  */
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -207,7 +209,14 @@ function executeTestFileRun(run, { repoRoot, timeoutMs, env }) {
 
 function executeCommandRun(run, { repoRoot, timeoutMs, env }) {
   const startedAt = new Date().toISOString();
-  const res = spawnSync('bash', ['-c', run.command], {
+  if (!run.executable || !Array.isArray(run.args)) {
+    return baseResult(run, {
+      status: 'UNEXECUTABLE',
+      startedAt,
+      stderr: `command run ${run.runId} has no canonical executable form`,
+    });
+  }
+  const res = spawnSync(run.executable, run.args, {
     cwd: repoRoot,
     encoding: 'utf8',
     timeout: timeoutMs,

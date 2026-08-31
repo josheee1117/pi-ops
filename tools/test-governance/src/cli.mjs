@@ -43,14 +43,15 @@ function loadConfig() {
   const features = readJson('features.json');
   const catalog = readJson('catalog.json');
   const guards = readJson('architecture-guards.json');
-  const errors = validateGovernanceConfig(features, catalog, guards);
+  const scripts = packageScripts();
+  const errors = validateGovernanceConfig(features, catalog, guards, { packageScripts: scripts });
   errors.push(...validateCatalogArtifacts(catalog, {
     fileExists,
     readFile: readFileOrNull,
-    packageScripts: packageScripts(),
+    packageScripts: scripts,
   }));
   if (errors.length > 0) throw new Error(`invalid test-governance config:\n- ${errors.join('\n- ')}`);
-  return { features, catalog, guards };
+  return { features, catalog, guards, packageScripts: scripts };
 }
 
 function parseArgs(argv) {
@@ -86,7 +87,10 @@ function printPlan(result, json) {
   console.log('TEST GOVERNANCE PLAN');
   console.log(`base=${result.base} head=${result.head}`);
   console.log(`changedFiles=${result.changedFiles.length}`);
-  for (const file of result.changedFiles) console.log(`  - ${file}`);
+  for (const change of result.changes ?? result.changedFiles.map((path) => ({ status: 'M', path }))) {
+    if (change.oldPath && change.newPath) console.log(`  - ${change.status} ${change.oldPath} -> ${change.newPath}`);
+    else console.log(`  - ${change.status} ${change.path}`);
+  }
   console.log(`architecture=${result.architecture.status}`);
   if (result.unmappedProductionFiles.length > 0) {
     console.log('unmappedProductionFiles:');
