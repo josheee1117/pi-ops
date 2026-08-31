@@ -48,18 +48,37 @@ Each Feature has `riskClass` (low/medium/high/critical) and `riskScore` 0-15 fro
 ## Planner result states (precedence order)
 
 ```text
-ARCHITECTURE_VIOLATION
+GOVERNANCE_POLICY_WEAKENING
+> ARCHITECTURE_VIOLATION
 > UNMAPPED_PRODUCTION_CHANGE
 > NEEDS_EVIDENCE
 > BUDGET_EXCEEDED
 > READY
 ```
 
+- **GOVERNANCE_POLICY_WEAKENING** - the Policy Delta Guard found the commit weakening the rules that judge it, or the BASE policy could not be read (fail closed). Exact reasons are listed in the plan, the gate output, and `policy-delta.json`.
+
 - **ARCHITECTURE_VIOLATION** - an architecture guard matched.
 - **UNMAPPED_PRODUCTION_CHANGE** - a changed file under a governed production root matches no Feature contract. Governed roots include application/protocol source, local deployment, root dependency/workspace files, and workspace package manifests. Git change discovery retains deleted paths and both sides of renames, so deleting or moving production code cannot disappear from planning. Ignored (not production): tests, docs, governance tooling, smoke scripts, local data, and local secrets. Smoke scripts are test infrastructure; they still map to `local.integration` for planning, but never trigger unmapped failures. `--strict` exits non-zero on any non-READY state.
 - **NEEDS_EVIDENCE** - at least one affected Feature has an unclosed floor slot.
 - **BUDGET_EXCEEDED** - planned maintenance delta exceeds the Feature budget. Budget is real engine state (`evaluateMaintenanceBudget`): REUSE = 0, STRENGTHEN = configured delta (default 1), CREATE = configured delta (default 4). Today's plans carry REUSE-only actions, so planned delta is 0; the state exists for future action plans and is self-tested.
 - **READY** - all affected floors closed, architecture clean, nothing unmapped.
+
+## Policy Delta Guard
+
+The Gate evaluates HEAD using HEAD policy. To prevent a commit from weakening the rules that judge it, every plan over a real revision range compares the parsed policy at BASE with the parsed policy at HEAD (`git show <base>:tools/test-governance/config/...`; no LLM, no diff text).
+
+Blocked as `GOVERNANCE_POLICY_WEAKENING`:
+
+- removed architecture guards, removed forbidden/required patterns, shrunk guard scope, forbidden guards downgraded to requiredText canaries;
+- removed governed roots;
+- removed Features, Feature paths, or impact edges;
+- removed Invariants, lowered Evidence floors (A1→A0, C2→C1);
+- deleted PINNED entries, PINNED→ACTIVE/QUARANTINED/DOMINATED/RETIRED, historicalRegression true→false, removed Proofs or changed backing sources of PINNED entries;
+- Evidence-grade changes (C→B/A, B→A) on an unchanged Proof Source;
+- invariant statement changes entangled with a floor change, a Proof-mapping change, or a PINNED reference (a pure wording clarification with unchanged floor and Proof mapping is surfaced as `POLICY_REVIEW_REQUIRED` without blocking).
+
+Allowed: new guards, broader scope, additional patterns, new governed roots, new Features/paths/impacts, new Invariants, higher floors, new Proofs, new PINNED regressions. If BASE policy cannot be read or parsed, the plan fails closed (`BASE_POLICY_UNREADABLE`).
 
 ## Feature impact propagation
 

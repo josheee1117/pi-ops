@@ -47,10 +47,11 @@ Historical regression proofs are marked `PINNED` in the catalog so future budget
 - **Commands are canonical.** Command entries support only `pnpm <script>`, `pnpm run <script>`, and repository-relative `bash <file>`. A pnpm script must be exactly `bash <declared location.file>`; compound shell commands fail closed. The ExecutionPlan carries validated executable/argv rather than a shell string.
 - **Proof sources are unique.** The same test or canonical command/artifact cannot fill the same invariant+level slot twice through catalog aliases; validation rejects it and realized-Evidence evaluation deduplicates it again.
 - **Catalog execution is unambiguous.** Every entry is exactly one of TEST (`location.file` + `testName`) or COMMAND (`command` + `location.file`), and `executionClass` is mandatory. Unknown classes never default to Gate 1.
+- **Policy Delta Guard.** Every real `base..head` plan compares the parsed governance policy at BASE (via `git show <base>:<file>`) against HEAD policy. Weakening - removed guards/patterns/scope, removed governed roots, removed Features/paths/impact edges, removed Invariants, lowered Evidence floors, deleted or demoted PINNED proofs, flipped historicalRegression, Evidence-grade changes on unchanged Proof Sources, statement changes entangled with floor/Proof-mapping changes - fails closed as `GOVERNANCE_POLICY_WEAKENING`. Strengthening (new guards, broader scope, new roots/paths/impacts, higher floors, new Proofs) passes. Unreadable BASE policy fails closed.
 - **Impact propagation.** Shared contracts pull dependent Features into the plan (`protocol.contract`, `configuration.fail-closed`, `evidence.model-safe-projection` declare `impacts`). Output annotates `reason=DIRECT` / `reason=IMPACTED_BY <feature>`. Multiple parents are retained deterministically; cycles terminate; duplicates collapse.
 - **Budget is engine state.** `evaluateMaintenanceBudget` computes planned delta (REUSE 0, STRENGTHEN 1, CREATE 4 defaults) and reports `WITHIN_BUDGET` / `BUDGET_EXCEEDED` without ever touching floors.
 
-Planner state precedence: `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`.
+Planner state precedence: `GOVERNANCE_POLICY_WEAKENING` > `ARCHITECTURE_VIOLATION` > `UNMAPPED_PRODUCTION_CHANGE` > `NEEDS_EVIDENCE` > `BUDGET_EXCEEDED` > `READY`.
 
 ## Commands
 

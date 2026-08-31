@@ -79,6 +79,7 @@ export function realizeEvidence({ features, executionResults, packageScripts = {
 }
 
 export function resolveGateStatus({ policyStatus, executionResults, evidence }) {
+  if (policyStatus === 'GOVERNANCE_POLICY_WEAKENING') return 'GOVERNANCE_POLICY_WEAKENING';
   if (policyStatus !== 'READY') return 'POLICY_BLOCKED';
   const failedRun = (executionResults ?? []).some((result) => result.status === 'FAILED' || result.status === 'UNEXECUTABLE');
   if (failedRun) return 'EXECUTION_FAILED';

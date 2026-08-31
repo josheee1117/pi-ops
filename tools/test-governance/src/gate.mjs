@@ -151,6 +151,11 @@ export async function runGate(options) {
 
 function describePolicyFailure(plan) {
   const reasons = [];
+  if (plan.policyDelta && plan.policyDelta.status !== 'PASS') {
+    for (const change of plan.policyDelta.blockingChanges ?? []) {
+      reasons.push(`policy delta ${change.kind}: ${change.detail}`);
+    }
+  }
   if (plan.architecture.status === 'FAIL') {
     reasons.push(`architecture violations: ${plan.architecture.violations.map((violation) => `${violation.guardId} ${violation.file}`).join('; ')}`);
   }

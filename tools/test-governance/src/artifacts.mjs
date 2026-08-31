@@ -24,6 +24,9 @@ function planArtifact(plan) {
     base: plan.base,
     head: plan.head,
     changes: plan.changes ?? [],
+    policyDelta: plan.policyDelta
+      ? { status: plan.policyDelta.status, blockingChanges: plan.policyDelta.blockingChanges ?? [] }
+      : null,
     changedFiles: plan.changedFiles,
     directFeatures: (plan.features ?? []).filter((item) => item.reason === 'DIRECT').map((item) => item.feature.id),
     impactedFeatures: (plan.features ?? []).filter((item) => item.reason !== 'DIRECT')
@@ -73,6 +76,18 @@ function executionArtifact(results) {
   };
 }
 
+function policyDeltaArtifact(plan) {
+  if (!plan?.policyDelta) return null;
+  return {
+    schemaVersion: 1,
+    basePolicy: plan.policyDelta.basePolicy ?? null,
+    headPolicy: plan.policyDelta.headPolicy ?? null,
+    policyDeltaStatus: plan.policyDelta.status,
+    blockingPolicyChanges: plan.policyDelta.blockingChanges ?? [],
+    changes: plan.policyDelta.changes ?? [],
+  };
+}
+
 function buildSummary({ runId, headSha, gateStatus, plan, executionPlan, executionResults, evidence, staticChecks, error }) {
   const lines = [];
   lines.push('# Test Governance Gate Summary');
@@ -81,6 +96,10 @@ function buildSummary({ runId, headSha, gateStatus, plan, executionPlan, executi
   lines.push(`- Commit: \`${headSha}\``);
   lines.push(`- Base: \`${plan?.base ?? 'n/a'}\``);
   lines.push(`- Head: \`${plan?.head ?? 'n/a'}\``);
+  lines.push(`- Policy Delta: **${plan?.policyDelta?.status ?? 'n/a'}**`);
+  for (const change of plan?.policyDelta?.blockingChanges ?? []) {
+    lines.push(`  - ${change.kind}: ${change.detail}`);
+  }
   lines.push(`- Final status: **${gateStatus}**`);
   if (error) lines.push(`- Error: ${error}`);
   lines.push('');
@@ -151,6 +170,13 @@ export function writeEvidenceArtifacts({
   const planPath = join(dir, 'plan.json');
   writeJson(planPath, { runId, headSha, gateStatus, ...planArtifact(plan) });
   files.push(planPath);
+
+  const policyDeltaPath = join(dir, 'policy-delta.json');
+  const policyDelta = policyDeltaArtifact(plan);
+  if (policyDelta) {
+    writeJson(policyDeltaPath, policyDelta);
+    files.push(policyDeltaPath);
+  }
 
   const identity = { runId, headSha, base: plan?.base ?? null, head: plan?.head ?? null };
 

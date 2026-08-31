@@ -478,6 +478,23 @@ test('package-local manifests propagate to their owning scope', () => {
   }
 });
 
+test('apps/agent/package.json affects build.configuration and Agent behavior Features', () => {
+  const doc = realFeatures();
+  const affected = resolveAffectedFeatures(['apps/agent/package.json'], doc.features);
+  const ids = affected.map((item) => item.feature.id);
+  for (const expected of [
+    'build.configuration',
+    'configuration.fail-closed',
+    'persistence.migration',
+    'event.ingress',
+    'investigation.lifecycle',
+    'auth.boundary',
+  ]) {
+    assert.ok(ids.includes(expected) && affected.find((item) => item.feature.id === expected).reason === 'DIRECT', expected);
+  }
+  assert.ok(ids.length > 1, 'agent manifest must not map to build.configuration only');
+});
+
 test('a docs file with a package-like name is not accidentally governed', () => {
   const doc = realFeatures();
   const settings = { governedRoots: doc.governedRoots, unmappedIgnore: doc.unmappedIgnore };

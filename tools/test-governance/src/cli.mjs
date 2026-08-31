@@ -92,6 +92,15 @@ function printPlan(result, json) {
     else console.log(`  - ${change.status} ${change.path}`);
   }
   console.log(`architecture=${result.architecture.status}`);
+  if (result.policyDelta) {
+    console.log(`policyDelta=${result.policyDelta.status}`);
+    for (const change of result.policyDelta.blockingChanges ?? []) {
+      console.log(`  - ${change.kind}: ${change.detail}`);
+    }
+    for (const change of result.policyDelta.changes ?? []) {
+      if (!change.blocking) console.log(`  - ${change.kind}: ${change.detail}`);
+    }
+  }
   if (result.unmappedProductionFiles.length > 0) {
     console.log('unmappedProductionFiles:');
     for (const file of result.unmappedProductionFiles) console.log(`  - ${file}`);
@@ -132,6 +141,9 @@ function printGate(result, json) {
       head: result.head,
       staticChecks: result.staticChecks,
       policyStatus: result.plan?.status ?? null,
+      policyDelta: result.plan?.policyDelta
+        ? { status: result.plan.policyDelta.status, blockingChanges: result.plan.policyDelta.blockingChanges ?? [] }
+        : null,
       unmappedProductionFiles: result.plan?.unmappedProductionFiles ?? [],
       affectedFeatures: (result.plan?.features ?? []).map((item) => ({ id: item.feature.id, reason: item.reason })),
       runs: (result.executionPlan?.runs ?? []).map((run) => {
@@ -158,6 +170,12 @@ function printGate(result, json) {
   }
   if (result.plan) {
     console.log(`policy=${result.plan.status}`);
+    if (result.plan.policyDelta) {
+      console.log(`policyDelta=${result.plan.policyDelta.status}`);
+      for (const change of result.plan.policyDelta.blockingChanges ?? []) {
+        console.log(`  - ${change.kind}: ${change.detail}`);
+      }
+    }
     console.log(`changedFiles=${result.plan.changedFiles.length}`);
     if (result.plan.unmappedProductionFiles.length > 0) {
       console.log('unmappedProductionFiles:');

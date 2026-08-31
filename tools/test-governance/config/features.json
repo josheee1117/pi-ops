@@ -13,7 +13,8 @@
       "maintenanceBudget": 10,
       "paths": [
         "apps/agent/src/app.ts",
-        "apps/agent/src/store.ts"
+        "apps/agent/src/store.ts",
+        "apps/agent/package.json"
       ],
       "invariants": [
         {
@@ -291,7 +292,8 @@
       "maintenanceBudget": 8,
       "paths": [
         "apps/agent/src/investigation-loop.ts",
-        "apps/agent/src/investigation-session.ts"
+        "apps/agent/src/investigation-session.ts",
+        "apps/agent/package.json"
       ],
       "invariants": [
         {
@@ -463,7 +465,8 @@
       "maintenanceBudget": 8,
       "paths": [
         "apps/agent/src/app.ts",
-        "apps/agent/src/config.ts"
+        "apps/agent/src/config.ts",
+        "apps/agent/package.json"
       ],
       "invariants": [
         {
@@ -747,7 +750,8 @@
       "paths": [
         "apps/agent/src/config.ts",
         "apps/node-agent/src/config.ts",
-        "apps/pi-runtime/src/config.ts"
+        "apps/pi-runtime/src/config.ts",
+        "apps/agent/package.json"
       ],
       "invariants": [
         {
@@ -778,7 +782,8 @@
       "maintenanceBudget": 6,
       "paths": [
         "apps/agent/src/store.ts",
-        "apps/agent/src/store-attempt-migration.ts"
+        "apps/agent/src/store-attempt-migration.ts",
+        "apps/agent/package.json"
       ],
       "invariants": [
         {
@@ -850,21 +855,21 @@
       "invariants": [
         {
           "id": "INV-BUILD-01",
-          "statement": "The repository dependency graph installs reproducibly from the committed lockfile for every workspace package.",
+          "statement": "The committed pnpm lockfile contains an importer for the repository root and every workspace package.",
           "requiredEvidence": {
             "A": 1
           }
         },
         {
           "id": "INV-BUILD-02",
-          "statement": "Every workspace package keeps a valid workspace/typecheck contract (tsconfig + typecheck/test scripts).",
+          "statement": "Every workspace package declares typecheck and test scripts and keeps a tsconfig.json; tsconfig.base.json exists at the repository root.",
           "requiredEvidence": {
             "A": 1
           }
         },
         {
           "id": "INV-BUILD-03",
-          "statement": "The declared Node/pnpm toolchain contract stays consistent across manifests, Docker image, and CI.",
+          "statement": "The root manifest, Docker image, and CI workflow declare one consistent Node 22 and pnpm 10.15.0 toolchain.",
           "requiredEvidence": {
             "A": 1
           }
