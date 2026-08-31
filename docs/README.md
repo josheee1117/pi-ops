@@ -28,6 +28,9 @@ The current implementation source of truth is:
 24. `evolution/timeline.md`
 25. `evolution/phase12-local-work-log.md`
 26. `local-integration.md`
+27. `testing/test-strategy.md`
+28. `testing/test-case-matrix.md`
+29. `testing/test-gap-report.md`
 
 The architecture intentionally separates:
 

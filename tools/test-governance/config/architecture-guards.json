@@ -44,6 +44,27 @@
       "patterns": ["externalRuntimeEnabled"]
     },
     {
+      "id": "ARCH-AUTH-OPERATOR-TOKEN",
+      "description": "Operator HTTP routes must authorize with operatorToken, not ingestToken.",
+      "kind": "requiredText",
+      "scope": ["apps/agent/src/app.ts"],
+      "patterns": ["config.operatorToken"]
+    },
+    {
+      "id": "ARCH-AUTH-INGEST-EVENTS",
+      "description": "Event ingest must authorize with ingestToken.",
+      "kind": "requiredText",
+      "scope": ["apps/agent/src/app.ts"],
+      "patterns": ["config.ingestToken"]
+    },
+    {
+      "id": "ARCH-CONFIG-RUNTIME-ALL-OR-NONE",
+      "description": "External Runtime mode must be decided by one helper.",
+      "kind": "requiredText",
+      "scope": ["apps/agent/src/config.ts"],
+      "patterns": ["resolveExternalRuntimeSettings"]
+    },
+    {
       "id": "ARCH-DYNAMIC-EVIDENCE-MODEL-SAFE",
       "description": "Dynamic Runtime Evidence must cross the model-safe projection before leaving Pi-Ops.",
       "kind": "requiredText",

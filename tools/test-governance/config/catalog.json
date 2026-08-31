@@ -5,90 +5,1055 @@
       "id": "recon-dynamic-evidence-unit",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "does not start a new investigation when dynamic Evidence is added to a COMPLETED generation"
       },
-      "proofs": [
-        { "invariantId": "INV-GEN-01", "level": "C" }
-      ]
+      "proofs": [{ "invariantId": "INV-GEN-01", "level": "C", "source": "in-process SQLite + fake Runtime" }],
+      "limitations": ["Does not prove multi-process Node Agent enrichment."]
     },
     {
       "id": "recon-generation-requeue",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "starts exactly one new investigation after a new deterministic Evidence generation"
       },
-      "proofs": [
-        { "invariantId": "INV-GEN-02", "level": "A" }
-      ]
+      "proofs": [{ "invariantId": "INV-GEN-02", "level": "A", "source": "SQLite EvidenceJob.generation" }]
     },
     {
       "id": "recon-stale-submitted",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "fails a stale SUBMITTED session and later retries within budget"
       },
-      "proofs": [
-        { "invariantId": "INV-STALE-01", "level": "C" }
-      ]
+      "proofs": [{ "invariantId": "INV-STALE-01", "level": "C", "source": "fake clock" }],
+      "limitations": ["Does not prove wall-clock Runtime crash."]
     },
     {
       "id": "recon-stale-running",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "fails a stale RUNNING session"
       },
-      "proofs": [
-        { "invariantId": "INV-STALE-01", "level": "C" }
-      ]
+      "proofs": [{ "invariantId": "INV-STALE-01", "level": "C", "source": "fake clock" }]
     },
     {
       "id": "recon-crash-reopen",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "repairs the crash gap after reopening SQLite and does not redispatch COMPLETED generations"
       },
-      "proofs": [
-        { "invariantId": "INV-CRASH-01", "level": "A" }
-      ]
+      "proofs": [{ "invariantId": "INV-CRASH-01", "level": "A", "source": "SQLite reopen" }]
     },
     {
       "id": "recon-authoritative-result-unit",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "keeps one authoritative ReasoningResult from the InvestigationSession"
       },
-      "proofs": [
-        { "invariantId": "INV-AUTH-01", "level": "C" }
-      ]
+      "proofs": [{ "invariantId": "INV-AUTH-01", "level": "C" }]
     },
     {
       "id": "phase12-local-smoke",
       "featureId": "investigation.reconciliation",
       "status": "PINNED",
+      "historicalRegression": true,
       "maintenanceCost": 4,
+      "executionClass": "SMOKE",
+      "runtimeClass": "smoke",
       "command": "pnpm smoke:local",
+      "location": { "file": "deploy/local/smoke.sh" },
       "proofs": [
         { "invariantId": "INV-GEN-01", "level": "A" },
         { "invariantId": "INV-AUTH-01", "level": "A" }
       ]
+    },
+    {
+      "id": "recon-idempotent",
+      "featureId": "investigation.reconciliation",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "is idempotent across repeated reconcile calls"
+      },
+      "proofs": [{ "invariantId": "INV-CRASH-01", "level": "A" }]
+    },
+    {
+      "id": "recon-max-attempts",
+      "featureId": "investigation.reconciliation",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "stops retrying after maxAttempts FAILED sessions for the same generation"
+      },
+      "proofs": [{ "invariantId": "INV-STALE-01", "level": "C" }]
+    },
+
+    {
+      "id": "ing-auth-reject",
+      "featureId": "event.ingress",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "rejects request without auth token"
+      },
+      "proofs": [{ "invariantId": "INV-ING-01", "level": "C" }]
+    },
+    {
+      "id": "ing-auth-http",
+      "featureId": "event.ingress",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
+        "testName": "allows ingest only on /v1/events and rejects ops and runtime routes"
+      },
+      "proofs": [{ "invariantId": "INV-ING-01", "level": "A" }]
+    },
+    {
+      "id": "ing-persist",
+      "featureId": "event.ingress",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "accepts and persists a valid event"
+      },
+      "proofs": [{ "invariantId": "INV-ING-02", "level": "A" }]
+    },
+    {
+      "id": "ing-idempotent",
+      "featureId": "event.ingress",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "idempotent: duplicate event id is silently accepted"
+      },
+      "proofs": [{ "invariantId": "INV-ING-02", "level": "A" }]
+    },
+    {
+      "id": "ing-conflict",
+      "featureId": "event.ingress",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "rejects duplicate Event when producer id or type changes"
+      },
+      "proofs": [{ "invariantId": "INV-ING-03", "level": "A" }]
+    },
+    {
+      "id": "ing-oversized",
+      "featureId": "event.ingress",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "rejects a declared oversized event body"
+      },
+      "proofs": [{ "invariantId": "INV-ING-04", "level": "C" }]
+    },
+
+    {
+      "id": "inc-recovery-pending",
+      "featureId": "incident.lifecycle",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "reconciles unmatched recovery before failure and keeps retry idempotent"
+      },
+      "proofs": [
+        { "invariantId": "INV-INC-01", "level": "A" },
+        { "invariantId": "INV-INC-02", "level": "A" }
+      ]
+    },
+    {
+      "id": "inc-no-reprocess",
+      "featureId": "incident.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "does not invoke Incident processing again for a duplicate Event"
+      },
+      "proofs": [{ "invariantId": "INV-INC-03", "level": "C" }]
+    },
+
+    {
+      "id": "evd-plan-typed",
+      "featureId": "evidence.collection",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
+        "testName": "maps container.oom to inspect, stats, bounded logs, and host memory"
+      },
+      "proofs": [{ "invariantId": "INV-EVD-01", "level": "C" }]
+    },
+    {
+      "id": "evd-transport-retryable",
+      "featureId": "evidence.collection",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
+        "testName": "keeps Node Agent unavailability as retryable failed Evidence"
+      },
+      "proofs": [{ "invariantId": "INV-EVD-02", "level": "C" }],
+      "limitations": ["Uses stub fetch; does not prove a real TCP hang."]
+    },
+    {
+      "id": "evd-hang-retryable",
+      "featureId": "evidence.collection",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
+        "testName": "keeps a hanging Pi-Ops to Node Agent request as retryable"
+      },
+      "proofs": [{ "invariantId": "INV-EVD-02", "level": "C" }]
+    },
+    {
+      "id": "evd-node-unhealth",
+      "featureId": "evidence.collection",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
+        "testName": "records Node Agent http.probe unhealth as succeeded Evidence"
+      },
+      "proofs": [{ "invariantId": "INV-EVD-03", "level": "C" }]
+    },
+    {
+      "id": "evd-redact-token",
+      "featureId": "evidence.collection",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
+        "testName": "redacts node tokens from persisted error messages"
+      },
+      "proofs": [{ "invariantId": "INV-EVD-04", "level": "C" }]
+    },
+
+    {
+      "id": "job-atomic",
+      "featureId": "evidence.job-lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-worker.test.ts",
+        "testName": "atomically creates a pending job with a new Incident"
+      },
+      "proofs": [{ "invariantId": "INV-JOB-01", "level": "A" }]
+    },
+    {
+      "id": "job-retry-terminal",
+      "featureId": "evidence.job-lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-worker.test.ts",
+        "testName": "does not retry terminal HTTP 4xx collection failure"
+      },
+      "proofs": [{ "invariantId": "INV-JOB-02", "level": "C" }]
+    },
+    {
+      "id": "job-restart",
+      "featureId": "evidence.job-lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-worker.test.ts",
+        "testName": "resets and resumes a RUNNING job after process restart"
+      },
+      "proofs": [{ "invariantId": "INV-JOB-03", "level": "A" }]
+    },
+
+    {
+      "id": "safe-redact-inspect",
+      "featureId": "evidence.model-safe-projection",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/model-safe-evidence.test.ts",
+        "testName": "redacts docker.inspect secrets in runtime Evidence without mutating the store"
+      },
+      "proofs": [
+        { "invariantId": "INV-SAFE-01", "level": "C" },
+        { "invariantId": "INV-SAFE-02", "level": "C" }
+      ],
+      "limitations": ["Field-name redaction only; not arbitrary secret DLP."]
+    },
+    {
+      "id": "safe-same-path",
+      "featureId": "evidence.model-safe-projection",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/model-safe-evidence.test.ts",
+        "testName": "applies the same projection to initial context and dynamic runtime Evidence"
+      },
+      "proofs": [{ "invariantId": "INV-SAFE-03", "level": "C" }]
+    },
+
+    {
+      "id": "dyn-rerun-data",
+      "featureId": "evidence.dynamic-enrichment",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "changes the specialist finding when only Evidence.data changes"
+      },
+      "proofs": [{ "invariantId": "INV-DYN-02", "level": "C" }]
+    },
+    {
+      "id": "dyn-rerun-data-e2e",
+      "featureId": "evidence.dynamic-enrichment",
+      "status": "ACTIVE",
+      "maintenanceCost": 4,
+      "executionClass": "SMOKE",
+      "runtimeClass": "smoke",
+      "command": "pnpm smoke:local",
+      "location": { "file": "deploy/local/smoke.sh" },
+      "proofs": [{ "invariantId": "INV-DYN-02", "level": "A" }]
+    },
+    {
+      "id": "dyn-once",
+      "featureId": "evidence.dynamic-enrichment",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "collects host.memory once and reruns both requesting specialists"
+      },
+      "proofs": [{ "invariantId": "INV-DYN-01", "level": "C" }]
+    },
+    {
+      "id": "dyn-reject-url",
+      "featureId": "evidence.dynamic-enrichment",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-evidence-query.test.ts",
+        "testName": "rejects unresolved docker targets and model-supplied URLs"
+      },
+      "proofs": [{ "invariantId": "INV-DYN-03", "level": "C" }]
+    },
+
+    {
+      "id": "ses-lifecycle",
+      "featureId": "investigation.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-loop.test.ts",
+        "testName": "walks the session lifecycle CREATED → SUBMITTED → RUNNING → COMPLETED"
+      },
+      "proofs": [{ "invariantId": "INV-SES-01", "level": "C" }]
+    },
+    {
+      "id": "ses-foreign-evidence",
+      "featureId": "investigation.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-loop.test.ts",
+        "testName": "rejects evidence ids that do not belong to the Incident"
+      },
+      "proofs": [{ "invariantId": "INV-SES-02", "level": "C" }]
+    },
+    {
+      "id": "ses-reuse-open",
+      "featureId": "investigation.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-attempt.test.ts",
+        "testName": "reuses an open session for the same Incident and context"
+      },
+      "proofs": [{ "invariantId": "INV-SES-03", "level": "C" }]
+    },
+
+    {
+      "id": "cb-duplicate",
+      "featureId": "investigation.callback",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/pi-runtime-contract.test.ts",
+        "testName": "returns the existing report on a duplicate callback"
+      },
+      "proofs": [{ "invariantId": "INV-CB-02", "level": "C" }]
+    },
+    {
+      "id": "cb-invalid",
+      "featureId": "investigation.callback",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/pi-runtime-contract.test.ts",
+        "testName": "rejects an invalid callback without writing a report"
+      },
+      "proofs": [{ "invariantId": "INV-CB-03", "level": "C" }]
+    },
+    {
+      "id": "cb-auth-runtime",
+      "featureId": "investigation.callback",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
+        "testName": "allows runtime token only on runtime callback routes"
+      },
+      "proofs": [{ "invariantId": "INV-CB-01", "level": "C" }]
+    },
+
+    {
+      "id": "rtb-no-shell",
+      "featureId": "runtime.boundary",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "exposes no shell or remediation capability"
+      },
+      "proofs": [{ "invariantId": "INV-RTB-01", "level": "C" }]
+    },
+    {
+      "id": "rtb-dup-submit",
+      "featureId": "runtime.boundary",
+      "status": "ACTIVE",
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
+        "testName": "starts one runtime task for a duplicate submit"
+      },
+      "proofs": [{ "invariantId": "INV-RTB-02", "level": "A" }]
+    },
+    {
+      "id": "rtb-callback-dest",
+      "featureId": "runtime.boundary",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
+        "testName": "rejects an arbitrary callback destination"
+      },
+      "proofs": [{ "invariantId": "INV-RTB-03", "level": "C" }]
+    },
+
+    {
+      "id": "rtc-history",
+      "featureId": "runtime.coordinator",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "does not let historical knowledge replace current Evidence"
+      },
+      "proofs": [{ "invariantId": "INV-RTC-01", "level": "C" }]
+    },
+    {
+      "id": "rtc-budget",
+      "featureId": "runtime.coordinator",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "fails explicitly when current Evidence alone exceeds the context limit"
+      },
+      "proofs": [{ "invariantId": "INV-RTC-02", "level": "C" }]
+    },
+    {
+      "id": "rtc-budget-smoke",
+      "featureId": "runtime.coordinator",
+      "status": "ACTIVE",
+      "maintenanceCost": 4,
+      "executionClass": "SMOKE",
+      "runtimeClass": "smoke",
+      "command": "pnpm smoke:local",
+      "location": { "file": "deploy/local/smoke.sh" },
+      "proofs": [{ "invariantId": "INV-RTC-02", "level": "A" }]
+    },
+    {
+      "id": "rtc-timeout",
+      "featureId": "runtime.coordinator",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "does not apply a late model result after timeout"
+      },
+      "proofs": [{ "invariantId": "INV-RTC-03", "level": "C" }],
+      "limitations": ["Does not prove real network timeout."]
+    },
+    {
+      "id": "rtc-fake-zero-calls",
+      "featureId": "runtime.coordinator",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "performs zero external model calls in the fake CI runtime"
+      },
+      "proofs": [{ "invariantId": "INV-RTC-04", "level": "C" }]
+    },
+
+    {
+      "id": "del-retry-callback",
+      "featureId": "runtime.callback-delivery",
+      "status": "ACTIVE",
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
+        "testName": "retries a failed callback until delivery succeeds"
+      },
+      "proofs": [{ "invariantId": "INV-DEL-01", "level": "A" }]
+    },
+    {
+      "id": "del-restart",
+      "featureId": "runtime.callback-delivery",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
+        "testName": "resumes pending delivery after restart without rerunning the model"
+      },
+      "proofs": [{ "invariantId": "INV-DEL-02", "level": "A" }]
+    },
+
+    {
+      "id": "tok-ingest-ops",
+      "featureId": "auth.boundary",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
+        "testName": "allows ingest only on /v1/events and rejects ops and runtime routes"
+      },
+      "proofs": [{ "invariantId": "INV-TOK-01", "level": "A" }]
+    },
+    {
+      "id": "tok-operator",
+      "featureId": "auth.boundary",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
+        "testName": "allows operator on /v1/ops and rejects ingest and runtime routes"
+      },
+      "proofs": [{ "invariantId": "INV-TOK-02", "level": "A" }]
+    },
+    {
+      "id": "tok-runtime",
+      "featureId": "auth.boundary",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
+        "testName": "allows runtime token only on runtime callback routes"
+      },
+      "proofs": [{ "invariantId": "INV-TOK-03", "level": "A" }]
+    },
+    {
+      "id": "tok-distinct",
+      "featureId": "auth.boundary",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/config.test.ts",
+        "testName": "rejects identical ingest and operator tokens"
+      },
+      "proofs": [{ "invariantId": "INV-TOK-04", "level": "C" }]
+    },
+
+    {
+      "id": "not-three-types",
+      "featureId": "notification.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/notification.test.ts",
+        "testName": "schedules INVESTIGATION_COMPLETED once per session and survives callback replay"
+      },
+      "proofs": [{ "invariantId": "INV-NOT-01", "level": "C" }]
+    },
+    {
+      "id": "not-three-types-smoke",
+      "featureId": "notification.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 4,
+      "executionClass": "SMOKE",
+      "runtimeClass": "smoke",
+      "command": "pnpm smoke:local",
+      "location": { "file": "deploy/local/smoke.sh" },
+      "proofs": [{ "invariantId": "INV-NOT-01", "level": "A" }]
+    },
+    {
+      "id": "not-facts",
+      "featureId": "notification.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/notification.test.ts",
+        "testName": "delivers PENDING jobs through FakeNotifier without mutating facts"
+      },
+      "proofs": [{ "invariantId": "INV-NOT-02", "level": "C" }]
+    },
+    {
+      "id": "not-reset-running",
+      "featureId": "notification.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/notification.test.ts",
+        "testName": "resets RUNNING jobs on start and does not duplicate DELIVERED jobs"
+      },
+      "proofs": [{ "invariantId": "INV-NOT-03", "level": "C" }]
+    },
+
+    {
+      "id": "nod-hysteresis",
+      "featureId": "node.observation",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/detectors.test.ts",
+        "testName": "emits one failure then one recovery for 200 → fail → 200 (no flood)"
+      },
+      "proofs": [{ "invariantId": "INV-NOD-01", "level": "C" }]
+    },
+    {
+      "id": "nod-auth",
+      "featureId": "node.observation",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/api.test.ts",
+        "testName": "rejects without auth token"
+      },
+      "proofs": [{ "invariantId": "INV-NOD-02", "level": "A" }]
+    },
+    {
+      "id": "nod-queue",
+      "featureId": "node.observation",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/events.test.ts",
+        "testName": "drops events when queue is full"
+      },
+      "proofs": [{ "invariantId": "INV-NOD-03", "level": "C" }]
+    },
+
+    {
+      "id": "prb-target-down",
+      "featureId": "node.http-probe",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/evidence.test.ts",
+        "testName": "returns succeeded unhealth when the target is unreachable"
+      },
+      "proofs": [{ "invariantId": "INV-PRB-01", "level": "A" }]
+    },
+    {
+      "id": "prb-url-policy",
+      "featureId": "node.http-probe",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/evidence.test.ts",
+        "testName": "rejects http.probe with non-http URL"
+      },
+      "proofs": [{ "invariantId": "INV-PRB-02", "level": "C" }]
+    },
+
+    {
+      "id": "doc-allowlist",
+      "featureId": "node.docker-evidence",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/evidence.test.ts",
+        "testName": "fails closed when the container allowlist is empty"
+      },
+      "proofs": [{ "invariantId": "INV-DOC-01", "level": "C" }]
+    },
+    {
+      "id": "doc-no-env",
+      "featureId": "node.docker-evidence",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/node-agent/src/__tests__/evidence.test.ts",
+        "testName": "keeps OOM-safe inspect fields and excludes Env and mount secrets"
+      },
+      "proofs": [{ "invariantId": "INV-DOC-02", "level": "C" }]
+    },
+
+    {
+      "id": "mem-active-only",
+      "featureId": "memory.retrieval",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/memory-retriever.test.ts",
+        "testName": "does not retrieve DISABLED memory"
+      },
+      "proofs": [{ "invariantId": "INV-MEM-01", "level": "C" }]
+    },
+    {
+      "id": "mem-advisory",
+      "featureId": "memory.retrieval",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
+        "testName": "does not let historical knowledge replace current Evidence"
+      },
+      "proofs": [{ "invariantId": "INV-MEM-02", "level": "C" }]
+    },
+    {
+      "id": "mem-no-block",
+      "featureId": "memory.retrieval",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-knowledge.test.ts",
+        "testName": "does not block investigation when retrieval fails"
+      },
+      "proofs": [{ "invariantId": "INV-MEM-03", "level": "C" }]
+    },
+
+    {
+      "id": "gov-eval",
+      "featureId": "memory.governance",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/reasoning-evaluation.test.ts",
+        "testName": "requires an evaluation to create a MemoryCandidate"
+      },
+      "proofs": [{ "invariantId": "INV-GOV-01", "level": "C" }]
+    },
+    {
+      "id": "gov-no-mutate",
+      "featureId": "memory.governance",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/memory-governance.test.ts",
+        "testName": "does not mutate Incident, Evidence, or ReasoningResult on approve/reject"
+      },
+      "proofs": [{ "invariantId": "INV-GOV-02", "level": "C" }]
+    },
+
+    {
+      "id": "loc-worker-skip",
+      "featureId": "reasoning.local",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
+        "testName": "keeps one authoritative ReasoningResult from the InvestigationSession"
+      },
+      "proofs": [{ "invariantId": "INV-LOC-01", "level": "C" }]
+    },
+    {
+      "id": "loc-one-result",
+      "featureId": "reasoning.local",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/reasoning-worker.test.ts",
+        "testName": "does not insert a duplicate ReasoningResult for the same job"
+      },
+      "proofs": [{ "invariantId": "INV-LOC-02", "level": "A" }]
+    },
+
+    {
+      "id": "pro-event-schema",
+      "featureId": "protocol.contract",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "packages/protocol/src/__tests__/schemas.test.ts",
+        "testName": "rejects event with missing required field"
+      },
+      "proofs": [{ "invariantId": "INV-PRO-01", "level": "C" }]
+    },
+    {
+      "id": "pro-roles",
+      "featureId": "protocol.contract",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "packages/protocol/src/__tests__/investigation-runtime.test.ts",
+        "testName": "requires requestingRoles and normalizes them stably"
+      },
+      "proofs": [{ "invariantId": "INV-PRO-02", "level": "C" }]
+    },
+
+    {
+      "id": "cfg-partial-runtime",
+      "featureId": "configuration.fail-closed",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/config.test.ts",
+        "testName": "rejects partial external runtime configuration"
+      },
+      "proofs": [{ "invariantId": "INV-CFG-01", "level": "C" }]
+    },
+    {
+      "id": "cfg-integers",
+      "featureId": "configuration.fail-closed",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/config.test.ts",
+        "testName": "rejects malformed and out-of-range operational integers"
+      },
+      "proofs": [{ "invariantId": "INV-CFG-02", "level": "C" }]
+    },
+
+    {
+      "id": "mig-dup-result",
+      "featureId": "persistence.migration",
+      "status": "ACTIVE",
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/reasoning-results-migration.test.ts",
+        "testName": "fails clearly when legacy rows share a reasoning_job_id"
+      },
+      "proofs": [{ "invariantId": "INV-MIG-01", "level": "A" }]
+    },
+    {
+      "id": "mig-reopen-event",
+      "featureId": "persistence.migration",
+      "status": "ACTIVE",
+      "maintenanceCost": 2,
+      "executionClass": "INTEGRATION",
+      "runtimeClass": "fast",
+      "location": {
+        "file": "apps/agent/src/__tests__/ingress.test.ts",
+        "testName": "event survives database close and reopen"
+      },
+      "proofs": [{ "invariantId": "INV-MIG-02", "level": "A" }]
+    },
+
+    {
+      "id": "locint-smoke-chain",
+      "featureId": "local.integration",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 6,
+      "executionClass": "SMOKE",
+      "runtimeClass": "smoke",
+      "command": "pnpm smoke:local",
+      "location": { "file": "deploy/local/smoke.sh" },
+      "proofs": [
+        { "invariantId": "INV-LOCINT-01", "level": "A" },
+        { "invariantId": "INV-LOCINT-02", "level": "A" }
+      ]
+    },
+    {
+      "id": "locint-smoke-pi-script",
+      "featureId": "local.integration",
+      "status": "PINNED",
+      "historicalRegression": true,
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "runtimeClass": "fast",
+      "location": { "file": "deploy/local/smoke-pi.sh" },
+      "proofs": [{ "invariantId": "INV-LOCINT-03", "level": "C" }],
+      "limitations": ["Script inspection / fail-closed path; live provider is not ordinary CI."]
     }
   ]
 }

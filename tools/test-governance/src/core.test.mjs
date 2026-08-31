@@ -57,6 +57,15 @@ test('architecture guard detects forbidden runtime imports', () => {
   assert.equal(violations.length, 1);
 });
 
+test('config validation rejects unknown catalog executionClass', () => {
+  const errors = validateGovernanceConfig(
+    { schemaVersion: 1, features: [feature] },
+    { schemaVersion: 1, entries: [{ id: 'bad-class', featureId: feature.id, status: 'ACTIVE', executionClass: 'E2E', proofs: [{ invariantId: 'INV-GEN-01', level: 'C' }] }] },
+    { schemaVersion: 1, guards: [] }
+  );
+  assert.ok(errors.some((error) => error.includes('executionClass')));
+});
+
 test('config validation rejects catalog proofs for an unknown invariant', () => {
   const errors = validateGovernanceConfig(
     { schemaVersion: 1, features: [feature] },

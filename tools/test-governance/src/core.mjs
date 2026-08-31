@@ -72,6 +72,19 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
     if (entryIds.has(entry.id)) errors.push(`duplicate catalog entry id: ${entry.id}`);
     entryIds.add(entry.id);
     if (!featureIds.has(entry.featureId)) errors.push(`${entry.id}: unknown feature ${entry.featureId}`);
+    const status = entry.status ?? 'ACTIVE';
+    if (!['ACTIVE', 'PINNED', 'QUARANTINED', 'DOMINATED', 'RETIRED'].includes(status)) {
+      errors.push(`${entry.id}: unknown status ${status}`);
+    }
+    if (entry.executionClass && !['UNIT', 'COMPONENT', 'INTEGRATION', 'MULTI_PROCESS', 'SMOKE', 'LIVE_PROVIDER'].includes(entry.executionClass)) {
+      errors.push(`${entry.id}: unknown executionClass ${entry.executionClass}`);
+    }
+    if (entry.runtimeClass && !['fast', 'integration', 'smoke', 'live'].includes(entry.runtimeClass)) {
+      errors.push(`${entry.id}: unknown runtimeClass ${entry.runtimeClass}`);
+    }
+    if (entry.location?.file && typeof entry.location.file !== 'string') {
+      errors.push(`${entry.id}: location.file must be a string`);
+    }
     for (const proof of entry.proofs ?? []) {
       if (invariantOwners.get(proof.invariantId) !== entry.featureId) {
         errors.push(`${entry.id}: proof ${proof.invariantId} does not belong to ${entry.featureId}`);

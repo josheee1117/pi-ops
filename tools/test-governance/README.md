@@ -19,9 +19,10 @@ The goal is not maximum test count. A feature is considered testable only when i
 
 A/B/C are proof grades, not aliases for unit/integration/E2E. One test may provide different grades for different invariants.
 
-## First governed feature
+## Governed features
 
-Phase 1 intentionally governs only `investigation.reconciliation`. It captures the Phase 12A invariants that already have strong regression tests:
+The catalog now covers the current Pi-Ops feature set (ingress, Incident, Evidence, Investigation, Runtime, auth, notifications, Node Agent, memory, protocol, config, persistence, local integration). Phase 12A reconciliation invariants remain PINNED:
+
 
 - dynamic Evidence must not create a new Evidence generation;
 - deterministic Evidence requeue is what advances generation;

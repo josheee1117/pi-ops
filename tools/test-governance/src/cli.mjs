@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -24,6 +24,12 @@ function loadConfig() {
   const catalog = readJson('catalog.json');
   const guards = readJson('architecture-guards.json');
   const errors = validateGovernanceConfig(features, catalog, guards);
+  for (const entry of catalog.entries ?? []) {
+    const file = entry.location?.file;
+    if (file && !existsSync(resolve(ROOT, file))) {
+      errors.push(`${entry.id}: catalog location.file does not exist: ${file}`);
+    }
+  }
   if (errors.length > 0) throw new Error(`invalid test-governance config:\n- ${errors.join('\n- ')}`);
   return { features, catalog, guards };
 }
@@ -63,6 +69,7 @@ function parseArgs(argv) {
   const options = { base: 'HEAD~1', head: 'HEAD', files: [], json: false, strict: false };
   for (let i = 0; i < rest.length; i += 1) {
     const arg = rest[i];
+    if (arg === '--') continue;
     if (arg === '--base') options.base = rest[++i];
     else if (arg === '--head') options.head = rest[++i];
     else if (arg === '--files') options.files.push(...(rest[++i] ?? '').split(',').map((item) => item.trim()).filter(Boolean));
