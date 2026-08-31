@@ -1,29 +1,129 @@
 const LEVELS = ['A', 'B', 'C'];
+export const PLAN_STATUS_PRECEDENCE = [
+  'ARCHITECTURE_VIOLATION',
+  'UNMAPPED_PRODUCTION_CHANGE',
+  'NEEDS_EVIDENCE',
+  'BUDGET_EXCEEDED',
+  'READY',
+];
+export const ACTION_COSTS = {
+  REUSE: 0,
+  STRENGTHEN: 1,
+  CREATE: 4,
+};
+
+export function globToRegExp(pattern) {
+  const target = pattern.replaceAll('\\', '/');
+  if (!target.includes('*')) return new RegExp(`^${target.replace(/[.+^${}()|[\]\\]/g, '\\$&')}$`);
+  const escaped = target.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  if (target.endsWith('/**')) {
+    const prefix = escaped.slice(0, -3).replace(/\*\*/g, '::DOUBLE_STAR::').replace(/\*/g, '[^/]*').replace(/::DOUBLE_STAR::/g, '.*');
+    return new RegExp(`^${prefix}(?:/.*)?$`);
+  }
+  const body = escaped.replace(/\*\*/g, '::DOUBLE_STAR::').replace(/\*/g, '[^/]*').replace(/::DOUBLE_STAR::/g, '.*');
+  return new RegExp(`^${body}$`);
+}
 
 export function matchesPath(file, pattern) {
+  return globToRegExp(pattern).test(file.replaceAll('\\', '/'));
+}
+
+export function isIgnoredPath(file, ignorePatterns = []) {
+  return ignorePatterns.some((pattern) => matchesPath(file, pattern));
+}
+
+export function isGovernedProductionFile(file, settings = {}) {
   const normalized = file.replaceAll('\\', '/');
-  const target = pattern.replaceAll('\\', '/');
-  if (target.endsWith('/**')) {
-    const prefix = target.slice(0, -3);
-    return normalized === prefix || normalized.startsWith(`${prefix}/`);
-  }
-  if (!target.includes('*')) return normalized === target;
-  const escaped = target.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const regex = escaped
-    .replace(/\*\*/g, '::DOUBLE_STAR::')
-    .replace(/\*/g, '[^/]*')
-    .replace(/::DOUBLE_STAR::/g, '.*');
-  return new RegExp(`^${regex}$`).test(normalized);
+  if (isIgnoredPath(normalized, settings.unmappedIgnore ?? [])) return false;
+  return (settings.governedRoots ?? []).some((pattern) => matchesPath(normalized, pattern));
+}
+
+export function findUnmappedProductionFiles(changedFiles, features, settings = {}) {
+  return changedFiles.filter((file) => {
+    if (!isGovernedProductionFile(file, settings)) return false;
+    return !features.some((feature) => (feature.paths ?? []).some((pattern) => matchesPath(file, pattern)));
+  });
 }
 
 export function resolveAffectedFeatures(changedFiles, features) {
-  return features
-    .map((feature) => ({
-      feature,
-      matchedFiles: changedFiles.filter((file) =>
-        feature.paths.some((pattern) => matchesPath(file, pattern))),
-    }))
-    .filter(({ matchedFiles }) => matchedFiles.length > 0);
+  const byId = new Map(features.map((feature) => [feature.id, feature]));
+  const ordered = [];
+  const seen = new Map();
+
+  function add(feature, matchedFiles, reason) {
+    const existing = seen.get(feature.id);
+    if (existing) {
+      for (const file of matchedFiles) {
+        if (!existing.matchedFiles.includes(file)) existing.matchedFiles.push(file);
+      }
+      if (reason === 'DIRECT') existing.reason = 'DIRECT';
+      else if (existing.reason !== 'DIRECT') {
+        const labels = new Set(
+          existing.reason === 'DIRECT' ? [] : existing.reason.replace(/^IMPACTED_BY /, '').split(',').filter(Boolean),
+        );
+        const added = reason.replace(/^IMPACTED_BY /, '');
+        for (const item of added.split(',')) if (item) labels.add(item);
+        existing.reason = `IMPACTED_BY ${[...labels].sort().join(',')}`;
+      }
+      return;
+    }
+    const record = { feature, matchedFiles: [...matchedFiles], reason };
+    seen.set(feature.id, record);
+    ordered.push(record);
+  }
+
+  for (const feature of features) {
+    const matchedFiles = changedFiles.filter((file) =>
+      (feature.paths ?? []).some((pattern) => matchesPath(file, pattern)));
+    if (matchedFiles.length > 0) add(feature, matchedFiles, 'DIRECT');
+  }
+
+  const queue = ordered.filter((item) => item.reason === 'DIRECT').map((item) => item.feature.id);
+  const queued = new Set(queue);
+  while (queue.length > 0) {
+    const id = queue.shift();
+    const feature = byId.get(id);
+    for (const impactId of feature?.impacts ?? []) {
+      const impacted = byId.get(impactId);
+      if (!impacted || seen.has(impactId)) continue;
+      add(impacted, [], `IMPACTED_BY ${id}`);
+      if (!queued.has(impactId)) {
+        queued.add(impactId);
+        queue.push(impactId);
+      }
+    }
+  }
+  return ordered;
+}
+
+export function extractTestNames(source) {
+  const names = [];
+  const lineRe = /^[ \t]*(?:it|test)\(\s*(['"])((?:\\.|[^\\])*?)\1/gm;
+  let match;
+  while ((match = lineRe.exec(source)) !== null) {
+    names.push(match[2].replace(/\\(['"])/g, '$1'));
+  }
+  return names;
+}
+
+export function validateKnownCommand(command, options = {}) {
+  const trimmed = String(command ?? '').trim();
+  if (!trimmed) return 'command is empty';
+  const pnpm = trimmed.match(/^pnpm(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/);
+  if (pnpm) {
+    if (!options.packageScripts || !(pnpm[1] in options.packageScripts)) {
+      return `missing package script: ${pnpm[1]}`;
+    }
+    return null;
+  }
+  const bash = trimmed.match(/^bash\s+(\S+)$/);
+  if (bash) {
+    if (typeof options.fileExists === 'function' && !options.fileExists(bash[1])) {
+      return `command file missing: ${bash[1]}`;
+    }
+    return null;
+  }
+  return `UNVERIFIED_COMMAND: ${trimmed}`;
 }
 
 export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
@@ -31,6 +131,13 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
   if (featureDoc?.schemaVersion !== 1) errors.push('features.schemaVersion must be 1');
   if (catalogDoc?.schemaVersion !== 1) errors.push('catalog.schemaVersion must be 1');
   if (guardDoc?.schemaVersion !== 1) errors.push('architecture-guards.schemaVersion must be 1');
+  const governedRoots = featureDoc?.governedRoots;
+  if (!Array.isArray(governedRoots) || governedRoots.length === 0) {
+    errors.push('features.governedRoots must be a non-empty array (unmapped production detection would be silently disabled)');
+  }
+  if (featureDoc?.unmappedIgnore !== undefined && !Array.isArray(featureDoc.unmappedIgnore)) {
+    errors.push('features.unmappedIgnore must be an array');
+  }
 
   const featureIds = new Set();
   const invariantOwners = new Map();
@@ -43,6 +150,9 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
     featureIds.add(feature.id);
     if (!Array.isArray(feature.paths) || feature.paths.length === 0) {
       errors.push(`${feature.id}: at least one code path is required`);
+    }
+    if (feature.impacts !== undefined && !Array.isArray(feature.impacts)) {
+      errors.push(`${feature.id}: impacts must be an array`);
     }
     const localIds = new Set();
     for (const invariant of feature.invariants ?? []) {
@@ -60,6 +170,11 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
           errors.push(`${invariant.id}: evidence count for ${level} must be a non-negative integer`);
         }
       }
+    }
+  }
+  for (const feature of featureDoc?.features ?? []) {
+    for (const impact of feature.impacts ?? []) {
+      if (!featureIds.has(impact)) errors.push(`${feature.id}: invalid impact Feature ${impact}`);
     }
   }
 
@@ -85,6 +200,9 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
     if (entry.location?.file && typeof entry.location.file !== 'string') {
       errors.push(`${entry.id}: location.file must be a string`);
     }
+    if (entry.location?.testName && !entry.location?.file) {
+      errors.push(`${entry.id}: location.file is required when location.testName is set`);
+    }
     for (const proof of entry.proofs ?? []) {
       if (invariantOwners.get(proof.invariantId) !== entry.featureId) {
         errors.push(`${entry.id}: proof ${proof.invariantId} does not belong to ${entry.featureId}`);
@@ -106,6 +224,28 @@ export function validateGovernanceConfig(featureDoc, catalogDoc, guardDoc) {
     }
     if (!Array.isArray(guard.scope) || guard.scope.length === 0) errors.push(`${guard.id}: scope is required`);
     if (!Array.isArray(guard.patterns) || guard.patterns.length === 0) errors.push(`${guard.id}: patterns are required`);
+  }
+  return errors;
+}
+
+export function validateCatalogArtifacts(catalogDoc, options = {}) {
+  const errors = [];
+  for (const entry of catalogDoc?.entries ?? []) {
+    const file = entry.location?.file;
+    if (file && typeof options.fileExists === 'function' && !options.fileExists(file)) {
+      errors.push(`${entry.id}: catalog location.file does not exist: ${file}`);
+    }
+    if (entry.location?.testName) {
+      const source = typeof options.readFile === 'function' ? options.readFile(file) : '';
+      const names = extractTestNames(source ?? '');
+      if (!names.includes(entry.location.testName)) {
+        errors.push(`${entry.id}: CATALOG_GHOST_TEST ${entry.location.testName}`);
+      }
+    }
+    if (entry.command) {
+      const commandError = validateKnownCommand(entry.command, options);
+      if (commandError) errors.push(`${entry.id}: ${commandError}`);
+    }
   }
   return errors;
 }
@@ -153,7 +293,25 @@ function consume(entry, remaining) {
   return covered;
 }
 
-export function buildFeaturePlan(feature, catalogEntries) {
+export function evaluateMaintenanceBudget({ budget, actions = [] }) {
+  let plannedDelta = 0;
+  for (const action of actions) {
+    const type = action.type ?? action;
+    if (type === 'REUSE') plannedDelta += ACTION_COSTS.REUSE;
+    else if (type === 'STRENGTHEN') plannedDelta += Number(action.cost ?? ACTION_COSTS.STRENGTHEN);
+    else if (type === 'CREATE') plannedDelta += Number(action.cost ?? ACTION_COSTS.CREATE);
+  }
+  const numericBudget = Number(budget ?? 0);
+  const remaining = numericBudget - plannedDelta;
+  return {
+    maintenanceBudget: numericBudget,
+    plannedMaintenanceDelta: plannedDelta,
+    remainingBudget: remaining,
+    budgetStatus: remaining < 0 ? 'BUDGET_EXCEEDED' : 'WITHIN_BUDGET',
+  };
+}
+
+export function buildFeaturePlan(feature, catalogEntries, options = {}) {
   const candidates = catalogEntries.filter((entry) =>
     entry.featureId === feature.id && (entry.status === 'ACTIVE' || entry.status === 'PINNED'));
   const remaining = requiredSlots(feature);
@@ -185,21 +343,46 @@ export function buildFeaturePlan(feature, catalogEntries) {
     const split = proofKey.lastIndexOf(':');
     gaps.push({ invariantId: proofKey.slice(0, split), level: proofKey.slice(split + 1), missing: count });
   }
+  const budget = evaluateMaintenanceBudget({
+    budget: feature.maintenanceBudget ?? 0,
+    actions: options.actions ?? selected.map(() => ({ type: 'REUSE' })),
+  });
   return {
     featureId: feature.id,
     selected,
     gaps,
     catalogMaintenanceCost: selected.reduce((sum, entry) => sum + Number(entry.maintenanceCost ?? 0), 0),
-    status: gaps.length === 0 ? 'CATALOG_COVERED' : 'NEEDS_EVIDENCE'
+    ...budget,
+    status: gaps.length === 0 ? 'CATALOG_COVERED' : 'NEEDS_EVIDENCE',
   };
+}
+
+export function collectMachineGaps(features, catalogEntries) {
+  return features.flatMap((feature) => {
+    const plan = buildFeaturePlan(feature, catalogEntries);
+    return plan.gaps.map((gap) => ({
+      featureId: feature.id,
+      invariantId: gap.invariantId,
+      level: gap.level,
+      missing: gap.missing,
+    }));
+  });
+}
+
+export function resolvePlanStatus({ architectureViolations = [], unmappedProductionFiles = [], hasGaps = false, budgetExceeded = false }) {
+  if (architectureViolations.length > 0) return 'ARCHITECTURE_VIOLATION';
+  if (unmappedProductionFiles.length > 0) return 'UNMAPPED_PRODUCTION_CHANGE';
+  if (hasGaps) return 'NEEDS_EVIDENCE';
+  if (budgetExceeded) return 'BUDGET_EXCEEDED';
+  return 'READY';
 }
 
 export function parseImportSpecifiers(content) {
   const specs = new Set();
   const expressions = [
-    /\b(?:import|export)\s+(?:[^'\"]*?\sfrom\s*)?['\"]([^'\"]+)['\"]/g,
-    /\bimport\(\s*['\"]([^'\"]+)['\"]\s*\)/g,
-    /\brequire\(\s*['\"]([^'\"]+)['\"]\s*\)/g
+    /\b(?:import|export)\s+(?:[^'"]*?\sfrom\s*)?['"]([^'"]+)['"]/g,
+    /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g,
+    /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g,
   ];
   for (const regex of expressions) {
     let match;
@@ -215,16 +398,16 @@ export function evaluateGuardFile(guard, file, content) {
     const imports = parseImportSpecifiers(content);
     for (const pattern of guard.patterns) {
       for (const specifier of imports) {
-        if (specifier.includes(pattern)) violations.push({ guardId: guard.id, file, detail: `forbidden import \"${specifier}\" matched \"${pattern}\"` });
+        if (specifier.includes(pattern)) violations.push({ guardId: guard.id, file, detail: `forbidden import "${specifier}" matched "${pattern}"` });
       }
     }
   } else if (guard.kind === 'forbiddenText') {
     for (const pattern of guard.patterns) {
-      if (content.includes(pattern)) violations.push({ guardId: guard.id, file, detail: `forbidden text matched \"${pattern}\"` });
+      if (content.includes(pattern)) violations.push({ guardId: guard.id, file, detail: `forbidden text matched "${pattern}"` });
     }
   } else if (guard.kind === 'requiredText') {
     for (const pattern of guard.patterns) {
-      if (!content.includes(pattern)) violations.push({ guardId: guard.id, file, detail: `required text missing \"${pattern}\"` });
+      if (!content.includes(pattern)) violations.push({ guardId: guard.id, file, detail: `required text missing "${pattern}"` });
     }
   }
   return violations;
@@ -237,6 +420,6 @@ export function summarizeRequirements(feature) {
     required: LEVELS
       .filter((level) => (invariant.requiredEvidence?.[level] ?? 0) > 0)
       .map((level) => `${level}${invariant.requiredEvidence[level]}`)
-      .join(' ')
+      .join(' '),
   }));
 }

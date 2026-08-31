@@ -31,42 +31,42 @@
     },
     {
       "id": "ARCH-EXTERNAL-RUNTIME-CANONICAL-INDEX",
-      "description": "Agent startup must use the canonical externalRuntimeEnabled decision.",
+      "description": "Weak canary only: agent startup references the canonical externalRuntimeEnabled decision. Full semantics are enforced by config/reconciler tests; this substring check does not replace them.",
       "kind": "requiredText",
       "scope": ["apps/agent/src/index.ts"],
       "patterns": ["externalRuntimeEnabled"]
     },
     {
       "id": "ARCH-EXTERNAL-RUNTIME-CANONICAL-WORKER",
-      "description": "Legacy ReasoningWorker must use the same canonical externalRuntimeEnabled decision.",
+      "description": "Weak canary only: legacy ReasoningWorker references the canonical externalRuntimeEnabled decision. Route-level semantics are enforced by reconciler/reasoning tests.",
       "kind": "requiredText",
       "scope": ["apps/agent/src/reasoning-worker.ts"],
       "patterns": ["externalRuntimeEnabled"]
     },
     {
-      "id": "ARCH-AUTH-OPERATOR-TOKEN",
-      "description": "Operator HTTP routes must authorize with operatorToken, not ingestToken.",
+      "id": "ARCH-AUTH-OPERATOR-TOKEN-CANARY",
+      "description": "Weak canary only: app.ts still references config.operatorToken somewhere. Route-level auth semantics are enforced by auth-matrix tests; this substring check does not prove route wiring.",
       "kind": "requiredText",
       "scope": ["apps/agent/src/app.ts"],
       "patterns": ["config.operatorToken"]
     },
     {
-      "id": "ARCH-AUTH-INGEST-EVENTS",
-      "description": "Event ingest must authorize with ingestToken.",
+      "id": "ARCH-AUTH-INGEST-TOKEN-CANARY",
+      "description": "Weak canary only: app.ts still references config.ingestToken somewhere. Route-level auth semantics are enforced by auth-matrix tests; this substring check does not prove route wiring.",
       "kind": "requiredText",
       "scope": ["apps/agent/src/app.ts"],
       "patterns": ["config.ingestToken"]
     },
     {
       "id": "ARCH-CONFIG-RUNTIME-ALL-OR-NONE",
-      "description": "External Runtime mode must be decided by one helper.",
+      "description": "Weak canary only: config.ts routes external Runtime decisions through one helper. All-or-none fail-closed behavior is enforced by config tests.",
       "kind": "requiredText",
       "scope": ["apps/agent/src/config.ts"],
       "patterns": ["resolveExternalRuntimeSettings"]
     },
     {
       "id": "ARCH-DYNAMIC-EVIDENCE-MODEL-SAFE",
-      "description": "Dynamic Runtime Evidence must cross the model-safe projection before leaving Pi-Ops.",
+      "description": "Weak canary only: dynamic Runtime Evidence references toRuntimeSafeEvidence. Projection semantics are enforced by model-safe-evidence tests.",
       "kind": "requiredText",
       "scope": ["apps/agent/src/investigation-evidence.ts"],
       "patterns": ["toRuntimeSafeEvidence"]

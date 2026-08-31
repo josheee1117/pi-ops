@@ -11,12 +11,40 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 10,
-      "paths": ["apps/agent/src/app.ts", "apps/agent/src/store.ts"],
+      "paths": [
+        "apps/agent/src/app.ts",
+        "apps/agent/src/store.ts"
+      ],
       "invariants": [
-        { "id": "INV-ING-01", "statement": "Only a valid ingest token may POST /v1/events.", "requiredEvidence": { "A": 1, "C": 1 } },
-        { "id": "INV-ING-02", "statement": "A valid EventBatch is persisted immutably; duplicate event ids with the same payload are idempotent.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-ING-03", "statement": "A duplicate event id with a conflicting payload is rejected without mutating stored Events.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-ING-04", "statement": "Oversized or invalid JSON bodies fail closed without creating Incidents.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-ING-01",
+          "statement": "Only a valid ingest token may POST /v1/events.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-ING-02",
+          "statement": "A valid EventBatch is persisted immutably; duplicate event ids with the same payload are idempotent.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-ING-03",
+          "statement": "A duplicate event id with a conflicting payload is rejected without mutating stored Events.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-ING-04",
+          "statement": "Oversized or invalid JSON bodies fail closed without creating Incidents.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -24,11 +52,33 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/incident.ts", "apps/agent/src/fingerprint.ts", "apps/agent/src/store.ts"],
+      "paths": [
+        "apps/agent/src/incident.ts",
+        "apps/agent/src/fingerprint.ts",
+        "apps/agent/src/store.ts"
+      ],
       "invariants": [
-        { "id": "INV-INC-01", "statement": "Matching Events within the aggregation window join one Incident; recovery maps to the failure fingerprint.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-INC-02", "statement": "Unmatched recovery is durably pending and reconciles when the earlier failure arrives.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-INC-03", "statement": "Incident processing of a duplicate Event is not invoked again.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-INC-01",
+          "statement": "Matching Events within the aggregation window join one Incident; recovery maps to the failure fingerprint.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-INC-02",
+          "statement": "Unmatched recovery is durably pending and reconciles when the earlier failure arrives.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-INC-03",
+          "statement": "Incident processing of a duplicate Event is not invoked again.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -36,12 +86,40 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 10,
-      "paths": ["apps/agent/src/evidence-orchestrator.ts", "apps/agent/src/runtime-evidence-resolver.ts"],
+      "paths": [
+        "apps/agent/src/evidence-orchestrator.ts",
+        "apps/agent/src/runtime-evidence-resolver.ts"
+      ],
       "invariants": [
-        { "id": "INV-EVD-01", "statement": "Deterministic evidence plans are typed and bounded; no model participates in planning.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-EVD-02", "statement": "Pi-Ops transport failure to Node Agent is retryable failed Evidence and is never converted into target-health facts.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-EVD-03", "statement": "Node Agent-produced target unhealth is stored as succeeded http.probe with healthy=false.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-EVD-04", "statement": "Node-agent tokens never appear in persisted Evidence error text.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-EVD-01",
+          "statement": "Deterministic evidence plans are typed and bounded; no model participates in planning.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-EVD-02",
+          "statement": "Pi-Ops transport failure to Node Agent is retryable failed Evidence and is never converted into target-health facts.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-EVD-03",
+          "statement": "Node Agent-produced target unhealth is stored as succeeded http.probe with healthy=false.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-EVD-04",
+          "statement": "Node-agent tokens never appear in persisted Evidence error text.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -49,11 +127,32 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/evidence-worker.ts", "apps/agent/src/store.ts"],
+      "paths": [
+        "apps/agent/src/evidence-worker.ts",
+        "apps/agent/src/store.ts"
+      ],
       "invariants": [
-        { "id": "INV-JOB-01", "statement": "A new Incident atomically creates one pending EvidenceJob.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-JOB-02", "statement": "Retryable collection failures requeue the job; terminal failures do not retry that query.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-JOB-03", "statement": "A RUNNING EvidenceJob is reset to PENDING after process restart.", "requiredEvidence": { "A": 1 } }
+        {
+          "id": "INV-JOB-01",
+          "statement": "A new Incident atomically creates one pending EvidenceJob.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-JOB-02",
+          "statement": "Retryable collection failures requeue the job; terminal failures do not retry that query.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-JOB-03",
+          "statement": "A RUNNING EvidenceJob is reset to PENDING after process restart.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        }
       ]
     },
     {
@@ -61,11 +160,38 @@
       "riskClass": "critical",
       "riskScore": 13,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/incident-context.ts", "apps/agent/src/investigation-evidence.ts", "apps/agent/src/investigation-context.ts"],
+      "paths": [
+        "apps/agent/src/incident-context.ts",
+        "apps/agent/src/investigation-evidence.ts",
+        "apps/agent/src/investigation-context.ts"
+      ],
       "invariants": [
-        { "id": "INV-SAFE-01", "statement": "Raw SQLite Evidence remains unsanitized; Runtime receives only toRuntimeSafeEvidence.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-SAFE-02", "statement": "Secret-looking field names are redacted and logs are bounded in the model-safe projection.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-SAFE-03", "statement": "Initial InvestigationContext and dynamic Runtime Evidence use the same projection.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-SAFE-01",
+          "statement": "Raw SQLite Evidence remains unsanitized; Runtime receives only toRuntimeSafeEvidence.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-SAFE-02",
+          "statement": "Secret-looking field names are redacted and logs are bounded in the model-safe projection.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-SAFE-03",
+          "statement": "Initial InvestigationContext and dynamic Runtime Evidence use the same projection.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
+      ],
+      "impacts": [
+        "evidence.dynamic-enrichment",
+        "runtime.boundary"
       ]
     },
     {
@@ -73,11 +199,35 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 10,
-      "paths": ["apps/agent/src/investigation-evidence.ts", "apps/pi-runtime/src/coordinator.ts", "apps/pi-runtime/src/evidence-client.ts"],
+      "paths": [
+        "apps/agent/src/investigation-evidence.ts",
+        "apps/pi-runtime/src/coordinator.ts",
+        "apps/pi-runtime/src/evidence-client.ts"
+      ],
       "invariants": [
-        { "id": "INV-DYN-01", "statement": "missingEvidence is collected at most once per investigation within typed allowlist bounds.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-DYN-02", "statement": "Specialist rerun consumes collected Evidence.data; different data changes the finding.", "requiredEvidence": { "C": 1, "A": 1 } },
-        { "id": "INV-DYN-03", "statement": "Model-supplied docker targets and URLs are rejected; only trusted metadata is used.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-DYN-01",
+          "statement": "missingEvidence is collected at most once per investigation within typed allowlist bounds.",
+          "requiredEvidence": {
+            "C": 1,
+            "B": 1
+          }
+        },
+        {
+          "id": "INV-DYN-02",
+          "statement": "Specialist rerun consumes collected Evidence.data; different data changes the finding.",
+          "requiredEvidence": {
+            "C": 1,
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-DYN-03",
+          "statement": "Model-supplied docker targets and URLs are rejected; only trusted metadata is used.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -94,11 +244,44 @@
         "apps/agent/src/index.ts"
       ],
       "invariants": [
-        { "id": "INV-GEN-01", "statement": "Dynamic Investigation Evidence belongs to the current EvidenceJob generation and must not trigger another automatic Investigation.", "requiredEvidence": { "A": 1, "C": 1 } },
-        { "id": "INV-GEN-02", "statement": "Only deterministic Evidence requeue advances EvidenceJob.generation and permits one new automatic Investigation generation.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-STALE-01", "statement": "SUBMITTED and RUNNING InvestigationSessions become FAILED after the stale timeout and retry remains bounded by maxAttempts.", "requiredEvidence": { "C": 2 } },
-        { "id": "INV-CRASH-01", "statement": "Completed deterministic Evidence with no successful Investigation is reconciled after restart without duplicating an already completed generation.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-AUTH-01", "statement": "External-runtime mode has one authoritative reasoning result path and does not create a parallel legacy local reasoning result.", "requiredEvidence": { "A": 1, "C": 1 } }
+        {
+          "id": "INV-GEN-01",
+          "statement": "Dynamic Investigation Evidence belongs to the current EvidenceJob generation and must not trigger another automatic Investigation.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-GEN-02",
+          "statement": "Only deterministic Evidence requeue advances EvidenceJob.generation and permits one new automatic Investigation generation.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-STALE-01",
+          "statement": "SUBMITTED and RUNNING InvestigationSessions become FAILED after the stale timeout and retry remains bounded by maxAttempts.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 2
+          }
+        },
+        {
+          "id": "INV-CRASH-01",
+          "statement": "Completed deterministic Evidence with no successful Investigation is reconciled after restart without duplicating an already completed generation.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-AUTH-01",
+          "statement": "External-runtime mode has one authoritative reasoning result path and does not create a parallel legacy local reasoning result.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -106,11 +289,32 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/investigation-loop.ts", "apps/agent/src/investigation-session.ts"],
+      "paths": [
+        "apps/agent/src/investigation-loop.ts",
+        "apps/agent/src/investigation-session.ts"
+      ],
       "invariants": [
-        { "id": "INV-SES-01", "statement": "An InvestigationSession walks CREATED → SUBMITTED → RUNNING → COMPLETED or FAILED without mutating Incident facts.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-SES-02", "statement": "A report may only cite Evidence ids belonging to the Incident.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-SES-03", "statement": "Open sessions for the same EvidenceJob generation are reused.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-SES-01",
+          "statement": "An InvestigationSession walks CREATED → SUBMITTED → RUNNING → COMPLETED or FAILED without mutating Incident facts.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-SES-02",
+          "statement": "A report may only cite Evidence ids belonging to the Incident.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-SES-03",
+          "statement": "Open sessions for the same EvidenceJob generation are reused.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -118,11 +322,34 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/investigation-loop.ts", "apps/agent/src/app.ts", "apps/pi-runtime/src/callback.ts"],
+      "paths": [
+        "apps/agent/src/investigation-loop.ts",
+        "apps/agent/src/app.ts",
+        "apps/pi-runtime/src/callback.ts"
+      ],
       "invariants": [
-        { "id": "INV-CB-01", "statement": "Callbacks authenticate with the runtime token and must match session runtimeRequestId/runtimeTaskId.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-CB-02", "statement": "Duplicate valid callbacks return the existing report without a second ReasoningResult.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-CB-03", "statement": "Invalid callbacks do not write InvestigationReport or mutate Evidence.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-CB-01",
+          "statement": "Callbacks authenticate with the runtime token and must match session runtimeRequestId/runtimeTaskId.",
+          "requiredEvidence": {
+            "C": 1,
+            "B": 1
+          }
+        },
+        {
+          "id": "INV-CB-02",
+          "statement": "Duplicate valid callbacks return the existing report without a second ReasoningResult.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-CB-03",
+          "statement": "Invalid callbacks do not write InvestigationReport or mutate Evidence.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -130,11 +357,32 @@
       "riskClass": "critical",
       "riskScore": 13,
       "maintenanceBudget": 8,
-      "paths": ["apps/pi-runtime/src/**", "apps/agent/src/http-pi-runtime-client.ts"],
+      "paths": [
+        "apps/pi-runtime/src/**",
+        "apps/agent/src/http-pi-runtime-client.ts"
+      ],
       "invariants": [
-        { "id": "INV-RTB-01", "statement": "Pi Runtime has no shell, Docker socket, or Node Agent dependency.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-RTB-02", "statement": "Duplicate runtimeRequestId returns the same runtimeTaskId without rerunning the model.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-RTB-03", "statement": "Runtime refuses arbitrary callback destinations.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-RTB-01",
+          "statement": "Pi Runtime has no shell, Docker socket, or Node Agent dependency.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-RTB-02",
+          "statement": "Duplicate runtimeRequestId returns the same runtimeTaskId without rerunning the model.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-RTB-03",
+          "statement": "Runtime refuses arbitrary callback destinations.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -142,12 +390,42 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 10,
-      "paths": ["apps/pi-runtime/src/coordinator.ts", "apps/pi-runtime/src/specialists.ts", "apps/pi-runtime/src/bound-context.ts", "apps/pi-runtime/src/deadline.ts"],
+      "paths": [
+        "apps/pi-runtime/src/coordinator.ts",
+        "apps/pi-runtime/src/specialists.ts",
+        "apps/pi-runtime/src/bound-context.ts",
+        "apps/pi-runtime/src/deadline.ts"
+      ],
       "invariants": [
-        { "id": "INV-RTC-01", "statement": "Historical knowledge cannot override current Evidence.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-RTC-02", "statement": "Context overflow fails closed with context_too_large.", "requiredEvidence": { "C": 1, "A": 1 } },
-        { "id": "INV-RTC-03", "statement": "Execution timeout wins over a late model result.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-RTC-04", "statement": "FakeRuntimeModel performs zero external model calls and changes findings when Evidence.data changes.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-RTC-01",
+          "statement": "Historical knowledge cannot override current Evidence.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-RTC-02",
+          "statement": "Context overflow fails closed with context_too_large.",
+          "requiredEvidence": {
+            "C": 1,
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-RTC-03",
+          "statement": "Execution timeout wins over a late model result.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-RTC-04",
+          "statement": "FakeRuntimeModel performs zero external model calls and changes findings when Evidence.data changes.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -155,10 +433,26 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 8,
-      "paths": ["apps/pi-runtime/src/callback.ts", "apps/pi-runtime/src/store.ts", "apps/pi-runtime/src/app.ts"],
+      "paths": [
+        "apps/pi-runtime/src/callback.ts",
+        "apps/pi-runtime/src/store.ts",
+        "apps/pi-runtime/src/app.ts"
+      ],
       "invariants": [
-        { "id": "INV-DEL-01", "statement": "Failed callbacks retry until delivery succeeds without rerunning the model.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-DEL-02", "statement": "Pending delivery resumes after Runtime process restart without rerunning the model.", "requiredEvidence": { "A": 1 } }
+        {
+          "id": "INV-DEL-01",
+          "statement": "Failed callbacks retry until delivery succeeds without rerunning the model.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-DEL-02",
+          "statement": "Pending delivery resumes after Runtime process restart without rerunning the model.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        }
       ]
     },
     {
@@ -166,12 +460,39 @@
       "riskClass": "critical",
       "riskScore": 14,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/app.ts", "apps/agent/src/config.ts"],
+      "paths": [
+        "apps/agent/src/app.ts",
+        "apps/agent/src/config.ts"
+      ],
       "invariants": [
-        { "id": "INV-TOK-01", "statement": "Ingest token cannot access /v1/ops/* or runtime callback routes.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-TOK-02", "statement": "Operator token cannot POST /v1/events or runtime callback routes.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-TOK-03", "statement": "Runtime token cannot access /v1/ops/* or /v1/events.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-TOK-04", "statement": "Ingest, operator, and runtime tokens must be distinct at startup.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-TOK-01",
+          "statement": "Ingest token cannot access /v1/ops/* or runtime callback routes.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-TOK-02",
+          "statement": "Operator token cannot POST /v1/events or runtime callback routes.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-TOK-03",
+          "statement": "Runtime token cannot access /v1/ops/* or /v1/events.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-TOK-04",
+          "statement": "Ingest, operator, and runtime tokens must be distinct at startup.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -179,11 +500,35 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 8,
-      "paths": ["apps/agent/src/notification.ts", "apps/agent/src/notification-worker.ts", "apps/agent/src/notifier.ts"],
+      "paths": [
+        "apps/agent/src/notification.ts",
+        "apps/agent/src/notification-worker.ts",
+        "apps/agent/src/notifier.ts"
+      ],
       "invariants": [
-        { "id": "INV-NOT-01", "statement": "OPEN, INVESTIGATION_COMPLETED, and INCIDENT_RECOVERED are each scheduled exactly once per identity.", "requiredEvidence": { "C": 1, "A": 1 } },
-        { "id": "INV-NOT-02", "statement": "Delivery uses notificationId as Idempotency-Key and does not mutate Incident facts.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-NOT-03", "statement": "RUNNING notification jobs reset on start; DELIVERED jobs are not duplicated.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-NOT-01",
+          "statement": "OPEN, INVESTIGATION_COMPLETED, and INCIDENT_RECOVERED are each scheduled exactly once per identity.",
+          "requiredEvidence": {
+            "C": 1,
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-NOT-02",
+          "statement": "Delivery uses notificationId as Idempotency-Key and does not mutate Incident facts.",
+          "requiredEvidence": {
+            "C": 1,
+            "B": 1
+          }
+        },
+        {
+          "id": "INV-NOT-03",
+          "statement": "RUNNING notification jobs reset on start; DELIVERED jobs are not duplicated.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -191,11 +536,33 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 8,
-      "paths": ["apps/node-agent/src/detectors/**", "apps/node-agent/src/events/**", "apps/node-agent/src/app.ts"],
+      "paths": [
+        "apps/node-agent/src/detectors/**",
+        "apps/node-agent/src/events/**",
+        "apps/node-agent/src/app.ts"
+      ],
       "invariants": [
-        { "id": "INV-NOD-01", "statement": "Health and resource detectors emit one failure then one recovery without flooding.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-NOD-02", "statement": "Evidence queries without a valid node token are rejected.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-NOD-03", "statement": "Event enqueue is non-blocking and drops when the outbound queue is full.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-NOD-01",
+          "statement": "Health and resource detectors emit one failure then one recovery without flooding.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-NOD-02",
+          "statement": "Evidence queries without a valid node token are rejected.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-NOD-03",
+          "statement": "Event enqueue is non-blocking and drops when the outbound queue is full.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -203,10 +570,25 @@
       "riskClass": "high",
       "riskScore": 12,
       "maintenanceBudget": 6,
-      "paths": ["apps/node-agent/src/evidence/probe.ts", "apps/agent/src/evidence-orchestrator.ts"],
+      "paths": [
+        "apps/node-agent/src/evidence/probe.ts",
+        "apps/agent/src/evidence-orchestrator.ts"
+      ],
       "invariants": [
-        { "id": "INV-PRB-01", "statement": "Node Agent target unavailability yields succeeded http.probe Evidence with healthy=false.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-PRB-02", "statement": "http.probe only accepts configured http(s) GET/HEAD targets and bounded timeouts.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-PRB-01",
+          "statement": "Node Agent target unavailability yields succeeded http.probe Evidence with healthy=false.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-PRB-02",
+          "statement": "http.probe only accepts configured http(s) GET/HEAD targets and bounded timeouts.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -214,10 +596,25 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 6,
-      "paths": ["apps/node-agent/src/evidence/docker.ts", "apps/node-agent/src/evidence/types.ts"],
+      "paths": [
+        "apps/node-agent/src/evidence/docker.ts",
+        "apps/node-agent/src/evidence/types.ts"
+      ],
       "invariants": [
-        { "id": "INV-DOC-01", "statement": "Docker evidence is allowlisted by container name; empty allowlist fails closed.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-DOC-02", "statement": "docker.inspect omits Env and mount secrets; log windows are bounded.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-DOC-01",
+          "statement": "Docker evidence is allowlisted by container name; empty allowlist fails closed.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-DOC-02",
+          "statement": "docker.inspect omits Env and mount secrets; log windows are bounded.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -225,11 +622,32 @@
       "riskClass": "medium",
       "riskScore": 7,
       "maintenanceBudget": 6,
-      "paths": ["apps/agent/src/memory-retriever.ts", "apps/agent/src/investigation-knowledge.ts"],
+      "paths": [
+        "apps/agent/src/memory-retriever.ts",
+        "apps/agent/src/investigation-knowledge.ts"
+      ],
       "invariants": [
-        { "id": "INV-MEM-01", "statement": "Only ACTIVE approved memory is retrieved; DISABLED and rejected candidates are not.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-MEM-02", "statement": "Historical knowledge is advisory and does not replace current Evidence.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-MEM-03", "statement": "Retrieval failure does not block investigation.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-MEM-01",
+          "statement": "Only ACTIVE approved memory is retrieved; DISABLED and rejected candidates are not.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-MEM-02",
+          "statement": "Historical knowledge is advisory and does not replace current Evidence.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-MEM-03",
+          "statement": "Retrieval failure does not block investigation.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -237,10 +655,25 @@
       "riskClass": "medium",
       "riskScore": 7,
       "maintenanceBudget": 6,
-      "paths": ["apps/agent/src/memory-quality.ts", "apps/agent/src/memory-governance.ts"],
+      "paths": [
+        "apps/agent/src/memory-quality.ts",
+        "apps/agent/src/memory-governance.ts"
+      ],
       "invariants": [
-        { "id": "INV-GOV-01", "statement": "MemoryCandidate requires quality evaluation; approve/reject does not mutate Incident or Evidence.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-GOV-02", "statement": "MemoryEntry preserves provenance and is not rewritten by feedback ranking.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-GOV-01",
+          "statement": "MemoryCandidate requires quality evaluation; approve/reject does not mutate Incident or Evidence.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-GOV-02",
+          "statement": "MemoryEntry preserves provenance and is not rewritten by feedback ranking.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     },
     {
@@ -248,10 +681,26 @@
       "riskClass": "medium",
       "riskScore": 6,
       "maintenanceBudget": 6,
-      "paths": ["apps/agent/src/reasoner.ts", "apps/agent/src/reasoning-worker.ts", "apps/agent/src/pi-reasoner.ts"],
+      "paths": [
+        "apps/agent/src/reasoner.ts",
+        "apps/agent/src/reasoning-worker.ts",
+        "apps/agent/src/pi-reasoner.ts"
+      ],
       "invariants": [
-        { "id": "INV-LOC-01", "statement": "Local ReasoningWorker does not execute when externalRuntimeEnabled is true.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-LOC-02", "statement": "One ReasoningResult per ReasoningJob; Incident and Evidence are not mutated while reasoning.", "requiredEvidence": { "A": 1 } }
+        {
+          "id": "INV-LOC-01",
+          "statement": "Local ReasoningWorker does not execute when externalRuntimeEnabled is true.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-LOC-02",
+          "statement": "One ReasoningResult per ReasoningJob; Incident and Evidence are not mutated while reasoning.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        }
       ]
     },
     {
@@ -259,10 +708,32 @@
       "riskClass": "high",
       "riskScore": 9,
       "maintenanceBudget": 6,
-      "paths": ["packages/protocol/src/**"],
+      "paths": [
+        "packages/protocol/src/**"
+      ],
       "invariants": [
-        { "id": "INV-PRO-01", "statement": "OpsEvent and Evidence schemas reject missing required fields and invalid times.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-PRO-02", "statement": "Runtime investigation payloads require requestingRoles and typed evidence requests.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-PRO-01",
+          "statement": "OpsEvent and Evidence schemas reject missing required fields and invalid times.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-PRO-02",
+          "statement": "Runtime investigation payloads require requestingRoles and typed evidence requests.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
+      ],
+      "impacts": [
+        "event.ingress",
+        "evidence.collection",
+        "investigation.callback",
+        "evidence.dynamic-enrichment",
+        "runtime.boundary",
+        "node.observation"
       ]
     },
     {
@@ -270,10 +741,31 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 6,
-      "paths": ["apps/agent/src/config.ts", "apps/node-agent/src/config.ts", "apps/pi-runtime/src/config.ts"],
+      "paths": [
+        "apps/agent/src/config.ts",
+        "apps/node-agent/src/config.ts",
+        "apps/pi-runtime/src/config.ts"
+      ],
       "invariants": [
-        { "id": "INV-CFG-01", "statement": "Partial Pi Runtime URL/token/callback configuration fails startup.", "requiredEvidence": { "C": 1 } },
-        { "id": "INV-CFG-02", "statement": "Malformed node-agent JSON, duplicate node ids, and out-of-range integers fail closed.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-CFG-01",
+          "statement": "Partial Pi Runtime URL/token/callback configuration fails startup.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-CFG-02",
+          "statement": "Malformed node-agent JSON, duplicate node ids, and out-of-range integers fail closed.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
+      ],
+      "impacts": [
+        "auth.boundary",
+        "runtime.boundary",
+        "investigation.reconciliation"
       ]
     },
     {
@@ -281,10 +773,25 @@
       "riskClass": "high",
       "riskScore": 10,
       "maintenanceBudget": 6,
-      "paths": ["apps/agent/src/store.ts", "apps/agent/src/store-attempt-migration.ts"],
+      "paths": [
+        "apps/agent/src/store.ts",
+        "apps/agent/src/store-attempt-migration.ts"
+      ],
       "invariants": [
-        { "id": "INV-MIG-01", "statement": "Opening a store fails closed on duplicate reasoning_results.reasoning_job_id.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-MIG-02", "statement": "Events and Evidence survive SQLite close and reopen.", "requiredEvidence": { "A": 1 } }
+        {
+          "id": "INV-MIG-01",
+          "statement": "Opening a store fails closed on duplicate reasoning_results.reasoning_job_id.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-MIG-02",
+          "statement": "Events and Evidence survive SQLite close and reopen.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        }
       ]
     },
     {
@@ -292,12 +799,54 @@
       "riskClass": "high",
       "riskScore": 11,
       "maintenanceBudget": 10,
-      "paths": ["deploy/local/**", "apps/agent/src/index.ts", "apps/pi-runtime/src/index.ts", "apps/node-agent/src/index.ts"],
+      "paths": [
+        "deploy/local/**",
+        "apps/agent/src/index.ts",
+        "apps/pi-runtime/src/index.ts",
+        "apps/node-agent/src/index.ts",
+        "deploy/docker/**"
+      ],
       "invariants": [
-        { "id": "INV-LOCINT-01", "statement": "Deterministic local smoke proves Node Agent → Incident → Evidence → Runtime → notification → recovery → restart without DataAsset.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-LOCINT-02", "statement": "Smoke selects only service=pi-ops-drill nodeId=local-dev type=health.failure after a clean SQLite directory.", "requiredEvidence": { "A": 1 } },
-        { "id": "INV-LOCINT-03", "statement": "Real Pi provider smoke is fail-closed and never falls back to FakeRuntimeModel.", "requiredEvidence": { "C": 1 } }
+        {
+          "id": "INV-LOCINT-01",
+          "statement": "Deterministic local smoke proves Node Agent → Incident → Evidence → Runtime → notification → recovery → restart without DataAsset.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-LOCINT-02",
+          "statement": "Smoke selects only service=pi-ops-drill nodeId=local-dev type=health.failure after a clean SQLite directory.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-LOCINT-03",
+          "statement": "Real Pi provider smoke is fail-closed and never falls back to FakeRuntimeModel.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
       ]
     }
+  ],
+  "governedRoots": [
+    "apps/*/src/**",
+    "packages/*/src/**",
+    "deploy/local/**",
+    "deploy/docker/**"
+  ],
+  "unmappedIgnore": [
+    "**/*.test.ts",
+    "**/*.test.mjs",
+    "**/__tests__/**",
+    "docs/**",
+    "tools/**",
+    "deploy/local/smoke.sh",
+    "deploy/local/smoke-pi.sh",
+    "deploy/local/data/**",
+    "deploy/local/.env",
+    "deploy/local/compose.env.dataasset"
   ]
 }
