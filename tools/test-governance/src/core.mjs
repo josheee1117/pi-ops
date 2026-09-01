@@ -600,6 +600,26 @@ export function evaluateGuardFile(guard, file, content) {
   return violations;
 }
 
+/**
+ * requiredText asserts positive presence. Zero matching files is a miss, not a pass.
+ * forbiddenImport / forbiddenText stay silent when their scope matches nothing.
+ */
+export function missingRequiredTextScopes(guards, files) {
+  const violations = [];
+  for (const guard of guards ?? []) {
+    if (guard.kind !== 'requiredText') continue;
+    const matched = (files ?? []).filter((file) => (guard.scope ?? []).some((pattern) => matchesPath(file, pattern)));
+    if (matched.length > 0) continue;
+    violations.push({
+      guardId: guard.id,
+      kind: 'REQUIRED_GUARD_SCOPE_MISSING',
+      file: '',
+      detail: `requiredText guard ${guard.id} kind=requiredText scope=${(guard.scope ?? []).join(', ')} matched 0 files`,
+    });
+  }
+  return violations.sort((a, b) => a.guardId.localeCompare(b.guardId));
+}
+
 export function summarizeRequirements(feature) {
   return (feature.invariants ?? []).map((invariant) => ({
     id: invariant.id,

@@ -5,6 +5,7 @@ import {
   collectMachineGaps,
   evaluateGuardFile,
   evaluateMaintenanceBudget,
+  missingRequiredTextScopes,
   extractTestNames,
   findUnmappedProductionFiles,
   matchesPath,
@@ -427,6 +428,48 @@ test('architecture guard detects forbidden runtime imports', () => {
     "import x from '../../node-agent/src/index.js';",
   );
   assert.equal(violations.length, 1);
+});
+
+test('requiredText passes when the scoped file contains the text', () => {
+  const guard = { id: 'ARCH-REQ', kind: 'requiredText', scope: ['apps/foo/src/config.ts'], patterns: ['TOKEN'] };
+  assert.deepEqual(evaluateGuardFile(guard, 'apps/foo/src/config.ts', 'const TOKEN = 1;'), []);
+  assert.deepEqual(missingRequiredTextScopes([guard], ['apps/foo/src/config.ts']), []);
+});
+
+test('requiredText fails when the scoped file is missing the text', () => {
+  const guard = { id: 'ARCH-REQ', kind: 'requiredText', scope: ['apps/foo/src/config.ts'], patterns: ['TOKEN'] };
+  const violations = evaluateGuardFile(guard, 'apps/foo/src/config.ts', 'const OTHER = 1;');
+  assert.equal(violations.length, 1);
+  assert.match(violations[0].detail, /required text missing/);
+});
+
+test('requiredText exact scope with zero files is REQUIRED_GUARD_SCOPE_MISSING', () => {
+  const guard = { id: 'ARCH-REQ', kind: 'requiredText', scope: ['apps/foo/src/config.ts'], patterns: ['TOKEN'] };
+  const violations = missingRequiredTextScopes([guard], ['apps/foo/src/other.ts']);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].kind, 'REQUIRED_GUARD_SCOPE_MISSING');
+  assert.equal(violations[0].guardId, 'ARCH-REQ');
+  assert.match(violations[0].detail, /kind=requiredText/);
+  assert.match(violations[0].detail, /apps\/foo\/src\/config\.ts/);
+});
+
+test('requiredText wildcard with zero current matches is REQUIRED_GUARD_SCOPE_MISSING', () => {
+  const guard = { id: 'ARCH-REQ-WILD', kind: 'requiredText', scope: ['apps/foo/src/**'], patterns: ['TOKEN'] };
+  const violations = missingRequiredTextScopes([guard], ['apps/bar/src/a.ts', 'docs/readme.md']);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].kind, 'REQUIRED_GUARD_SCOPE_MISSING');
+});
+
+test('requiredText wildcard with a matching file and present text does not emit missing-scope', () => {
+  const guard = { id: 'ARCH-REQ-WILD', kind: 'requiredText', scope: ['apps/foo/src/**'], patterns: ['TOKEN'] };
+  assert.deepEqual(missingRequiredTextScopes([guard], ['apps/foo/src/a.ts']), []);
+  assert.deepEqual(evaluateGuardFile(guard, 'apps/foo/src/a.ts', 'TOKEN present'), []);
+});
+
+test('forbiddenImport and forbiddenText zero-match scopes stay silent', () => {
+  const forbiddenImport = { id: 'ARCH-FORB-IMP', kind: 'forbiddenImport', scope: ['apps/gone/src/**'], patterns: ['secret'] };
+  const forbiddenText = { id: 'ARCH-FORB-TXT', kind: 'forbiddenText', scope: ['apps/gone/src/x.ts'], patterns: ['secret'] };
+  assert.deepEqual(missingRequiredTextScopes([forbiddenImport, forbiddenText], ['apps/other/src/a.ts']), []);
 });
 
 test('config validation rejects unknown catalog executionClass', () => {

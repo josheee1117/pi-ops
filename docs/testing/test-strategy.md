@@ -84,13 +84,25 @@ Allowed: new guards, broader scope, additional patterns, new governed roots, red
 
 ## Governance Trust Surface
 
-The engine that enforces governance is itself review-gated; a commit cannot approve its own engine:
+Two layers, different jobs:
+
+**Internal (HEAD-executed).** `evaluateGovernanceTrustSurface()` review-gates engine/workflow/entrypoint changes for local `test:plan` / push CI. Useful against accidents. It is not adversarially self-protecting: HEAD still runs the evaluator.
 
 - `tools/test-governance/src/**` changed → `GOVERNANCE_ENGINE_CHANGE_REQUIRES_REVIEW` (governance self-tests included);
 - `.github/workflows/test-governance.yml` changed → `GOVERNANCE_WORKFLOW_CHANGE_REQUIRES_REVIEW`;
 - root `package.json` protected fields changed → `GOVERNANCE_ENTRYPOINT_CHANGE_REQUIRES_REVIEW`: `scripts.test:gate`, `scripts.test:plan`, `scripts.test:run`, `scripts.test:arch`, `scripts.test:governance`, `scripts.test:governance:self`, `packageManager`, `engines.node`, `dependencies.typescript`, `devDependencies.typescript`. Unrelated package.json changes (description, other scripts) pass; new unprotected scripts are surfaced only.
 
 Trust-root bootstrap is structural and one-time: BASE without `trustRootVersion` → HEAD with `trustRootVersion: 1` yields non-blocking `TRUST_ROOT_BOOTSTRAP` (that migration commit may change the engine). Once BASE carries `trustRootVersion: 1`, any trust-surface change, version removal, or version change blocks `GOVERNANCE_REVIEW_REQUIRED`. No environment bypass, no SHA hardcoding, no actor/branch identity.
+
+**External BASE Trust Anchor.** `.github/workflows/governance-trust-anchor.yml` uses `pull_request_target`, checks out BASE (`fetch-depth: 0`, `persist-credentials: false`), asserts HEAD with local `git cat-file -e "$HEAD_SHA^{commit}"`, and runs BASE `tools/test-governance/trust-anchor/check.mjs`. No second network fetch; no `HEAD_REPO`. v1 is same-repository PRs only. Fork HEAD missing → fail closed.
+
+Jobs: **detect** (BASE checker: exit 0 PASS / 2 REVIEW_REQUIRED / 1 fail), **authorize** (only on REVIEW_REQUIRED, `environment: governance-review`, no checkout, requires `vars.GOVERNANCE_REVIEW_CONFIGURED=true`), **final** (`if: always()`, required-check candidate). PASS skips human review. REVIEW_REQUIRED cannot skip it. Labels, actors, SHAs, and branch names are not authorization. Detection is BASE code; authorization is the protected Environment.
+
+Authoritative for PRs only after (1) the workflow exists on `main`, (2) changes go through Pull Requests, (3) the **final** check is required, (4) `governance-review` has required reviewers and `GOVERNANCE_REVIEW_CONFIGURED=true`. Code cannot prevent a privileged owner from direct push or disabling protection. Not cryptographic immutability.
+
+The PR that first lands the workflow is a bootstrap: BASE does not yet contain it, so `pull_request_target` will not run it for that PR. Review is human. A later verification PR proves the merged BASE anchor. Observe the exact final check context after that run before configuring branch protection.
+
+Proof Source Integrity hashes declared `location.file` blobs and pnpm script bindings. Imported helpers are not followed unless they are themselves declared proof sources.
 
 `test:plan --files` / `test:run --files` remain advisory (delta + trust surface skipped with a note). A full `test:gate --files` cannot return a trusted `PASS`: it reports `EXPLICIT_FILES_UNTRUSTED` instead. Only a real `base..head` gate can PASS.
 
@@ -114,7 +126,7 @@ A Proof Source is identified by source + invariant + Evidence level. Exact Catal
 
 ## Architecture guards
 
-`forbiddenImport` guards are structural (import graph). `requiredText` guards are **weak canaries only** - they assert a reference still exists in a file, never route wiring or semantics; descriptions say so explicitly. Route-level auth and canonical-config semantics are enforced by the auth-matrix and config/reconciler tests, not by substring checks.
+`forbiddenImport` guards are structural (import graph). `requiredText` guards are **weak canaries** for substring presence, never route wiring or semantics. If a `requiredText` scope matches zero current files, planning emits `REQUIRED_GUARD_SCOPE_MISSING` (fail closed). `forbiddenImport` / `forbiddenText` do not invent missing-scope violations. Route-level auth and canonical-config semantics are enforced by the auth-matrix and config/reconciler tests, not by substring checks.
 
 ## Execution and Gates
 
@@ -134,12 +146,17 @@ Final Gate states:
 
 ```text
 PASS
+GOVERNANCE_REVIEW_REQUIRED
+GOVERNANCE_POLICY_WEAKENING
 POLICY_BLOCKED
 EXECUTION_FAILED
 EVIDENCE_NOT_REALIZED
 LIVE_PROVIDER_REQUIRED
+EXPLICIT_FILES_UNTRUSTED
 INTERNAL_ERROR
 ```
+
+Planner `GOVERNANCE_REVIEW_REQUIRED` and `GOVERNANCE_POLICY_WEAKENING` map to the same Gate statuses. Other non-READY plan states remain `POLICY_BLOCKED`.
 
 Policy errors stop execution. Only execution status `PASSED` realizes Evidence; A/B/C levels never substitute for one another. Ordinary governance requires **no** live LLM and **no** remote servers. GitHub Actions runs through Gate 3 without provider secrets and always uploads artifacts.
 

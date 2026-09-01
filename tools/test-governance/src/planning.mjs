@@ -5,6 +5,7 @@ import {
   buildFeaturePlan,
   changedPathsOf,
   evaluateGuardFile,
+  missingRequiredTextScopes,
   findUnmappedProductionFiles,
   matchesPath,
   parseNameStatus,
@@ -56,16 +57,28 @@ export function createPlanning(root) {
   }
 
   function evaluateArchitecture(guardDoc) {
-    const violations = [];
-    for (const file of repoFiles()) {
-      if (!guardDoc.guards.some((guard) => guard.scope.some((pattern) => matchesPath(file, pattern)))) continue;
+    const files = repoFiles();
+    const guards = guardDoc.guards ?? [];
+    const violations = [...missingRequiredTextScopes(guards, files)];
+    for (const file of files) {
+      const matching = guards.filter((guard) => guard.scope.some((pattern) => matchesPath(file, pattern)));
+      if (matching.length === 0) continue;
       let content;
       try {
         content = readFileSync(resolve(root, file), 'utf8');
-      } catch {
+      } catch (error) {
+        const guardIds = [...new Set(matching.map((guard) => guard.id))].sort();
+        const message = error instanceof Error ? error.message : String(error);
+        violations.push({
+          kind: 'GUARDED_FILE_UNREADABLE',
+          file,
+          guardId: guardIds[0],
+          guardIds,
+          detail: `cannot read guarded file ${file}: ${message}`,
+        });
         continue;
       }
-      for (const guard of guardDoc.guards) violations.push(...evaluateGuardFile(guard, file, content));
+      for (const guard of matching) violations.push(...evaluateGuardFile(guard, file, content));
     }
     return violations;
   }

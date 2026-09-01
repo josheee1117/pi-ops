@@ -1,0 +1,95 @@
+name: Governance Trust Anchor
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      decision: ${{ steps.detect.outputs.decision }}
+    steps:
+      - name: Check out BASE
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Assert HEAD is a local git object
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git cat-file -e "$HEAD_SHA^{commit}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect trust changes
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/test-governance/trust-anchor/check.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+          code=$?
+          set -e
+          if [[ "$code" -eq 0 ]]; then
+            echo "decision=PASS" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$code" -eq 2 ]]; then
+            echo "decision=REVIEW_REQUIRED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "decision=INTERNAL_ERROR" >> "$GITHUB_OUTPUT"
+          exit 1
+
+  authorize:
+    needs: detect
+    if: needs.detect.outputs.decision == 'REVIEW_REQUIRED'
+    runs-on: ubuntu-latest
+    environment:
+      name: governance-review
+    steps:
+      - name: Verify external environment is armed
+        env:
+          ARMED: ${{ vars.GOVERNANCE_REVIEW_CONFIGURED }}
+        run: |
+          set -euo pipefail
+          if [[ "$ARMED" != "true" ]]; then
+            echo "governance-review environment is not configured" >&2
+            exit 1
+          fi
+          echo "Governance change externally authorized"
+
+  final:
+    needs: [detect, authorize]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out BASE
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Finalize required check
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          DETECT_DECISION: ${{ needs.detect.outputs.decision }}
+          AUTHORIZE_RESULT: ${{ needs.authorize.result }}
+        run: node tools/test-governance/trust-anchor/final-decision.mjs
