@@ -61,14 +61,24 @@ export function createPlanning(root) {
     const guards = guardDoc.guards ?? [];
     const violations = [...missingRequiredTextScopes(guards, files)];
     for (const file of files) {
-      if (!guards.some((guard) => guard.scope.some((pattern) => matchesPath(file, pattern)))) continue;
+      const matching = guards.filter((guard) => guard.scope.some((pattern) => matchesPath(file, pattern)));
+      if (matching.length === 0) continue;
       let content;
       try {
         content = readFileSync(resolve(root, file), 'utf8');
-      } catch {
+      } catch (error) {
+        const guardIds = [...new Set(matching.map((guard) => guard.id))].sort();
+        const message = error instanceof Error ? error.message : String(error);
+        violations.push({
+          kind: 'GUARDED_FILE_UNREADABLE',
+          file,
+          guardId: guardIds[0],
+          guardIds,
+          detail: `cannot read guarded file ${file}: ${message}`,
+        });
         continue;
       }
-      for (const guard of guards) violations.push(...evaluateGuardFile(guard, file, content));
+      for (const guard of matching) violations.push(...evaluateGuardFile(guard, file, content));
     }
     return violations;
   }
