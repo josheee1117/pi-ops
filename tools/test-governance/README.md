@@ -47,7 +47,10 @@ Historical regression proofs are marked `PINNED` in the catalog so future budget
 - **Commands are canonical.** Command entries support only `pnpm <script>`, `pnpm run <script>`, and repository-relative `bash <file>`. A pnpm script must be exactly `bash <declared location.file>`; compound shell commands fail closed. The ExecutionPlan carries validated executable/argv rather than a shell string.
 - **Proof sources are unique.** The same test or canonical command/artifact cannot fill the same invariant+level slot twice through catalog aliases; validation rejects it and realized-Evidence evaluation deduplicates it again.
 - **Catalog execution is unambiguous.** Every entry is exactly one of TEST (`location.file` + `testName`) or COMMAND (`command` + `location.file`), and `executionClass` is mandatory. Unknown classes never default to Gate 1.
-- **Governance Trust Surface.** The engine that enforces governance (`tools/test-governance/src/**`), the CI workflow (`.github/workflows/test-governance.yml`), and the protected root package.json entrypoints (`test:gate` / `test:plan` / `test:run` / `test:arch` / `test:governance` / `test:governance:self`, `packageManager`, `engines.node`, the `typescript` dependency) are review-gated: a commit that changes them can never auto-approve itself (`GOVERNANCE_REVIEW_REQUIRED`). Trust-root bootstrap is structural and one-time: BASE without `trustRootVersion` -> HEAD with `trustRootVersion: 1` is allowed once (`TRUST_ROOT_BOOTSTRAP`); after that, removing or changing the version blocks.
+- **Internal Trust Surface.** HEAD-executed `evaluateGovernanceTrustSurface()` review-gates engine/workflow/entrypoint changes for local feedback and push CI. It is fail-closed against accidental self-approval, not an adversarial trust root: HEAD still runs the evaluator.
+- **External BASE Trust Anchor.** `pull_request_target` runs BASE `tools/test-governance/trust-anchor/check.mjs` against HEAD as git data only. It never installs or executes HEAD. It review-gates Governance Engine, the anchor itself, governance workflows, policy JSON, and protected package.json entrypoints, and it requires review for accepted Proof source/definition changes and new Proofs. This is the authoritative PR trust boundary **only after** the workflow exists on `main` and is a required check. Repository code cannot stop a privileged owner from direct push, force push, or disabling protection. It is not cryptographic immutability.
+- **Bootstrap PR.** The PR that first adds `governance-trust-anchor.yml` is not protected by that workflow: `pull_request_target` executes BASE workflows, and BASE does not yet contain it. Architecture review is required; a later verification PR proves the merged BASE anchor.
+- Trust-root bootstrap for the internal surface remains structural and one-time: BASE without `trustRootVersion` -> HEAD with `trustRootVersion: 1` is allowed once (`TRUST_ROOT_BOOTSTRAP`); after that, removing or changing the version blocks.
 - **Policy Delta Guard.** Every real `base..head` plan compares the parsed governance policy at BASE (via `git show <base>:<file>`) against HEAD policy. Weakening - removed guards/patterns/scope, removed governed roots, removed Features/paths/impact edges, removed Invariants, lowered Evidence floors, deleted or demoted PINNED proofs, flipped historicalRegression, Evidence-grade changes on unchanged Proof Sources, statement changes entangled with floor/Proof-mapping changes - fails closed as `GOVERNANCE_POLICY_WEAKENING`. Strengthening (new guards, broader scope, new roots/paths/impacts, higher floors, new Proofs) passes. Unreadable BASE policy fails closed.
 - **Impact propagation.** Shared contracts pull dependent Features into the plan (`protocol.contract`, `configuration.fail-closed`, `evidence.model-safe-projection` declare `impacts`). Output annotates `reason=DIRECT` / `reason=IMPACTED_BY <feature>`. Multiple parents are retained deterministically; cycles terminate; duplicates collapse.
 - **Budget is engine state.** `evaluateMaintenanceBudget` computes planned delta (REUSE 0, STRENGTHEN 1, CREATE 4 defaults) and reports `WITHIN_BUDGET` / `BUDGET_EXCEEDED` without ever touching floors.
@@ -87,6 +90,9 @@ pnpm test:run -- --files apps/agent/src/app.ts --max-gate 3
 # Full Gate 0..3: policy, self-tests, typecheck, selected execution, Evidence artifact
 pnpm test:gate -- --base HEAD~1 --head HEAD --max-gate 3
 
+# External BASE Trust Anchor (git data only; used by pull_request_target)
+node tools/test-governance/trust-anchor/check.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+
 # Gate 4 requires BOTH explicit max gate and live-provider consent
 pnpm test:gate -- --max-gate 4 --allow-live-provider
 ```
@@ -103,10 +109,12 @@ As of this revision the planner honestly reports three A-level floor gaps (see `
 
 - `config/features.json` - governed roots, ignore paths, feature paths, risk, budgets, invariants, floors, and `impacts` edges.
 - `config/catalog.json` - reusable test/smoke proofs with per-proof evidence levels. `ACTIVE` and `PINNED` entries are eligible for planning.
-- `config/architecture-guards.json` - deterministic import/text constraints. `requiredText` guards are weak canaries by design; semantics live in tests.
+- `config/architecture-guards.json` - deterministic import/text constraints. `requiredText` still only checks substring presence, but a guard whose scope matches zero current files is `REQUIRED_GUARD_SCOPE_MISSING` (fail closed). `forbiddenImport` / `forbiddenText` stay silent on empty scope. Semantics live in tests.
 
 The planner greedily selects the smallest useful existing catalog set. It never lowers an evidence floor to satisfy a budget. `build.configuration` governs dependency, lockfile, workspace, typecheck, and Node 22/pnpm 10.15.0 contracts without claiming application behavior. The selected runner deduplicates canonical commands and groups named tests per owning test file, executes the real Node/tsx test file with TAP, and requires every selected static name to be observed as passed. Exit code 0 with no observed selected test is not PASS.
 
 GitHub Actions runs the deterministic Gate through Gate 3 on pull requests, pushes to `main`, and manual dispatches, then uploads Evidence artifacts with `if: always()`. It uses no provider secrets, live model, or remote servers. Gate 4 remains explicit opt-in.
+
+Proof Source Integrity compares BASE vs HEAD blobs for declared Catalog `location.file` and pnpm script bindings. It does not follow imported helpers; a change to an undeclared helper file is out of scope unless that file is itself a declared proof source.
 
 Test consolidation/retirement is out of scope. Dominance proof and architecture review remain mandatory; an LLM recommendation alone never deletes a regression proof.

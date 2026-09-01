@@ -1,0 +1,36 @@
+name: Governance Trust Anchor
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  trust-anchor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out BASE
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Fetch HEAD git objects
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.clone_url }}
+        run: git fetch --no-tags --depth=1 "$HEAD_REPO" "$HEAD_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run BASE trust-anchor checker
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/test-governance/trust-anchor/check.mjs --base "$BASE_SHA" --head "$HEAD_SHA"

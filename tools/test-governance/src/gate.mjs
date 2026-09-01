@@ -183,14 +183,18 @@ function describePolicyFailure(plan) {
   return reasons.join(' | ') || plan.status;
 }
 
+function listTestFiles(dir) {
+  try {
+    return readdirSync(dir).filter((name) => name.endsWith('.test.mjs')).map((name) => join(dir, name));
+  } catch {
+    return [];
+  }
+}
+
 function runGovernanceSelfTests(root) {
   const srcDir = join(root, 'tools', 'test-governance', 'src');
-  let testFiles = [];
-  try {
-    testFiles = readdirSync(srcDir).filter((name) => name.endsWith('.test.mjs')).map((name) => join(srcDir, name));
-  } catch {
-    return { status: 'FAIL', output: `cannot list ${srcDir}` };
-  }
+  const anchorDir = join(root, 'tools', 'test-governance', 'trust-anchor');
+  const testFiles = [...listTestFiles(srcDir), ...listTestFiles(anchorDir)];
   if (testFiles.length === 0) return { status: 'FAIL', output: 'no governance self-tests found' };
   const res = spawnSync(process.execPath, ['--test', ...testFiles], {
     cwd: root,
