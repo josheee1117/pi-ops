@@ -94,9 +94,13 @@ Two layers, different jobs:
 
 Trust-root bootstrap is structural and one-time: BASE without `trustRootVersion` → HEAD with `trustRootVersion: 1` yields non-blocking `TRUST_ROOT_BOOTSTRAP` (that migration commit may change the engine). Once BASE carries `trustRootVersion: 1`, any trust-surface change, version removal, or version change blocks `GOVERNANCE_REVIEW_REQUIRED`. No environment bypass, no SHA hardcoding, no actor/branch identity.
 
-**External BASE Trust Anchor.** `.github/workflows/governance-trust-anchor.yml` uses `pull_request_target`, checks out BASE, fetches HEAD git objects, and runs BASE `tools/test-governance/trust-anchor/check.mjs`. HEAD is data: no HEAD checkout-for-execution, no `pnpm install`, no HEAD scripts. Findings: engine/anchor/workflow/policy/entrypoint changes; accepted ACTIVE/PINNED proof source or definition changes; new proofs (A/B/C). Authoritative for PRs only after (1) the workflow exists on `main`, (2) changes go through Pull Requests, (3) the check is required. Code cannot prevent a privileged owner from direct push or disabling protection. Not cryptographic immutability.
+**External BASE Trust Anchor.** `.github/workflows/governance-trust-anchor.yml` uses `pull_request_target`, checks out BASE (`fetch-depth: 0`, `persist-credentials: false`), asserts HEAD with local `git cat-file -e "$HEAD_SHA^{commit}"`, and runs BASE `tools/test-governance/trust-anchor/check.mjs`. No second network fetch; no `HEAD_REPO`. v1 is same-repository PRs only. Fork HEAD missing → fail closed.
 
-The PR that first lands the workflow is a bootstrap: BASE does not yet contain it, so `pull_request_target` will not run it for that PR. Review is human. A later verification PR proves the merged BASE anchor.
+Jobs: **detect** (BASE checker: exit 0 PASS / 2 REVIEW_REQUIRED / 1 fail), **authorize** (only on REVIEW_REQUIRED, `environment: governance-review`, no checkout, requires `vars.GOVERNANCE_REVIEW_CONFIGURED=true`), **final** (`if: always()`, required-check candidate). PASS skips human review. REVIEW_REQUIRED cannot skip it. Labels, actors, SHAs, and branch names are not authorization. Detection is BASE code; authorization is the protected Environment.
+
+Authoritative for PRs only after (1) the workflow exists on `main`, (2) changes go through Pull Requests, (3) the **final** check is required, (4) `governance-review` has required reviewers and `GOVERNANCE_REVIEW_CONFIGURED=true`. Code cannot prevent a privileged owner from direct push or disabling protection. Not cryptographic immutability.
+
+The PR that first lands the workflow is a bootstrap: BASE does not yet contain it, so `pull_request_target` will not run it for that PR. Review is human. A later verification PR proves the merged BASE anchor. Observe the exact final check context after that run before configuring branch protection.
 
 Proof Source Integrity hashes declared `location.file` blobs and pnpm script bindings. Imported helpers are not followed unless they are themselves declared proof sources.
 

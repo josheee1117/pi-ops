@@ -366,11 +366,17 @@ test('workflow file never checks out or installs HEAD for execution', () => {
   assert.match(WORKFLOW_SOURCE, /pull_request_target/);
   assert.match(WORKFLOW_SOURCE, /github\.event\.pull_request\.base\.sha/);
   assert.match(WORKFLOW_SOURCE, /persist-credentials:\s*false/);
+  assert.match(WORKFLOW_SOURCE, /fetch-depth:\s*0/);
+  assert.match(WORKFLOW_SOURCE, /git cat-file -e "\$HEAD_SHA\^\{commit\}"/);
   assert.match(WORKFLOW_SOURCE, /node tools\/test-governance\/trust-anchor\/check\.mjs/);
-  const checkout = WORKFLOW_SOURCE.match(/uses: actions\/checkout@v4\n(?:[ \t]+.*\n)+/);
-  assert.ok(checkout, 'checkout step is present');
-  assert.match(checkout[0], /base\.sha/);
-  assert.doesNotMatch(checkout[0], /head\.sha/);
+  assert.doesNotMatch(WORKFLOW_SOURCE, /HEAD_REPO/);
+  assert.doesNotMatch(WORKFLOW_SOURCE, /git fetch/);
+  const checkouts = [...WORKFLOW_SOURCE.matchAll(/uses: actions\/checkout@v4\n(?:[ \t]+.*\n)+/g)].map((match) => match[0]);
+  assert.ok(checkouts.length >= 1, 'checkout step is present');
+  for (const block of checkouts) {
+    assert.match(block, /base\.sha/);
+    assert.doesNotMatch(block, /head\.sha/);
+  }
   assert.doesNotMatch(WORKFLOW_SOURCE, /pnpm install/);
   assert.doesNotMatch(WORKFLOW_SOURCE, /npm install/);
   assert.doesNotMatch(WORKFLOW_SOURCE, /pnpm test/);
