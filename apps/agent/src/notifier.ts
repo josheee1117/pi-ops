@@ -53,8 +53,7 @@ export function createHttpWebhookNotifier(options: {
   const fetchImpl = options.fetch ?? fetch;
   return {
     async send(notification) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+      const signal = AbortSignal.timeout(options.timeoutMs);
       try {
         const headers: Record<string, string> = {
           'content-type': 'application/json',
@@ -65,7 +64,7 @@ export function createHttpWebhookNotifier(options: {
           method: 'POST',
           headers,
           body: JSON.stringify(notification),
-          signal: controller.signal,
+          signal,
         });
         await drainBounded(response, options.maxResponseBytes);
         if (response.status === 429 || response.status >= 500) {
@@ -78,12 +77,12 @@ export function createHttpWebhookNotifier(options: {
         if (error instanceof RetryableNotificationError || error instanceof TerminalNotificationError) {
           throw error;
         }
-        if (error instanceof Error && error.name === 'AbortError') {
+        // Manual AbortController aborts surfaced as AbortError; the native
+        // timeout signal surfaces as TimeoutError. Both are the timeout path.
+        if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
           throw new RetryableNotificationError('notification webhook timeout');
         }
         throw new RetryableNotificationError('notification webhook connection error');
-      } finally {
-        clearTimeout(timer);
       }
     },
   };

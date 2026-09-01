@@ -8,7 +8,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "does not start a new investigation when dynamic Evidence is added to a COMPLETED generation"
@@ -31,7 +30,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "starts exactly one new investigation after a new deterministic Evidence generation"
@@ -51,7 +49,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "fails a stale SUBMITTED session and later retries within budget"
@@ -74,7 +71,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "fails a stale RUNNING session"
@@ -94,7 +90,6 @@
       "historicalRegression": true,
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "repairs the crash gap after reopening SQLite and does not redispatch COMPLETED generations"
@@ -114,7 +109,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "keeps one authoritative ReasoningResult from the InvestigationSession"
@@ -133,7 +127,6 @@
       "historicalRegression": true,
       "maintenanceCost": 4,
       "executionClass": "SMOKE",
-      "runtimeClass": "smoke",
       "command": "pnpm smoke:local",
       "location": {
         "file": "deploy/local/smoke.sh"
@@ -155,7 +148,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "is idempotent across repeated reconcile calls"
@@ -173,7 +165,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "stops retrying after maxAttempts FAILED sessions for the same generation"
@@ -191,7 +182,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "rejects request without auth token"
@@ -209,7 +199,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
         "testName": "allows ingest only on /v1/events and rejects ops and runtime routes"
@@ -227,7 +216,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "accepts and persists a valid event"
@@ -245,7 +233,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "idempotent: duplicate event id is silently accepted"
@@ -264,7 +251,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "rejects duplicate Event when producer id or type changes"
@@ -282,7 +268,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "rejects a declared oversized event body"
@@ -301,7 +286,6 @@
       "historicalRegression": true,
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "reconciles unmatched recovery before failure and keeps retry idempotent"
@@ -323,7 +307,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "does not invoke Incident processing again for a duplicate Event"
@@ -341,7 +324,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
         "testName": "maps container.oom to inspect, stats, bounded logs, and host memory"
@@ -360,7 +342,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
         "testName": "keeps Node Agent unavailability as retryable failed Evidence"
@@ -382,7 +363,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
         "testName": "keeps a hanging Pi-Ops to Node Agent request as retryable"
@@ -401,7 +381,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
         "testName": "records Node Agent http.probe unhealth as succeeded Evidence"
@@ -419,7 +398,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-orchestrator.test.ts",
         "testName": "redacts node tokens from persisted error messages"
@@ -437,7 +415,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-worker.test.ts",
         "testName": "atomically creates a pending job with a new Incident"
@@ -455,7 +432,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-worker.test.ts",
         "testName": "does not retry terminal HTTP 4xx collection failure"
@@ -473,7 +449,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/evidence-worker.test.ts",
         "testName": "resets and resumes a RUNNING job after process restart"
@@ -492,7 +467,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/model-safe-evidence.test.ts",
         "testName": "redacts docker.inspect secrets in runtime Evidence without mutating the store"
@@ -518,7 +492,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/model-safe-evidence.test.ts",
         "testName": "applies the same projection to initial context and dynamic runtime Evidence"
@@ -537,7 +510,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "changes the specialist finding when only Evidence.data changes"
@@ -555,7 +527,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 4,
       "executionClass": "SMOKE",
-      "runtimeClass": "smoke",
       "command": "pnpm smoke:local",
       "location": {
         "file": "deploy/local/smoke.sh"
@@ -573,7 +544,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "collects host.memory once and reruns both requesting specialists"
@@ -591,7 +561,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-evidence-query.test.ts",
         "testName": "rejects unresolved docker targets and model-supplied URLs"
@@ -609,7 +578,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-loop.test.ts",
         "testName": "walks the session lifecycle CREATED → SUBMITTED → RUNNING → COMPLETED"
@@ -627,7 +595,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-loop.test.ts",
         "testName": "rejects evidence ids that do not belong to the Incident"
@@ -645,7 +612,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-attempt.test.ts",
         "testName": "reuses an open session for the same Incident and context"
@@ -663,7 +629,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/pi-runtime-contract.test.ts",
         "testName": "returns the existing report on a duplicate callback"
@@ -681,7 +646,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/pi-runtime-contract.test.ts",
         "testName": "rejects an invalid callback without writing a report"
@@ -699,7 +663,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
         "testName": "allows runtime token only on runtime callback routes"
@@ -717,7 +680,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "exposes no shell or remediation capability"
@@ -735,7 +697,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
         "testName": "starts one runtime task for a duplicate submit"
@@ -753,7 +714,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
         "testName": "rejects an arbitrary callback destination"
@@ -771,7 +731,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "does not let historical knowledge replace current Evidence"
@@ -789,7 +748,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "fails explicitly when current Evidence alone exceeds the context limit"
@@ -807,7 +765,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 4,
       "executionClass": "SMOKE",
-      "runtimeClass": "smoke",
       "command": "pnpm smoke:local",
       "location": {
         "file": "deploy/local/smoke.sh"
@@ -825,7 +782,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "does not apply a late model result after timeout"
@@ -846,7 +802,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "performs zero external model calls in the fake CI runtime"
@@ -864,7 +819,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
         "testName": "retries a failed callback until delivery succeeds"
@@ -883,7 +837,6 @@
       "historicalRegression": true,
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/runtime-http.test.ts",
         "testName": "resumes pending delivery after restart without rerunning the model"
@@ -902,7 +855,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
         "testName": "allows ingest only on /v1/events and rejects ops and runtime routes"
@@ -921,7 +873,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
         "testName": "allows operator on /v1/ops and rejects ingest and runtime routes"
@@ -940,7 +891,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/auth-matrix.test.ts",
         "testName": "allows runtime token only on runtime callback routes"
@@ -959,7 +909,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/config.test.ts",
         "testName": "rejects identical ingest and operator tokens"
@@ -977,7 +926,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/notification.test.ts",
         "testName": "schedules INVESTIGATION_COMPLETED once per session and survives callback replay"
@@ -995,7 +943,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 4,
       "executionClass": "SMOKE",
-      "runtimeClass": "smoke",
       "command": "pnpm smoke:local",
       "location": {
         "file": "deploy/local/smoke.sh"
@@ -1018,7 +965,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/notification.test.ts",
         "testName": "delivers PENDING jobs through FakeNotifier without mutating facts"
@@ -1036,7 +982,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/notification.test.ts",
         "testName": "resets RUNNING jobs on start and does not duplicate DELIVERED jobs"
@@ -1054,7 +999,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/detectors.test.ts",
         "testName": "emits one failure then one recovery for 200 → fail → 200 (no flood)"
@@ -1072,7 +1016,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/api.test.ts",
         "testName": "rejects without auth token"
@@ -1090,7 +1033,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/events.test.ts",
         "testName": "drops events when queue is full"
@@ -1109,7 +1051,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/evidence.test.ts",
         "testName": "returns succeeded unhealth when the target is unreachable"
@@ -1127,7 +1068,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/evidence.test.ts",
         "testName": "rejects http.probe with non-http URL"
@@ -1145,7 +1085,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/evidence.test.ts",
         "testName": "fails closed when the container allowlist is empty"
@@ -1163,7 +1102,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/node-agent/src/__tests__/evidence.test.ts",
         "testName": "keeps OOM-safe inspect fields and excludes Env and mount secrets"
@@ -1181,7 +1119,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/memory-retriever.test.ts",
         "testName": "does not retrieve DISABLED memory"
@@ -1199,7 +1136,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/pi-runtime/src/__tests__/coordinator.test.ts",
         "testName": "does not let historical knowledge replace current Evidence"
@@ -1217,7 +1153,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-knowledge.test.ts",
         "testName": "does not block investigation when retrieval fails"
@@ -1235,7 +1170,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/reasoning-evaluation.test.ts",
         "testName": "requires an evaluation to create a MemoryCandidate"
@@ -1253,7 +1187,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/memory-governance.test.ts",
         "testName": "does not mutate Incident, Evidence, or ReasoningResult on approve/reject"
@@ -1272,7 +1205,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-reconciler.test.ts",
         "testName": "keeps one authoritative ReasoningResult from the InvestigationSession"
@@ -1290,7 +1222,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/reasoning-worker.test.ts",
         "testName": "does not insert a duplicate ReasoningResult for the same job"
@@ -1308,7 +1239,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "packages/protocol/src/__tests__/schemas.test.ts",
         "testName": "rejects event with missing required field"
@@ -1326,7 +1256,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "packages/protocol/src/__tests__/investigation-runtime.test.ts",
         "testName": "requires requestingRoles and normalizes them stably"
@@ -1345,7 +1274,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/config.test.ts",
         "testName": "rejects partial external runtime configuration"
@@ -1363,7 +1291,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/config.test.ts",
         "testName": "rejects malformed and out-of-range operational integers"
@@ -1381,7 +1308,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/reasoning-results-migration.test.ts",
         "testName": "fails clearly when legacy rows share a reasoning_job_id"
@@ -1399,7 +1325,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/ingress.test.ts",
         "testName": "event survives database close and reopen"
@@ -1418,7 +1343,6 @@
       "historicalRegression": true,
       "maintenanceCost": 6,
       "executionClass": "SMOKE",
-      "runtimeClass": "smoke",
       "command": "pnpm smoke:local",
       "location": {
         "file": "deploy/local/smoke.sh"
@@ -1441,7 +1365,6 @@
       "historicalRegression": true,
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "deploy/local/smoke-pi.failclosed.test.mjs",
         "testName": "smoke-pi.sh fails closed without provider credentials"
@@ -1463,7 +1386,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 2,
       "executionClass": "INTEGRATION",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/investigation-evidence-query.test.ts",
         "testName": "persists evidence audit across database reopen"
@@ -1482,7 +1404,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "COMPONENT",
-      "runtimeClass": "fast",
       "location": {
         "file": "apps/agent/src/__tests__/pi-runtime-contract.test.ts",
         "testName": "preserves the provenance chain on the ReasoningResult"
@@ -1501,7 +1422,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "tools/test-governance/src/toolchain.test.mjs",
         "testName": "the committed lockfile covers every workspace package"
@@ -1523,7 +1443,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "tools/test-governance/src/toolchain.test.mjs",
         "testName": "every workspace package keeps the typecheck and test script contract"
@@ -1545,7 +1464,6 @@
       "status": "ACTIVE",
       "maintenanceCost": 1,
       "executionClass": "UNIT",
-      "runtimeClass": "fast",
       "location": {
         "file": "tools/test-governance/src/toolchain.test.mjs",
         "testName": "workspace manifests declare one consistent Node and pnpm toolchain"

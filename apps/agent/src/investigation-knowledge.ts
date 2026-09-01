@@ -133,8 +133,6 @@ export function createKnowledgeRetriever(
   };
 }
 
-export const createInvestigationKnowledgeRetriever = createKnowledgeRetriever;
-
 interface RetrievalIndex {
   queryIncidentId: string;
   similarById: Map<string, SimilarIncident>;

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { NodeAgentConfig } from '../config.js';
 import type { EvidenceQueryRequest, EvidenceQueryResult } from './types.js';
 
@@ -47,7 +48,7 @@ export function createProbeEvidenceProvider(): ProbeEvidenceProvider {
       };
 
       return {
-        id: `evd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `evd-${randomUUID()}`,
         incidentId: request.incidentId,
         nodeId: config.nodeId,
         source: 'health',

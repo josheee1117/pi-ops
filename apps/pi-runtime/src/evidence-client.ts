@@ -39,26 +39,21 @@ export function createHttpRuntimeEvidenceClient(options: {
       };
       const parsed = validateRuntimeEvidenceRequestBatch(payload);
       if (!parsed.success) throw new Error(parsed.message);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs);
-      try {
-        const response = await fetchImpl(`${baseUrl}/v1/investigation-evidence`, {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${options.token}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify(parsed.value),
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error(`evidence request ${response.status}`);
-        const body: unknown = await response.json();
-        const validated = validateRuntimeEvidenceResponse(body);
-        if (!validated.success) throw new Error(validated.message);
-        return validated.value;
-      } finally {
-        clearTimeout(timer);
-      }
+      const signal = AbortSignal.timeout(options.timeoutMs);
+      const response = await fetchImpl(`${baseUrl}/v1/investigation-evidence`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${options.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(parsed.value),
+        signal,
+      });
+      if (!response.ok) throw new Error(`evidence request ${response.status}`);
+      const body: unknown = await response.json();
+      const validated = validateRuntimeEvidenceResponse(body);
+      if (!validated.success) throw new Error(validated.message);
+      return validated.value;
     },
   };
 }

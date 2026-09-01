@@ -91,5 +91,3 @@ export function createIncidentSimilarityService(
     },
   };
 }
-
-export const createSimilarIncidentService = createIncidentSimilarityService;

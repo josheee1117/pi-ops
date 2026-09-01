@@ -1,11 +1,6 @@
 {
   "schemaVersion": 1,
   "trustRootVersion": 1,
-  "evidenceLevels": {
-    "A": "Direct result evidence: externally observable system state, real SQLite state, process/HTTP state, or a real boundary relevant to the claim.",
-    "B": "Process evidence: structured audit, logs, request correlation, or lifecycle trace.",
-    "C": "Simulation evidence: mock, fake clock, fake runtime, stub transport, or isolated deterministic substitute."
-  },
   "features": [
     {
       "id": "event.ingress",
@@ -544,6 +539,7 @@
       "paths": [
         "apps/node-agent/src/detectors/**",
         "apps/node-agent/src/events/**",
+        "apps/node-agent/src/evidence/host.ts",
         "apps/node-agent/src/app.ts",
         "apps/node-agent/package.json"
       ],
@@ -630,7 +626,8 @@
       "maintenanceBudget": 6,
       "paths": [
         "apps/agent/src/memory-retriever.ts",
-        "apps/agent/src/investigation-knowledge.ts"
+        "apps/agent/src/investigation-knowledge.ts",
+        "apps/agent/src/incident-similarity.ts"
       ],
       "invariants": [
         {
@@ -690,6 +687,7 @@
       "paths": [
         "apps/agent/src/reasoner.ts",
         "apps/agent/src/reasoning-worker.ts",
+        "apps/agent/src/reasoning-service.ts",
         "apps/agent/src/pi-reasoner.ts"
       ],
       "invariants": [

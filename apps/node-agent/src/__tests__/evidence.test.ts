@@ -333,6 +333,35 @@ describe('validateQueryRequest', () => {
 // ── HTTP probe provider ──────────────────────────────────────────────────────
 
 describe('HTTP probe evidence', () => {
+  it('assigns unique evd-prefixed UUID evidence ids', async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const url = `http://127.0.0.1:${address.port}/health`;
+    try {
+      const provider = createProbeEvidenceProvider();
+      const first = await provider.query(
+        { type: 'http.probe', incidentId: 'inc-1', url, method: 'GET', timeout: 5000 },
+        makeConfig(),
+      );
+      const second = await provider.query(
+        { type: 'http.probe', incidentId: 'inc-1', url, method: 'GET', timeout: 5000 },
+        makeConfig(),
+      );
+      for (const result of [first, second]) {
+        assert.match(result.id, /^evd-.+/);
+        assert.ok(result.id.length > 'evd-'.length);
+      }
+      assert.notEqual(first.id, second.id);
+    } finally {
+      server.close();
+    }
+  });
+
   it('completes from status headers without buffering a never-ending body', async () => {
     const server = createServer((_req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
