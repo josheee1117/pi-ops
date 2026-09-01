@@ -214,6 +214,12 @@ test('policy failures prevent gate PASS before execution evidence is considered'
   for (const policyStatus of ['NEEDS_EVIDENCE', 'ARCHITECTURE_VIOLATION', 'UNMAPPED_PRODUCTION_CHANGE']) {
     assert.equal(resolveGateStatus({ policyStatus, executionResults: [], evidence: { allSatisfied: true } }), 'POLICY_BLOCKED');
   }
+  assert.equal(resolveGateStatus({
+    policyStatus: 'GOVERNANCE_REVIEW_REQUIRED', executionResults: [], evidence: { allSatisfied: true },
+  }), 'GOVERNANCE_REVIEW_REQUIRED');
+  assert.equal(resolveGateStatus({
+    policyStatus: 'GOVERNANCE_POLICY_WEAKENING', executionResults: [], evidence: { allSatisfied: true },
+  }), 'GOVERNANCE_POLICY_WEAKENING');
 });
 
 test('execution failure and missing realized evidence have distinct gate states', () => {

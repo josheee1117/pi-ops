@@ -86,7 +86,7 @@ export async function runGate(options) {
 
     if (plan.status !== 'READY') {
       error = describePolicyFailure(plan);
-      status = 'POLICY_BLOCKED';
+      status = resolveGateStatus({ policyStatus: plan.status, executionResults: [], evidence: null });
       return finalize();
     }
 
