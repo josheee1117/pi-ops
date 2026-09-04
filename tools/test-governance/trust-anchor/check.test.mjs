@@ -9,6 +9,7 @@ import { checkTrust } from './check.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECKER_SOURCE = readFileSync(join(HERE, 'check.mjs'), 'utf8');
+const CLASSIFY_SOURCE = readFileSync(join(HERE, 'classify.mjs'), 'utf8');
 const WORKFLOW_SOURCE = readFileSync(join(HERE, '../../../.github/workflows/governance-trust-anchor.yml'), 'utf8');
 
 function pkg({ smoke = 'bash deploy/local/smoke.sh', extraScripts = {} } = {}) {
@@ -116,6 +117,7 @@ function fixture(seed, mutate) {
   writeFileSync(join(repo, 'deploy/local/smoke.sh'), '#!/bin/sh\nexit 1\n');
   writeFileSync(join(repo, 'tools/test-governance/src/gate.mjs'), 'export const gate = 1;\n');
   writeFileSync(join(repo, 'tools/test-governance/trust-anchor/check.mjs'), CHECKER_SOURCE);
+  writeFileSync(join(repo, 'tools/test-governance/trust-anchor/classify.mjs'), CLASSIFY_SOURCE);
   writeFileSync(join(repo, '.github/workflows/governance-trust-anchor.yml'), WORKFLOW_SOURCE);
   writeFileSync(join(repo, '.github/workflows/test-governance.yml'), 'name: Test Governance Gate\n');
   writeJson(repo, 'package.json', pkg());
@@ -162,7 +164,7 @@ test('B. Governance Engine modification requires review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.trustSurface.findings.some((item) => item.kind === 'GOVERNANCE_ENGINE_CHANGED'));
   } finally {
     fx.cleanup();
@@ -176,12 +178,13 @@ test('C. HEAD anchor modification is detected by the BASE checker', () => {
   try {
     const baseChecker = join(fx.repo, 'base-checker.mjs');
     writeFileSync(baseChecker, execFileSync('git', ['show', `${fx.base}:tools/test-governance/trust-anchor/check.mjs`], { cwd: fx.repo, encoding: 'utf8' }));
+    writeFileSync(join(fx.repo, 'classify.mjs'), execFileSync('git', ['show', `${fx.base}:tools/test-governance/trust-anchor/classify.mjs`], { cwd: fx.repo, encoding: 'utf8' }));
     const spawned = spawnSync(process.execPath, [baseChecker, '--base', fx.base, '--head', fx.head, '--json', '--cwd', fx.repo], {
       encoding: 'utf8',
     });
-    assert.notEqual(spawned.status, 0);
+    assert.equal(spawned.status, 2);
     const result = JSON.parse(spawned.stdout);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.trustSurface.findings.some((item) => item.kind === 'GOVERNANCE_ANCHOR_CHANGED'));
   } finally {
     fx.cleanup();
@@ -194,7 +197,7 @@ test('D. governance workflow modification requires review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.trustSurface.findings.some((item) => item.kind === 'GOVERNANCE_WORKFLOW_CHANGED'));
   } finally {
     fx.cleanup();
@@ -207,7 +210,7 @@ test('E. same test name with changed body requires proof source review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'REJECT');
     assert.ok(result.proofIntegrity.changedSources.some((item) => item.kind === 'PROOF_SOURCE_CHANGE_REQUIRES_REVIEW'));
   } finally {
     fx.cleanup();
@@ -220,7 +223,7 @@ test('F. smoke script trivialization requires proof source review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'REJECT');
     assert.ok(result.proofIntegrity.changedSources.some((item) => item.file === 'deploy/local/smoke.sh'));
   } finally {
     fx.cleanup();
@@ -233,7 +236,7 @@ test('G. command script rebind requires proof source review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'REJECT');
     assert.ok(result.proofIntegrity.changedSources.some((item) => item.file === 'package.json'));
   } finally {
     fx.cleanup();
@@ -246,7 +249,7 @@ test('H. new trivial A Proof requires review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.proofIntegrity.newProofs.some((item) => item.kind === 'NEW_PROOF_REQUIRES_REVIEW' && item.levels.includes('A')));
   } finally {
     fx.cleanup();
@@ -259,7 +262,7 @@ test('I. new trivial C Proof requires review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.proofIntegrity.newProofs.some((item) => item.kind === 'NEW_PROOF_REQUIRES_REVIEW' && item.levels.includes('C')));
   } finally {
     fx.cleanup();
@@ -272,7 +275,7 @@ test('J. existing Proof grade change requires review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.proofIntegrity.changedDefinitions.some((item) => item.kind === 'PROOF_DEFINITION_CHANGE_REQUIRES_REVIEW'));
   } finally {
     fx.cleanup();
@@ -300,6 +303,7 @@ test('PINNED proof source changes use the PINNED reason', () => {
   });
   try {
     const result = run(fx);
+    assert.equal(result.status, 'REJECT');
     assert.ok(result.proofIntegrity.changedSources.some((item) => item.kind === 'PINNED_PROOF_SOURCE_CHANGE_REQUIRES_REVIEW'));
   } finally {
     fx.cleanup();
@@ -312,32 +316,45 @@ test('accepted proof source deletion requires review', () => {
   });
   try {
     const result = run(fx);
-    assert.equal(result.status, 'GOVERNANCE_REVIEW_REQUIRED');
+    assert.equal(result.status, 'REJECT');
     assert.ok(result.proofIntegrity.changedSources.some((item) => /deleted/.test(item.detail)));
   } finally {
     fx.cleanup();
   }
 });
 
-test('policy config modification requires review', () => {
+test('policy config adding an invariant without Proof is LOW_PASS', () => {
   const fx = fixture({}, (repo) => {
     writeJson(repo, 'tools/test-governance/config/features.json', featuresDoc(['INV-X', 'INV-Y']));
   });
   try {
     const result = run(fx);
+    assert.equal(result.status, 'LOW_PASS');
     assert.ok(result.trustSurface.findings.some((item) => item.kind === 'GOVERNANCE_POLICY_CHANGED'));
   } finally {
     fx.cleanup();
   }
 });
 
-test('protected package entrypoint change requires review', () => {
+test('protected package entrypoint change requires human review', () => {
   const fx = fixture({}, (repo) => {
     writeJson(repo, 'package.json', pkg({ extraScripts: { 'test:gate': 'echo bypass' } }));
   });
   try {
     const result = run(fx);
+    assert.equal(result.status, 'HUMAN_REQUIRED');
     assert.ok(result.trustSurface.findings.some((item) => item.kind === 'GOVERNANCE_ENTRYPOINT_CHANGED'));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('unreadable HEAD policy JSON is INTERNAL_ERROR', () => {
+  const fx = fixture({}, (repo) => {
+    writeFileSync(join(repo, 'tools/test-governance/config/features.json'), '{ not json');
+  });
+  try {
+    assert.throws(() => run(fx), /cannot parse/);
   } finally {
     fx.cleanup();
   }
@@ -381,4 +398,6 @@ test('workflow file never checks out or installs HEAD for execution', () => {
   assert.doesNotMatch(WORKFLOW_SOURCE, /npm install/);
   assert.doesNotMatch(WORKFLOW_SOURCE, /pnpm test/);
   assert.doesNotMatch(WORKFLOW_SOURCE, /npm test/);
+  assert.match(WORKFLOW_SOURCE, /needs\.detect\.outputs\.decision == 'HUMAN_REQUIRED'/);
+  assert.doesNotMatch(WORKFLOW_SOURCE, /REVIEW_REQUIRED/);
 });

@@ -4,10 +4,11 @@
  */
 export function finalDecision({ detectStatus, detectDecision, authorizeStatus }) {
   if (detectStatus !== 'success') return 'FAIL';
-  if (detectDecision === 'PASS') return 'PASS';
-  if (detectDecision === 'REVIEW_REQUIRED') {
+  if (detectDecision === 'PASS' || detectDecision === 'LOW_PASS') return 'PASS';
+  if (detectDecision === 'HUMAN_REQUIRED' || detectDecision === 'REVIEW_REQUIRED') {
     return authorizeStatus === 'success' ? 'PASS' : 'FAIL';
   }
+  if (detectDecision === 'REJECT' || detectDecision === 'INTERNAL_ERROR') return 'FAIL';
   return 'FAIL';
 }
 
