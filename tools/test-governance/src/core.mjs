@@ -1,5 +1,6 @@
 import ts from 'typescript';
 
+// Trust Anchor live verification probe: intentionally no semantic effect.
 const LEVELS = ['A', 'B', 'C'];
 export const EXECUTION_CLASSES = ['UNIT', 'COMPONENT', 'INTEGRATION', 'MULTI_PROCESS', 'SMOKE', 'LIVE_PROVIDER'];
 export const RUNTIME_CLASSES = ['fast', 'integration', 'smoke', 'live'];
