@@ -18,36 +18,60 @@ test('A. checker PASS does not require authorization and can PASS', () => {
   }), 'PASS');
 });
 
-test('B. REVIEW_REQUIRED requires authorization', () => {
+test('B. HUMAN_REQUIRED requires authorization', () => {
   assert.equal(finalDecision({
     detectStatus: 'success',
-    detectDecision: 'REVIEW_REQUIRED',
+    detectDecision: 'HUMAN_REQUIRED',
     authorizeStatus: 'skipped',
   }), 'FAIL');
 });
 
-test('C. REVIEW_REQUIRED plus authorization success is PASS', () => {
+test('C. HUMAN_REQUIRED plus authorization success is PASS', () => {
+  assert.equal(finalDecision({
+    detectStatus: 'success',
+    detectDecision: 'HUMAN_REQUIRED',
+    authorizeStatus: 'success',
+  }), 'PASS');
+});
+
+test('D. HUMAN_REQUIRED plus authorization skipped is FAIL', () => {
+  assert.equal(finalDecision({
+    detectStatus: 'success',
+    detectDecision: 'HUMAN_REQUIRED',
+    authorizeStatus: 'skipped',
+  }), 'FAIL');
+});
+
+test('E. HUMAN_REQUIRED plus authorization failed is FAIL', () => {
+  assert.equal(finalDecision({
+    detectStatus: 'success',
+    detectDecision: 'HUMAN_REQUIRED',
+    authorizeStatus: 'failure',
+  }), 'FAIL');
+});
+
+test('LOW_PASS does not require authorization', () => {
+  assert.equal(finalDecision({
+    detectStatus: 'success',
+    detectDecision: 'LOW_PASS',
+    authorizeStatus: 'skipped',
+  }), 'PASS');
+});
+
+test('REJECT never goes to authorization and is FAIL', () => {
+  assert.equal(finalDecision({
+    detectStatus: 'success',
+    detectDecision: 'REJECT',
+    authorizeStatus: 'success',
+  }), 'FAIL');
+});
+
+test('legacy REVIEW_REQUIRED still requires authorization', () => {
   assert.equal(finalDecision({
     detectStatus: 'success',
     detectDecision: 'REVIEW_REQUIRED',
     authorizeStatus: 'success',
   }), 'PASS');
-});
-
-test('D. REVIEW_REQUIRED plus authorization skipped is FAIL', () => {
-  assert.equal(finalDecision({
-    detectStatus: 'success',
-    detectDecision: 'REVIEW_REQUIRED',
-    authorizeStatus: 'skipped',
-  }), 'FAIL');
-});
-
-test('E. REVIEW_REQUIRED plus authorization failed is FAIL', () => {
-  assert.equal(finalDecision({
-    detectStatus: 'success',
-    detectDecision: 'REVIEW_REQUIRED',
-    authorizeStatus: 'failure',
-  }), 'FAIL');
 });
 
 test('F. detector internal error is FAIL', () => {

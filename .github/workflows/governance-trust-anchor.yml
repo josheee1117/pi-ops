@@ -41,12 +41,7 @@ jobs:
           node tools/test-governance/trust-anchor/check.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
           code=$?
           set -e
-          if [[ "$code" -eq 0 ]]; then
-            echo "decision=PASS" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$code" -eq 2 ]]; then
-            echo "decision=REVIEW_REQUIRED" >> "$GITHUB_OUTPUT"
+          if [[ "$code" -eq 0 || "$code" -eq 2 || "$code" -eq 4 ]]; then
             exit 0
           fi
           echo "decision=INTERNAL_ERROR" >> "$GITHUB_OUTPUT"
@@ -54,7 +49,7 @@ jobs:
 
   authorize:
     needs: detect
-    if: needs.detect.outputs.decision == 'REVIEW_REQUIRED'
+    if: needs.detect.outputs.decision == 'HUMAN_REQUIRED'
     runs-on: ubuntu-latest
     environment:
       name: governance-review

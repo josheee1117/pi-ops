@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { classifyAuthorization } from './classify.mjs';
 
 const SCHEMA_VERSION = 1;
 const POLICY_FILES = [
@@ -251,6 +253,8 @@ export function checkTrust({ cwd, base, head }) {
   const headFeatures = parseJson(show(cwd, head, POLICY_FILES[0]), `${head}:${POLICY_FILES[0]}`);
   const baseCatalog = parseJson(show(cwd, base, POLICY_FILES[1]), `${base}:${POLICY_FILES[1]}`);
   const headCatalog = parseJson(show(cwd, head, POLICY_FILES[1]), `${head}:${POLICY_FILES[1]}`);
+  const baseGuards = parseJson(show(cwd, base, POLICY_FILES[2]), `${base}:${POLICY_FILES[2]}`);
+  const headGuards = parseJson(show(cwd, head, POLICY_FILES[2]), `${head}:${POLICY_FILES[2]}`);
 
   const baseInvariants = invariantIds(baseFeatures.value ?? { features: [] });
   const baseProofs = proofRecords(baseCatalog.value ?? { entries: [] });
@@ -367,13 +371,18 @@ export function checkTrust({ cwd, base, head }) {
       newProofs: sortFindings(newProofs),
     },
   };
-  const blocking = [
-    ...result.trustSurface.findings,
-    ...result.proofIntegrity.changedSources,
-    ...result.proofIntegrity.changedDefinitions,
-    ...result.proofIntegrity.newProofs,
-  ];
-  if (blocking.length > 0) result.status = 'GOVERNANCE_REVIEW_REQUIRED';
+  const authorization = classifyAuthorization({
+    changedFiles: changedPaths,
+    trustResult: result,
+    baseFeatures: baseFeatures.value,
+    headFeatures: headFeatures.value,
+    baseGuards: baseGuards.value,
+    headGuards: headGuards.value,
+    baseSha: base,
+    headSha: head,
+  });
+  result.authorization = authorization;
+  result.status = authorization.decision;
   return result;
 }
 
@@ -393,6 +402,12 @@ function printHuman(result) {
   console.log('GOVERNANCE TRUST ANCHOR');
   console.log(`base=${result.base} head=${result.head}`);
   console.log(`status=${result.status}`);
+  if (result.authorization) {
+    console.log(`decision=${result.authorization.decision} risk=${result.authorization.risk}`);
+    if (result.authorization.reasonCodes.length > 0) {
+      console.log(`reasonCodes=${result.authorization.reasonCodes.join(',')}`);
+    }
+  }
   const groups = [
     ['trustSurface', result.trustSurface.findings],
     ['changedSources', result.proofIntegrity.changedSources],
@@ -414,7 +429,12 @@ function main() {
     const result = checkTrust({ cwd: options.cwd, base: options.base, head: options.head });
     if (options.json) console.log(JSON.stringify(result, null, 2));
     else printHuman(result);
-    process.exit(result.status === 'PASS' ? 0 : 2);
+    const decision = result.status;
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `decision=${decision}\n`);
+    if (decision === 'PASS' || decision === 'LOW_PASS') process.exit(0);
+    if (decision === 'HUMAN_REQUIRED') process.exit(2);
+    if (decision === 'REJECT') process.exit(4);
+    process.exit(1);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (options.json) {
@@ -426,6 +446,7 @@ function main() {
     } else {
       console.error(`GOVERNANCE TRUST ANCHOR INTERNAL_ERROR: ${message}`);
     }
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, 'decision=INTERNAL_ERROR\n');
     process.exit(1);
   }
 }
