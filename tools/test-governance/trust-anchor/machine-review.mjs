@@ -7,7 +7,7 @@ import { checkTrust } from './check.mjs';
 const MAX_FILES = 24;
 const MAX_DIFF_BYTES = 64 * 1024;
 const MAX_MODEL_RESPONSE_BYTES = 32 * 1024;
-const MODEL_MAX_TOKENS = 4096;
+const MODEL_MAX_TOKENS = 8192;
 
 function git(cwd, args) {
   return execFileSync('git', args, {
@@ -146,12 +146,12 @@ async function callOpenAICompatible({ fetchImpl, url, apiKey, model, role, conte
     max_tokens: MODEL_MAX_TOKENS,
   };
 
-  // Ark reasoning models may spend the completion budget in reasoning_content
-  // and leave message.content empty. This gate needs a small deterministic JSON
-  // verdict, so disable deep thinking for the Ark Coding endpoint. Do not fall
-  // back to reasoning_content: reasoning is never authorization output.
+  // Ark Coding can expose reasoning separately from the final answer. Keep the
+  // model's native thinking behavior intact: some models (including
+  // glm-5.3-flash) reject attempts to disable thinking. Authorization still
+  // comes ONLY from the final message.content after strict JSON/schema checks;
+  // reasoning_content is audit metadata at most and is never authorization.
   if (isArkCodingUrl(url)) {
-    requestBody.thinking = { type: 'disabled' };
     requestBody.response_format = { type: 'json_object' };
   }
 
