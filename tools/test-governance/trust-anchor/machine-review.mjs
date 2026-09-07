@@ -8,6 +8,33 @@ const MAX_FILES = 24;
 const MAX_DIFF_BYTES = 64 * 1024;
 const MAX_MODEL_RESPONSE_BYTES = 32 * 1024;
 const MODEL_MAX_TOKENS = 8192;
+const REVIEW_TOOL_NAME = 'submit_governance_review';
+const REVIEW_TOOL = {
+  type: 'function',
+  function: {
+    name: REVIEW_TOOL_NAME,
+    description: 'Submit the final governance review verdict only. Do not include chain-of-thought.',
+    parameters: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', enum: ['APPROVE', 'REJECT'] },
+        blockingFindings: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 20,
+        },
+        riskNotes: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 20,
+        },
+        summary: { type: 'string' },
+      },
+      required: ['decision', 'blockingFindings', 'riskNotes', 'summary'],
+      additionalProperties: false,
+    },
+  },
+};
 
 function git(cwd, args) {
   return execFileSync('git', args, {
@@ -75,9 +102,11 @@ function systemPrompt(role) {
     'The deterministic BASE Trust Anchor has already vetoed known weakenings and K0 trust-root changes. You are reviewing only K1/semantic uncertainty.',
     'APPROVE only when the supplied bounded evidence is sufficient to conclude there is no material governance weakening or trust expansion.',
     'If uncertain, incomplete, contradictory, or suspicious, REJECT.',
-    'Return exactly one JSON object and no markdown with this schema:',
+    'The final verdict schema is:',
     '{"decision":"APPROVE|REJECT","blockingFindings":["..."],"riskNotes":["..."],"summary":"..."}',
     'APPROVE requires blockingFindings to be empty.',
+    'If the API forces a function call, submit the verdict only through that function arguments.',
+    'Otherwise return exactly one JSON object and no markdown or prose.',
   ].join('\n');
 }
 
@@ -125,6 +154,30 @@ export function parseReviewContent(content, role = 'reviewer') {
   return validateReviewResult(parsed);
 }
 
+export function parseReviewToolCall(toolCalls, role = 'reviewer') {
+  if (!Array.isArray(toolCalls) || toolCalls.length !== 1) {
+    throw new Error(`${role} must return exactly one ${REVIEW_TOOL_NAME} tool call`);
+  }
+  const call = toolCalls[0];
+  if (call?.type !== 'function' || call?.function?.name !== REVIEW_TOOL_NAME) {
+    throw new Error(`${role} returned unexpected tool call`);
+  }
+  const args = call.function.arguments;
+  if (typeof args !== 'string' || args.trim() === '') {
+    throw new Error(`${role} returned empty tool arguments`);
+  }
+  if (Buffer.byteLength(args, 'utf8') > MAX_MODEL_RESPONSE_BYTES) {
+    throw new Error(`${role} tool arguments too large`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(args);
+  } catch (error) {
+    throw new Error(`${role} returned invalid JSON tool arguments: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return validateReviewResult(parsed);
+}
+
 function isArkCodingUrl(url) {
   try {
     const parsed = new URL(url);
@@ -137,6 +190,7 @@ function isArkCodingUrl(url) {
 }
 
 async function callOpenAICompatible({ fetchImpl, url, apiKey, model, role, context }) {
+  const ark = isArkCodingUrl(url);
   const requestBody = {
     model,
     messages: [
@@ -146,13 +200,15 @@ async function callOpenAICompatible({ fetchImpl, url, apiKey, model, role, conte
     max_tokens: MODEL_MAX_TOKENS,
   };
 
-  // Ark Coding can expose reasoning separately from the final answer. Keep the
-  // model's native thinking behavior intact: some models (including
-  // glm-5.3-flash) reject attempts to disable thinking. Authorization still
-  // comes ONLY from the final message.content after strict JSON/schema checks;
-  // reasoning_content is audit metadata at most and is never authorization.
-  if (isArkCodingUrl(url)) {
-    requestBody.response_format = { type: 'json_object' };
+  // Preserve Ark/GLM native thinking. For the final authorization transport,
+  // force one function call so approval does not depend on free-form assistant
+  // text formatting. reasoning_content is never authorization output.
+  if (ark) {
+    requestBody.tools = [REVIEW_TOOL];
+    requestBody.tool_choice = {
+      type: 'function',
+      function: { name: REVIEW_TOOL_NAME },
+    };
   }
 
   const response = await fetchImpl(url, {
@@ -184,6 +240,14 @@ async function callOpenAICompatible({ fetchImpl, url, apiKey, model, role, conte
   if (finishReason === 'length') {
     throw new Error(`${role} provider output truncated (finish_reason=length, reasoning_bytes=${reasoningBytes})`);
   }
+
+  if (ark) {
+    if (typeof content === 'string' && content.trim() !== '') {
+      throw new Error(`${role} returned unexpected assistant content alongside tool verdict`);
+    }
+    return parseReviewToolCall(message?.tool_calls, role);
+  }
+
   if (typeof content !== 'string' || content.trim() === '') {
     throw new Error(`${role} returned empty review content (finish_reason=${finishReason}, reasoning_bytes=${reasoningBytes})`);
   }
