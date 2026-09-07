@@ -17,8 +17,14 @@ function git(cwd, args) {
   });
 }
 
-function parseArgs(argv) {
-  const out = { cwd: process.cwd(), base: null, head: null };
+function parseArgs(argv, env = process.env) {
+  // BASE/HEAD default to env so importing check.mjs never sees --base/--head in
+  // process.argv. check.mjs has a legacy CLI auto-run guard for --base.
+  const out = {
+    cwd: process.cwd(),
+    base: env.BASE_SHA ?? null,
+    head: env.HEAD_SHA ?? null,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--cwd') out.cwd = argv[++i];
     else if (argv[i] === '--base') out.base = argv[++i];
@@ -173,7 +179,8 @@ export async function runMachineReview({ cwd, base, head, env = process.env, fet
     const files = trustResult.authorization.changedFiles ?? [];
     if (files.length > MAX_FILES) throw new Error(`machine review file limit exceeded: ${files.length} > ${MAX_FILES}`);
     const diff = git(cwd, ['diff', '--no-ext-diff', '--unified=3', base, head, '--', ...files]);
-    if (Buffer.byteLength(diff, 'utf8') > MAX_DIFF_BYTES) throw new Error(`machine review diff limit exceeded: ${Buffer.byteLength(diff, 'utf8')} > ${MAX_DIFF_BYTES}`);
+    const diffBytes = Buffer.byteLength(diff, 'utf8');
+    if (diffBytes > MAX_DIFF_BYTES) throw new Error(`machine review diff limit exceeded: ${diffBytes} > ${MAX_DIFF_BYTES}`);
     const context = buildContext({ trustResult, diff });
 
     audit.reviewer = await callOpenAICompatible({ fetchImpl, url, apiKey, model: reviewerModel, role: 'reviewer', context });
