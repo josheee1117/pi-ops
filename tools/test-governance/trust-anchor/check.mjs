@@ -176,6 +176,7 @@ function comparePackageEntrypoints(basePkg, headPkg) {
     if (before === after) continue;
     findings.push({
       kind: 'GOVERNANCE_ENTRYPOINT_CHANGED',
+      changeType: before === undefined ? 'ADDED' : after === undefined ? 'REMOVED' : 'CHANGED',
       file: PACKAGE_JSON,
       field: `scripts.${script}`,
       detail: `package.json scripts["${script}"] ${before === undefined ? 'added' : after === undefined ? 'removed' : 'changed'}`,
@@ -187,6 +188,7 @@ function comparePackageEntrypoints(basePkg, headPkg) {
     if (before === after) continue;
     findings.push({
       kind: 'GOVERNANCE_ENTRYPOINT_CHANGED',
+      changeType: 'CHANGED',
       file: PACKAGE_JSON,
       field,
       detail: `package.json ${field} changed`,
@@ -195,12 +197,42 @@ function comparePackageEntrypoints(basePkg, headPkg) {
   return findings;
 }
 
-function addSourceFinding(bucket, { kind, file, entryId, invariantId, level, detail }) {
+function proofSnapshot(record) {
+  return {
+    level: record.level ?? null,
+    status: record.status ?? null,
+    executionClass: record.executionClass ?? null,
+    file: record.file ?? null,
+    testName: record.testName ?? null,
+    command: record.command ?? null,
+  };
+}
+
+function matchProofRecords(baseRecords, headRecords) {
+  const used = new Set();
+  const pairs = [];
+  const unmatchedBase = [];
+  for (const base of baseRecords) {
+    const idx = headRecords.findIndex((head, i) => !used.has(i) && head.level === base.level);
+    if (idx >= 0) {
+      used.add(idx);
+      pairs.push({ base, head: headRecords[idx] });
+    } else unmatchedBase.push(base);
+  }
+  const unmatchedHead = headRecords.filter((_, i) => !used.has(i));
+  while (unmatchedBase.length > 0 && unmatchedHead.length > 0) {
+    pairs.push({ base: unmatchedBase.shift(), head: unmatchedHead.shift() });
+  }
+  return { pairs, unmatchedBase, unmatchedHead };
+}
+
+function addSourceFinding(bucket, { kind, changeType, file, entryId, invariantId, level, detail }) {
   const key = `${kind}\0${file}`;
   let item = bucket.get(key);
   if (!item) {
     item = {
       kind,
+      changeType,
       file,
       detail,
       catalogEntryIds: [],
@@ -272,54 +304,77 @@ export function checkTrust({ cwd, base, head }) {
   };
   const baseByPair = groupByPair(baseProofs);
   const headByPair = groupByPair(headProofs);
-  const pairFingerprint = (records) => JSON.stringify(records.map(definitionFingerprint).sort());
 
   const changedDefinitions = [];
   const newProofs = [];
   const sourceBucket = new Map();
 
+  function emitDefinition({ changeType, base, head, detail }) {
+    const sample = head ?? base;
+    changedDefinitions.push({
+      kind: 'PROOF_DEFINITION_CHANGED',
+      changeType,
+      catalogEntryId: sample.entryId,
+      invariantId: sample.invariantId,
+      before: base ? proofSnapshot(base) : null,
+      after: head ? proofSnapshot(head) : null,
+      file: sample.file ?? '',
+      catalogEntryIds: [sample.entryId],
+      invariantIds: [sample.invariantId],
+      levels: sortIds([base?.level, head?.level].filter(Boolean)),
+      detail,
+    });
+  }
+
+  function emitNew(record) {
+    const kind = baseInvariants.has(record.invariantId)
+      ? 'NEW_PROOF_REQUIRES_REVIEW'
+      : 'PROOF_DEFINITION_REQUIRES_REVIEW';
+    newProofs.push({
+      kind,
+      catalogEntryId: record.entryId,
+      invariantId: record.invariantId,
+      after: proofSnapshot(record),
+      file: record.file ?? '',
+      catalogEntryIds: [record.entryId],
+      invariantIds: [record.invariantId],
+      levels: sortIds([record.level]),
+      detail: kind === 'NEW_PROOF_REQUIRES_REVIEW'
+        ? `new proof for existing invariant ${record.invariantId}:${record.level}`
+        : `new invariant and proof ${record.invariantId}:${record.level}`,
+    });
+  }
+
   for (const [key, baseRecords] of baseByPair) {
-    const headRecords = headByPair.get(key);
-    const sample = baseRecords[0];
-    if (!headRecords) {
-      changedDefinitions.push({
-        kind: 'PROOF_DEFINITION_CHANGE_REQUIRES_REVIEW',
-        file: sample.file ?? '',
-        catalogEntryIds: [sample.entryId],
-        invariantIds: [sample.invariantId],
-        levels: sortIds(baseRecords.map((item) => item.level)),
-        detail: `accepted proof removed: ${sample.entryId} ${sample.invariantId}`,
+    const headRecords = headByPair.get(key) ?? [];
+    const { pairs, unmatchedBase, unmatchedHead } = matchProofRecords(baseRecords, headRecords);
+    for (const base of unmatchedBase) {
+      emitDefinition({
+        changeType: 'REMOVED',
+        base,
+        head: null,
+        detail: `accepted proof removed: ${base.entryId} ${base.invariantId}`,
       });
-      continue;
     }
-    if (pairFingerprint(baseRecords) !== pairFingerprint(headRecords)) {
-      changedDefinitions.push({
-        kind: 'PROOF_DEFINITION_CHANGE_REQUIRES_REVIEW',
-        file: headRecords[0].file ?? sample.file ?? '',
-        catalogEntryIds: [sample.entryId],
-        invariantIds: [sample.invariantId],
-        levels: sortIds(headRecords.map((item) => item.level)),
-        detail: `accepted proof definition changed: ${sample.entryId} ${sample.invariantId}`,
+    for (const head of unmatchedHead) emitNew(head);
+    for (const { base, head } of pairs) {
+      if (definitionFingerprint(base) === definitionFingerprint(head)) continue;
+      let changeType = 'DEFINITION_CHANGED';
+      if (base.status === 'PINNED' && head.status !== 'PINNED') changeType = 'STATUS_CHANGED';
+      else if (base.status !== head.status) changeType = 'STATUS_CHANGED';
+      else if (base.level !== head.level) changeType = 'GRADE_CHANGED';
+      emitDefinition({
+        changeType,
+        base,
+        head,
+        detail: `accepted proof definition changed: ${base.entryId} ${base.invariantId}`,
       });
     }
   }
 
   for (const [key, headRecords] of headByPair) {
     if (baseByPair.has(key)) continue;
-    const sample = headRecords[0];
-    const kind = baseInvariants.has(sample.invariantId)
-      ? 'NEW_PROOF_REQUIRES_REVIEW'
-      : 'PROOF_DEFINITION_REQUIRES_REVIEW';
-    newProofs.push({
-      kind,
-      file: sample.file ?? '',
-      catalogEntryIds: [sample.entryId],
-      invariantIds: [sample.invariantId],
-      levels: sortIds(headRecords.map((item) => item.level)),
-      detail: kind === 'NEW_PROOF_REQUIRES_REVIEW'
-        ? `new proof for existing invariant ${sample.invariantId}:${sample.level}`
-        : `new invariant and proof ${sample.invariantId}:${sample.level}`,
-    });
+    for (const record of headRecords) emitNew(record);
   }
 
   const seenFiles = new Set();
@@ -331,10 +386,12 @@ export function checkTrust({ cwd, base, head }) {
       if (before !== after) {
         const pinned = baseProofs.some((item) => item.file === record.file && item.status === 'PINNED');
         const kind = pinned ? 'PINNED_PROOF_SOURCE_CHANGE_REQUIRES_REVIEW' : 'PROOF_SOURCE_CHANGE_REQUIRES_REVIEW';
+        const changeType = after === null ? 'SOURCE_DELETED' : 'SOURCE_CHANGED';
         const detail = after === null ? `accepted proof source deleted: ${record.file}` : `accepted proof source changed: ${record.file}`;
         for (const item of baseProofs.filter((row) => row.file === record.file)) {
           addSourceFinding(sourceBucket, {
             kind,
+            changeType,
             file: record.file,
             entryId: item.entryId,
             invariantId: item.invariantId,
@@ -351,6 +408,7 @@ export function checkTrust({ cwd, base, head }) {
     if (before === after) continue;
     addSourceFinding(sourceBucket, {
       kind: record.status === 'PINNED' ? 'PINNED_PROOF_SOURCE_CHANGE_REQUIRES_REVIEW' : 'PROOF_SOURCE_CHANGE_REQUIRES_REVIEW',
+      changeType: 'SOURCE_CHANGED',
       file: PACKAGE_JSON,
       entryId: record.entryId,
       invariantId: record.invariantId,
