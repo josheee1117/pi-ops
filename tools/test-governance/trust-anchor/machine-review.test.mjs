@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   machineConsensus,
+  normalizeAuthorizationForReview,
   parseReviewContent,
   parseReviewToolCall,
   validateReviewResult,
@@ -43,6 +44,32 @@ test('repository prompt-injection text has no local authorization meaning', () =
   });
   assert.equal(result.decision, 'REJECT');
   assert.equal(machineConsensus(result, result), 'FAIL');
+});
+
+test('K1 machine-review context normalizes legacy HUMAN_REQUIRED and removes K0-only label', () => {
+  const result = normalizeAuthorizationForReview({
+    decision: 'HUMAN_REQUIRED',
+    route: 'MACHINE_REVIEW',
+    labels: ['KERNEL_CHANGED', 'MACHINE_REVIEW_SURFACE_CHANGED'],
+    reasonCodes: ['MACHINE_REVIEW_SURFACE_CHANGED'],
+    trustRootChanges: [],
+    machineReviewChanges: ['tools/test-governance/src/core.mjs'],
+  });
+  assert.equal(result.decision, 'MACHINE_REVIEW_REQUIRED');
+  assert.deepEqual(result.labels, ['MACHINE_REVIEW_SURFACE_CHANGED']);
+  assert.deepEqual(result.trustRootChanges, []);
+});
+
+test('break-glass context never hides K0 labels', () => {
+  const result = normalizeAuthorizationForReview({
+    decision: 'HUMAN_REQUIRED',
+    route: 'BREAK_GLASS',
+    labels: ['KERNEL_CHANGED', 'TRUST_ROOT_CHANGED'],
+    trustRootChanges: ['tools/test-governance/trust-anchor/check.mjs'],
+    machineReviewChanges: [],
+  });
+  assert.equal(result.decision, 'HUMAN_REQUIRED');
+  assert.deepEqual(result.labels, ['KERNEL_CHANGED', 'TRUST_ROOT_CHANGED']);
 });
 
 test('strict JSON review content is parsed and validated', () => {
