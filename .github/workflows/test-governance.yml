@@ -62,11 +62,40 @@ jobs:
           echo "head=$head" >> "$GITHUB_OUTPUT"
 
       - name: Run deterministic Test Governance Gate
-        run: >-
-          pnpm test:gate --
-          --base "${{ steps.range.outputs.base }}"
-          --head "${{ steps.range.outputs.head }}"
-          --max-gate 3
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ steps.range.outputs.base }}
+          HEAD_SHA: ${{ steps.range.outputs.head }}
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/test-governance-gate.json"
+          set +e
+          node tools/test-governance/src/cli.mjs gate \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --max-gate 3 \
+            --json > "$result"
+          code=$?
+          set -e
+          cat "$result"
+
+          if [[ "$code" -eq 0 ]]; then
+            exit 0
+          fi
+
+          status="$(node -e 'const fs=require("node:fs"); const r=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(r.status || "INTERNAL_ERROR"));' "$result")"
+
+          # The ordinary HEAD-side gate detects governance changes but is not
+          # the authorization boundary. On pull requests only, defer the exact
+          # review-required state to the BASE-controlled Governance Trust Anchor.
+          # Every real gate failure remains non-zero, and direct pushes never get
+          # this delegation path.
+          if [[ "$EVENT_NAME" == "pull_request" && "$status" == "GOVERNANCE_REVIEW_REQUIRED" ]]; then
+            echo "::notice::GOVERNANCE_REVIEW_REQUIRED deferred to authoritative Governance Trust Anchor"
+            exit 0
+          fi
+
+          exit "$code"
 
       - name: Upload Test Evidence Artifacts
         if: always()
