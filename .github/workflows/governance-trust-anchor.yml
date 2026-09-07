@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       decision: ${{ steps.detect.outputs.decision }}
+      route: ${{ steps.detect.outputs.route }}
     steps:
       - name: Check out BASE
         uses: actions/checkout@v4
@@ -37,19 +38,69 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          result="$RUNNER_TEMP/governance-trust-anchor.json"
           set +e
-          node tools/test-governance/trust-anchor/check.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+          node tools/test-governance/trust-anchor/check.mjs --json --base "$BASE_SHA" --head "$HEAD_SHA" > "$result"
           code=$?
           set -e
+          cat "$result"
+          decision="$(node -e 'const r=require(process.argv[1]); process.stdout.write(r.status || "INTERNAL_ERROR")' "$result")"
+          route="$(node -e 'const r=require(process.argv[1]); process.stdout.write(r.authorization?.route || "NONE")' "$result")"
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+          echo "route=$route" >> "$GITHUB_OUTPUT"
           if [[ "$code" -eq 0 || "$code" -eq 2 || "$code" -eq 4 ]]; then
             exit 0
           fi
-          echo "decision=INTERNAL_ERROR" >> "$GITHUB_OUTPUT"
           exit 1
+
+  machine-review:
+    needs: detect
+    if: needs.detect.outputs.decision == 'HUMAN_REQUIRED' && needs.detect.outputs.route == 'MACHINE_REVIEW'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out BASE
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Assert HEAD is a local git object
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git cat-file -e "$HEAD_SHA^{commit}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run read-only Governance Reviewer and Critic
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GOVERNANCE_REVIEW_API_URL: ${{ vars.GOVERNANCE_REVIEW_API_URL }}
+          GOVERNANCE_REVIEW_API_KEY: ${{ secrets.GOVERNANCE_REVIEW_API_KEY }}
+          GOVERNANCE_REVIEWER_MODEL: ${{ vars.GOVERNANCE_REVIEWER_MODEL }}
+          GOVERNANCE_CRITIC_MODEL: ${{ vars.GOVERNANCE_CRITIC_MODEL }}
+          GOVERNANCE_MACHINE_REVIEW_AUDIT: ${{ runner.temp }}/governance-machine-review.json
+        run: node tools/test-governance/trust-anchor/machine-review.mjs
+
+      - name: Upload machine review audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-machine-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/governance-machine-review.json
+          if-no-files-found: warn
+          retention-days: 30
 
   authorize:
     needs: detect
-    if: needs.detect.outputs.decision == 'HUMAN_REQUIRED'
+    if: needs.detect.outputs.decision == 'HUMAN_REQUIRED' && needs.detect.outputs.route == 'BREAK_GLASS'
     runs-on: ubuntu-latest
     environment:
       name: governance-review
@@ -63,10 +114,10 @@ jobs:
             echo "governance-review environment is not configured" >&2
             exit 1
           fi
-          echo "Governance change externally authorized"
+          echo "Trust-root change explicitly acknowledged by human break-glass"
 
   final:
-    needs: [detect, authorize]
+    needs: [detect, machine-review, authorize]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -86,5 +137,7 @@ jobs:
         env:
           DETECT_RESULT: ${{ needs.detect.result }}
           DETECT_DECISION: ${{ needs.detect.outputs.decision }}
+          DETECT_ROUTE: ${{ needs.detect.outputs.route }}
+          MACHINE_REVIEW_RESULT: ${{ needs.machine-review.result }}
           AUTHORIZE_RESULT: ${{ needs.authorize.result }}
         run: node tools/test-governance/trust-anchor/final-decision.mjs

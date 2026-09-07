@@ -1,13 +1,27 @@
 /**
- * Combine detector + authorization job results into the required-check outcome.
- * Detection stays in check.mjs. This file does not inspect HEAD.
+ * Combine BASE detector + machine review / break-glass results into the
+ * authoritative required-check outcome. This file never inspects HEAD code.
  */
-export function finalDecision({ detectStatus, detectDecision, authorizeStatus }) {
+export function finalDecision({
+  detectStatus,
+  detectDecision,
+  detectRoute,
+  machineReviewStatus,
+  authorizeStatus,
+}) {
   if (detectStatus !== 'success') return 'FAIL';
   if (detectDecision === 'PASS' || detectDecision === 'LOW_PASS') return 'PASS';
-  if (detectDecision === 'HUMAN_REQUIRED' || detectDecision === 'REVIEW_REQUIRED') {
-    return authorizeStatus === 'success' ? 'PASS' : 'FAIL';
+
+  if (detectDecision === 'HUMAN_REQUIRED') {
+    if (detectRoute === 'MACHINE_REVIEW') return machineReviewStatus === 'success' ? 'PASS' : 'FAIL';
+    if (detectRoute === 'BREAK_GLASS') return authorizeStatus === 'success' ? 'PASS' : 'FAIL';
+    // Legacy v2.0 compatibility: an older checker had no route and used the
+    // Environment for HUMAN_REQUIRED.
+    if (!detectRoute || detectRoute === 'NONE') return authorizeStatus === 'success' ? 'PASS' : 'FAIL';
+    return 'FAIL';
   }
+
+  if (detectDecision === 'REVIEW_REQUIRED') return authorizeStatus === 'success' ? 'PASS' : 'FAIL';
   if (detectDecision === 'REJECT' || detectDecision === 'INTERNAL_ERROR') return 'FAIL';
   return 'FAIL';
 }
@@ -20,6 +34,8 @@ if (isCli()) {
   const result = finalDecision({
     detectStatus: process.env.DETECT_RESULT,
     detectDecision: process.env.DETECT_DECISION,
+    detectRoute: process.env.DETECT_ROUTE,
+    machineReviewStatus: process.env.MACHINE_REVIEW_RESULT,
     authorizeStatus: process.env.AUTHORIZE_RESULT,
   });
   console.log(`final=${result}`);
