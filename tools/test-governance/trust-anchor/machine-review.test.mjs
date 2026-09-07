@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { machineConsensus, validateReviewResult } from './machine-review.mjs';
+import { machineConsensus, parseReviewContent, validateReviewResult } from './machine-review.mjs';
 
 test('machine consensus requires reviewer AND critic approval', () => {
   const approve = { decision: 'APPROVE', blockingFindings: [], riskNotes: [], summary: 'safe' };
@@ -38,4 +38,27 @@ test('repository prompt-injection text has no local authorization meaning', () =
   });
   assert.equal(result.decision, 'REJECT');
   assert.equal(machineConsensus(result, result), 'FAIL');
+});
+
+test('strict JSON review content is parsed and validated', () => {
+  const result = parseReviewContent(JSON.stringify({
+    decision: 'APPROVE',
+    blockingFindings: [],
+    riskNotes: ['inert change'],
+    summary: 'safe',
+  }));
+  assert.equal(result.decision, 'APPROVE');
+});
+
+test('JSON fenced output is tolerated but still schema validated', () => {
+  const result = parseReviewContent('```json\n{"decision":"REJECT","blockingFindings":["risk"],"riskNotes":[],"summary":"blocked"}\n```', 'critic');
+  assert.equal(result.decision, 'REJECT');
+});
+
+test('empty model content fails closed', () => {
+  assert.throws(() => parseReviewContent('', 'reviewer'), /empty review content/);
+});
+
+test('non-JSON prose fails closed', () => {
+  assert.throws(() => parseReviewContent('APPROVE because this is safe', 'reviewer'), /non-JSON review content/);
 });
