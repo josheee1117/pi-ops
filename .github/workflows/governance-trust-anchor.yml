@@ -87,7 +87,7 @@ jobs:
           GOVERNANCE_REVIEWER_MODEL: ${{ vars.GOVERNANCE_REVIEWER_MODEL }}
           GOVERNANCE_CRITIC_MODEL: ${{ vars.GOVERNANCE_CRITIC_MODEL }}
           GOVERNANCE_MACHINE_REVIEW_AUDIT: ${{ runner.temp }}/governance-machine-review.json
-        run: node tools/test-governance/trust-anchor/machine-review.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+        run: node tools/test-governance/trust-anchor/machine-review.mjs
 
       - name: Upload machine review audit
         if: always()
