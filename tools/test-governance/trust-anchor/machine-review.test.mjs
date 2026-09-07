@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { machineConsensus, parseReviewContent, validateReviewResult } from './machine-review.mjs';
+import {
+  machineConsensus,
+  parseReviewContent,
+  parseReviewToolCall,
+  validateReviewResult,
+} from './machine-review.mjs';
 
 test('machine consensus requires reviewer AND critic approval', () => {
   const approve = { decision: 'APPROVE', blockingFindings: [], riskNotes: [], summary: 'safe' };
@@ -61,4 +66,58 @@ test('empty model content fails closed', () => {
 
 test('non-JSON prose fails closed', () => {
   assert.throws(() => parseReviewContent('APPROVE because this is safe', 'reviewer'), /non-JSON review content/);
+});
+
+test('JSON followed by trailing prose still fails closed', () => {
+  assert.throws(() => parseReviewContent(
+    '{"decision":"APPROVE","blockingFindings":[],"riskNotes":[],"summary":"safe"} extra text',
+    'reviewer',
+  ), /non-JSON review content/);
+});
+
+test('forced governance review tool call is parsed and validated', () => {
+  const result = parseReviewToolCall([{
+    type: 'function',
+    function: {
+      name: 'submit_governance_review',
+      arguments: JSON.stringify({
+        decision: 'APPROVE',
+        blockingFindings: [],
+        riskNotes: ['inert K1 change'],
+        summary: 'safe',
+      }),
+    },
+  }]);
+  assert.equal(result.decision, 'APPROVE');
+});
+
+test('unexpected governance review tool name fails closed', () => {
+  assert.throws(() => parseReviewToolCall([{
+    type: 'function',
+    function: {
+      name: 'approve_everything',
+      arguments: '{}',
+    },
+  }]), /unexpected tool call/);
+});
+
+test('multiple governance review tool calls fail closed', () => {
+  const call = {
+    type: 'function',
+    function: {
+      name: 'submit_governance_review',
+      arguments: '{"decision":"APPROVE","blockingFindings":[],"riskNotes":[],"summary":"safe"}',
+    },
+  };
+  assert.throws(() => parseReviewToolCall([call, call]), /exactly one/);
+});
+
+test('invalid tool arguments still fail local schema validation', () => {
+  assert.throws(() => parseReviewToolCall([{
+    type: 'function',
+    function: {
+      name: 'submit_governance_review',
+      arguments: '{"decision":"APPROVE","blockingFindings":["hidden risk"],"riskNotes":[],"summary":"unsafe approve"}',
+    },
+  }]), /APPROVE cannot contain blockingFindings/);
 });
