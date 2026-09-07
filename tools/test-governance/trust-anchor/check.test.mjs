@@ -275,8 +275,85 @@ test('J. existing Proof grade change requires review', () => {
   });
   try {
     const result = run(fx);
+    const changed = result.proofIntegrity.changedDefinitions.find((item) => item.changeType === 'GRADE_CHANGED');
+    assert.equal(changed.before.level, 'C');
+    assert.equal(changed.after.level, 'A');
     assert.equal(result.status, 'HUMAN_REQUIRED');
-    assert.ok(result.proofIntegrity.changedDefinitions.some((item) => item.kind === 'PROOF_DEFINITION_CHANGE_REQUIRES_REVIEW'));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('accepted Proof A→C is REJECT from structured fields', () => {
+  const fx = fixture({ entries: [testEntry({ level: 'A' })] }, (repo) => {
+    writeJson(repo, 'tools/test-governance/config/catalog.json', catalog([testEntry({ level: 'C' })]));
+  });
+  try {
+    const result = run(fx);
+    const changed = result.proofIntegrity.changedDefinitions[0];
+    assert.equal(changed.changeType, 'GRADE_CHANGED');
+    assert.equal(changed.before.level, 'A');
+    assert.equal(changed.after.level, 'C');
+    assert.equal(result.status, 'REJECT');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('accepted Proof A→B and B→C are REJECT', () => {
+  for (const [from, to] of [['A', 'B'], ['B', 'C']]) {
+    const fx = fixture({ entries: [testEntry({ level: from })] }, (repo) => {
+      writeJson(repo, 'tools/test-governance/config/catalog.json', catalog([testEntry({ level: to })]));
+    });
+    try {
+      const result = run(fx);
+      assert.equal(result.proofIntegrity.changedDefinitions[0].before.level, from);
+      assert.equal(result.proofIntegrity.changedDefinitions[0].after.level, to);
+      assert.equal(result.status, 'REJECT', `${from} -> ${to}`);
+    } finally {
+      fx.cleanup();
+    }
+  }
+});
+
+test('accepted Proof removed is REJECT', () => {
+  const fx = fixture({ entries: [testEntry({ level: 'A' })] }, (repo) => {
+    writeJson(repo, 'tools/test-governance/config/catalog.json', catalog([]));
+  });
+  try {
+    const result = run(fx);
+    assert.equal(result.proofIntegrity.changedDefinitions[0].changeType, 'REMOVED');
+    assert.equal(result.proofIntegrity.changedDefinitions[0].after, null);
+    assert.equal(result.status, 'REJECT');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('PINNED → ACTIVE is REJECT', () => {
+  const fx = fixture({ entries: [testEntry({ status: 'PINNED' })] }, (repo) => {
+    writeJson(repo, 'tools/test-governance/config/catalog.json', catalog([testEntry({ status: 'ACTIVE' })]));
+  });
+  try {
+    const result = run(fx);
+    assert.equal(result.proofIntegrity.changedDefinitions[0].changeType, 'STATUS_CHANGED');
+    assert.equal(result.proofIntegrity.changedDefinitions[0].before.status, 'PINNED');
+    assert.equal(result.proofIntegrity.changedDefinitions[0].after.status, 'ACTIVE');
+    assert.equal(result.status, 'REJECT');
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('PINNED removed is REJECT', () => {
+  const fx = fixture({ entries: [testEntry({ status: 'PINNED' })] }, (repo) => {
+    writeJson(repo, 'tools/test-governance/config/catalog.json', catalog([]));
+  });
+  try {
+    const result = run(fx);
+    assert.equal(result.proofIntegrity.changedDefinitions[0].changeType, 'REMOVED');
+    assert.equal(result.proofIntegrity.changedDefinitions[0].before.status, 'PINNED');
+    assert.equal(result.status, 'REJECT');
   } finally {
     fx.cleanup();
   }
@@ -317,7 +394,7 @@ test('accepted proof source deletion requires review', () => {
   try {
     const result = run(fx);
     assert.equal(result.status, 'REJECT');
-    assert.ok(result.proofIntegrity.changedSources.some((item) => /deleted/.test(item.detail)));
+    assert.ok(result.proofIntegrity.changedSources.some((item) => item.changeType === 'SOURCE_DELETED'));
   } finally {
     fx.cleanup();
   }
