@@ -33,8 +33,9 @@ function hasRecognizedJfrSemantics(data: unknown): boolean {
 export function classifyEvidence(evidence: EvidenceRecord): EvidenceProfile {
   const failed = evidence.status === 'failed';
   let category: EvidenceCategory = 'weak_signal';
-  if (!failed && evidence.kind === 'jfr.signal' && hasRecognizedJfrSemantics(evidence.data)) category = 'primary_signal';
-  else if (!failed && PRIMARY_KINDS.has(evidence.kind)) category = 'primary_signal';
+  if (!failed && evidence.kind === 'jfr.signal') {
+    category = hasRecognizedJfrSemantics(evidence.data) ? 'primary_signal' : 'weak_signal';
+  } else if (!failed && PRIMARY_KINDS.has(evidence.kind)) category = 'primary_signal';
   else if (!failed && SUPPORTING_KINDS.has(evidence.kind)) category = 'supporting_signal';
   else category = 'weak_signal';
 

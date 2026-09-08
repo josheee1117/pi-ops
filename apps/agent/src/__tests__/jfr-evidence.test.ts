@@ -326,61 +326,29 @@ describe('JFR semantic evidence projector', () => {
     assert.deepEqual((projected.data as { attributes: Record<string, unknown> }).attributes, {});
   });
 
-  it('A. known semantic jvm.cpu_pressure is primary_signal', () => {
-    const projected = projectJfrSignalEvidence({ id: 'inc-1', node_id: 'n' }, {
-      schemaVersion: 1,
-      id: 'evt-cpu',
-      time: '2026-08-20T12:00:00.000Z',
-      source: 'jfr',
+  it('jfr.signal is first-party primary evidence, not weak', () => {
+    const profile = classifyEvidence({
+      id: 'jfr-1',
+      incidentId: 'inc-1',
       nodeId: 'n',
-      service: 'data-asset-service',
-      type: 'jvm.cpu_pressure',
-      severity: 'warning',
-      message: 'JVM CPU pressure',
-      attributes: { jvmUser: 0.9, jvmSystem: 0.1, machineTotal: 0.95, containerName: 'data-asset' },
-    })!;
-    assert.equal((projected.data as { semanticType: string }).semanticType, 'jvm.cpu_pressure');
-    const profile = classifyEvidence(projected);
+      source: 'jfr',
+      kind: 'jfr.signal',
+      collectedAt: '2026-08-20T12:00:00.000Z',
+      status: 'succeeded',
+      data: { semanticType: 'jvm.cpu_pressure', attributes: { jvmUser: 0.9 } },
+    });
     assert.equal(profile.category, 'primary_signal');
-    assert.equal(profile.reliabilityScore, 0.95);
-    assert.equal(profile.diagnosticWeight, 1);
-  });
-
-  it('B. unknown JFR envelope is weak_signal', () => {
-    const projected = projectJfrSignalEvidence({ id: 'inc-1', node_id: 'n' }, {
-      schemaVersion: 1,
-      id: 'evt-mystery',
-      time: '2026-08-20T12:00:00.000Z',
-      source: 'jfr',
+    const logs = classifyEvidence({
+      id: 'logs-1',
+      incidentId: 'inc-1',
       nodeId: 'n',
-      service: 'data-asset-service',
-      type: 'jvm.mystery_signal',
-      severity: 'warning',
-      message: 'unknown jfr',
-      attributes: { heap: 99 },
-    })!;
-    assert.equal((projected.data as { semanticType?: string }).semanticType, undefined);
-    assert.deepEqual((projected.data as { attributes: object }).attributes, {});
-    const profile = classifyEvidence(projected);
-    assert.equal(profile.category, 'weak_signal');
-  });
-
-  it('C. known type with no valid semantic attributes is weak_signal', () => {
-    const projected = projectJfrSignalEvidence({ id: 'inc-1', node_id: 'n' }, {
-      schemaVersion: 1,
-      id: 'evt-empty-cpu',
-      time: '2026-08-20T12:00:00.000Z',
-      source: 'jfr',
-      nodeId: 'n',
-      service: 'data-asset-service',
-      type: 'jvm.cpu_pressure',
-      severity: 'warning',
-      message: 'JVM CPU pressure',
-      attributes: { jvmUser: '0.9', jvmSystem: true, machineTotal: 2 },
-    })!;
-    assert.equal((projected.data as { semanticType?: string }).semanticType, undefined);
-    assert.deepEqual((projected.data as { attributes: object }).attributes, {});
-    const profile = classifyEvidence(projected);
-    assert.equal(profile.category, 'weak_signal');
+      source: 'docker',
+      kind: 'docker.logs',
+      collectedAt: '2026-08-20T12:00:00.000Z',
+      status: 'succeeded',
+      data: {},
+    });
+    assert.equal(logs.category, 'weak_signal');
+    assert.ok(profile.diagnosticWeight > logs.diagnosticWeight);
   });
 });
