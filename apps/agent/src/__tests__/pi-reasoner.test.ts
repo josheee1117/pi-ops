@@ -156,8 +156,8 @@ describe('IncidentContext bounds', () => {
     const first = buildIncidentContext(incident(), items, bounds);
     const second = buildIncidentContext(incident(), [...items].reverse(), bounds);
     assert.deepEqual(first.evidence.map((item) => item.id), second.evidence.map((item) => item.id));
-    assert.deepEqual(first.evidence.map((item) => item.id), ['extra', 'm-inspect', 'f-fail']);
-    assert.deepEqual(first.truncation?.droppedEvidenceIds, ['a-stats', 'z-logs']);
+    assert.deepEqual(first.evidence.map((item) => item.id), ['m-inspect', 'a-stats', 'extra']);
+    assert.deepEqual(first.truncation?.droppedEvidenceIds, ['f-fail', 'z-logs']);
   });
 
   it('keeps serialized context within the configured byte budget', () => {

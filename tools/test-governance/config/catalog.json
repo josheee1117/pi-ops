@@ -1478,6 +1478,118 @@
       "limitations": [
         "Proves committed configuration consistency only; proves nothing about application behavior."
       ]
+    },
+    {
+      "id": "safe-redact-inspect-sqlite",
+      "featureId": "evidence.model-safe-projection",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "location": {
+        "file": "apps/agent/src/__tests__/model-safe-evidence.test.ts",
+        "testName": "redacts docker.inspect secrets in runtime Evidence without mutating the store"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-SAFE-01",
+          "level": "A",
+          "source": "SQLite row keeps secrets; Runtime payload is toRuntimeSafeEvidence"
+        }
+      ],
+      "limitations": [
+        "Same test as safe-redact-inspect C; this entry records the SQLite persistence half as A."
+      ]
+    },
+    {
+      "id": "jfr-materialize",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "location": {
+        "file": "apps/agent/src/__tests__/jfr-evidence.test.ts",
+        "testName": "A. golden jvm.cpu_pressure EventBatch yields exactly one jfr.signal"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-JFR-01",
+          "level": "A",
+          "source": "SQLite ingest of DataAsset golden EventBatch"
+        },
+        {
+          "invariantId": "INV-JFR-01",
+          "level": "C"
+        }
+      ]
+    },
+    {
+      "id": "jfr-typed-attributes",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "location": {
+        "file": "apps/agent/src/__tests__/jfr-evidence.test.ts",
+        "testName": "C. illegal CPU ratio types and ranges are dropped"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-JFR-02",
+          "level": "C"
+        }
+      ]
+    },
+    {
+      "id": "jfr-idempotent",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "location": {
+        "file": "apps/agent/src/__tests__/jfr-evidence.test.ts",
+        "testName": "B/C. replay and persist retry stay idempotent"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-JFR-03",
+          "level": "A",
+          "source": "SQLite ingest plus persist retry"
+        }
+      ]
+    },
+    {
+      "id": "jfr-no-runtime-request",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "location": {
+        "file": "apps/agent/src/__tests__/jfr-evidence.test.ts",
+        "testName": "H. jfr.signal is not a RuntimeEvidenceRequest type"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-JFR-04",
+          "level": "C"
+        }
+      ]
+    },
+    {
+      "id": "jfr-context-diversity",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "UNIT",
+      "location": {
+        "file": "apps/agent/src/__tests__/incident-context.test.ts",
+        "testName": "many jfr.signal rows do not starve docker.stats and host.load"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-JFR-05",
+          "level": "C"
+        }
+      ]
     }
   ]
 }

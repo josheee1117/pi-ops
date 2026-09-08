@@ -18,7 +18,7 @@ export interface EvidenceRelevanceScore {
   relevanceScore: number;
 }
 
-const PRIMARY_KINDS = new Set(['docker.inspect', 'http.probe', 'docker.stats']);
+const PRIMARY_KINDS = new Set(['jfr.signal', 'docker.inspect', 'http.probe', 'docker.stats']);
 const SUPPORTING_KINDS = new Set(['host.memory', 'host.load', 'host.disk']);
 
 export function classifyEvidence(evidence: EvidenceRecord): EvidenceProfile {

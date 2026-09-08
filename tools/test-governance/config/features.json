@@ -120,6 +120,54 @@
       ]
     },
     {
+      "id": "evidence.jfr-semantic",
+      "riskClass": "high",
+      "riskScore": 10,
+      "maintenanceBudget": 10,
+      "paths": [
+        "apps/agent/src/jfr-evidence.ts",
+        "apps/agent/src/evidence-intelligence.ts"
+      ],
+      "invariants": [
+        {
+          "id": "INV-JFR-01",
+          "statement": "Accepted JFR OpsEvent linked to an Incident deterministically materializes canonical jfr.signal Evidence.",
+          "requiredEvidence": {
+            "A": 1,
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-JFR-02",
+          "statement": "Known JFR semantic attributes are allowlisted, typed and bounded; unknown fields and types cannot flow into Runtime attributes.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-JFR-03",
+          "statement": "The same immutable Event cannot create duplicate JFR Evidence.",
+          "requiredEvidence": {
+            "A": 1
+          }
+        },
+        {
+          "id": "INV-JFR-04",
+          "statement": "jfr.signal is push-derived and cannot be requested through Runtime missingEvidence or the Evidence API.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        },
+        {
+          "id": "INV-JFR-05",
+          "statement": "Model-facing context preserves JFR Evidence together with relevant cross-layer Host/Docker Evidence under bounded selection.",
+          "requiredEvidence": {
+            "C": 1
+          }
+        }
+      ]
+    },
+    {
       "id": "evidence.job-lifecycle",
       "riskClass": "high",
       "riskScore": 10,

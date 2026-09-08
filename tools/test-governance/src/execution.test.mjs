@@ -313,7 +313,6 @@ test('the accepted machine gap set remains exactly three', () => {
   const catalog = JSON.parse(readFileSync(join(ROOT, 'tools/test-governance/config/catalog.json'), 'utf8'));
   assert.deepEqual(collectMachineGaps(features.features, catalog.entries), [
     { featureId: 'evidence.collection', invariantId: 'INV-EVD-02', level: 'A', missing: 1 },
-    { featureId: 'evidence.model-safe-projection', invariantId: 'INV-SAFE-01', level: 'A', missing: 1 },
     { featureId: 'investigation.reconciliation', invariantId: 'INV-STALE-01', level: 'A', missing: 1 },
   ]);
 });

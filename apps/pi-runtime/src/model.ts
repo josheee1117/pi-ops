@@ -33,7 +33,7 @@ export interface FakeRuntimeModelOptions {
 }
 
 const ROLE_EVIDENCE: Record<SpecialistRole, string[]> = {
-  jvm: ['host.memory', 'docker.stats', 'host.load'],
+  jvm: ['jfr.signal', 'host.memory', 'docker.stats', 'host.load'],
   database: ['docker.stats', 'host.load', 'docker.inspect'],
   container_host: ['docker.inspect', 'docker.stats', 'host.memory', 'host.load', 'docker.logs'],
   application_business: ['http.probe', 'docker.logs', 'docker.inspect', 'host.load'],
