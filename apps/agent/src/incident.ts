@@ -1,6 +1,7 @@
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { EvidenceJob, EventStore } from './store.js';
 import { computeFingerprint, RECOVERY_TYPE_MAP } from './fingerprint.js';
+import { persistJfrSignalEvidence } from './jfr-evidence.js';
 
 export { computeFingerprint } from './fingerprint.js';
 
@@ -79,6 +80,10 @@ export function createIncidentEngine(
       && current - origin >= config.aggregationWindowMs;
   }
 
+  function maybePersistJfr(incidentId: string, nodeId: string, event: OpsEvent): void {
+    persistJfrSignalEvidence(store, { id: incidentId, node_id: nodeId }, event);
+  }
+
   function maybeCollectEvidence(
     incidentId: string,
     event: OpsEvent,
@@ -117,6 +122,7 @@ export function createIncidentEngine(
       // Incident, regardless of time window or current Incident state.
       const linkedIncident = store.findIncidentByEventId(event.id);
       if (linkedIncident) {
+        maybePersistJfr(linkedIncident.id, linkedIncident.node_id, event);
         return {
           ignored: false,
           incidentId: linkedIncident.id,
@@ -161,6 +167,7 @@ export function createIncidentEngine(
         });
 
         maybeCollectEvidence(existing.id, event, previousSeverity);
+        maybePersistJfr(existing.id, existing.node_id, event);
         reconcileFingerprint(fingerprint);
         return {
           ignored: false,
@@ -202,6 +209,7 @@ export function createIncidentEngine(
           reasonerVersion: config.reasonerVersion ?? '1',
         });
       reconcileFingerprint(fingerprint);
+      maybePersistJfr(newIncident.id, newIncident.node_id, event);
 
       return {
         ignored: false,

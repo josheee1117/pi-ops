@@ -47,6 +47,7 @@ const SECRET_KEY = /^(authorization|cookie|set-cookie|password|passwd|secret|tok
 const ENV_KEY = /^(env|environment)$/i;
 
 const KIND_RANK: Record<string, number> = {
+  'jfr.signal': 0,
   'docker.inspect': 0,
   'http.probe': 1,
   'docker.stats': 2,
@@ -57,7 +58,7 @@ const KIND_RANK: Record<string, number> = {
 };
 
 export function evidenceRank(item: Pick<EvidenceRecord, 'kind' | 'status'>): number {
-  if (item.kind === 'docker.inspect' || item.kind === 'http.probe') return 0;
+  if (item.kind === 'jfr.signal' || item.kind === 'docker.inspect' || item.kind === 'http.probe') return 0;
   if (item.status === 'failed') return 1;
   return KIND_RANK[item.kind] ?? 4;
 }

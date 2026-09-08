@@ -85,7 +85,8 @@
       "maintenanceBudget": 10,
       "paths": [
         "apps/agent/src/evidence-orchestrator.ts",
-        "apps/agent/src/runtime-evidence-resolver.ts"
+        "apps/agent/src/runtime-evidence-resolver.ts",
+        "apps/agent/src/jfr-evidence.ts"
       ],
       "invariants": [
         {

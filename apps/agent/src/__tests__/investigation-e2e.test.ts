@@ -517,6 +517,45 @@ describe('investigation failure E2E', () => {
     harness.close();
   });
 
+  it('carries golden JFR cpu pressure into InvestigationReport supportingEvidenceIds', async () => {
+    const harness = buildHarness();
+    const event = {
+      schemaVersion: 1 as const,
+      id: '7485a02c9adb58d0733616253dde962d7790f6a4a6d1d430ba48a1594f66b509',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'jfr' as const,
+      nodeId: 'test-svc-02',
+      service: 'data-asset-service',
+      type: 'jvm.cpu_pressure',
+      severity: 'warning' as const,
+      message: 'JVM CPU pressure',
+      attributes: { jvmUser: 0.9, jvmSystem: 0.1, machineTotal: 0.95, containerName: 'data-asset' },
+    };
+    const ingested = await harness.agentApp.request('/v1/events', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ingest-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        producer: { id: 'data-asset', type: 'application', version: '0.1.0' },
+        events: [event],
+      }),
+    });
+    assert.equal(ingested.status, 200);
+    const incident = harness.store.listIncidents()[0]!;
+    const jfrId = `jfr-${event.id}`;
+    assert.equal(harness.store.getEvidence(jfrId)?.kind, 'jfr.signal');
+    const job = harness.store.getEvidenceJob(`job-${incident.id}`)!;
+    await harness.orchestrator.collectForIncident(incident, job.triggeringEvent);
+    assert.equal(harness.nodeAgentCalls.includes('jfr.signal'), false);
+    const { session } = harness.loop.start(incident.id);
+    await harness.loop.submit(session.id);
+    await harness.runtime.drain();
+    const report = harness.store.getInvestigationReportBySessionId(session.id)!;
+    assert.ok(report.supportingEvidenceIds.includes(jfrId));
+    const jvmCalls = harness.model.calls.filter((call) => call.role === 'jvm');
+    assert.ok(jvmCalls.some((call) => call.ids.includes(jfrId)));
+    harness.close();
+  });
+
   it('fails session, task and ReasoningJob when the runtime is unreachable', async () => {
     const harness = buildHarness({ runtimeReachable: false });
     const incident = await ingestAndCollectInitialEvidence(harness);

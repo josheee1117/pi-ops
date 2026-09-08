@@ -3,9 +3,24 @@ import assert from 'node:assert/strict';
 import {
   normalizeSpecialistRoles,
   validateRuntimeEvidenceRequestBatch,
+  validateSpecialistFinding,
 } from '../index.js';
 
 describe('typed evidence request contract', () => {
+  it('rejects jfr.signal as missingEvidence', () => {
+    const result = validateSpecialistFinding({
+      role: 'jvm',
+      hypotheses: ['need recording'],
+      supportingEvidenceIds: [],
+      contradictingEvidenceIds: [],
+      missingEvidence: ['jfr.signal'],
+      confidence: 0.2,
+      summary: 'cannot query jfr',
+      status: 'completed',
+    });
+    assert.equal(result.success, false);
+  });
+
   it('requires requestingRoles and normalizes them stably', () => {
     const missing = validateRuntimeEvidenceRequestBatch({
       schemaVersion: 1,
