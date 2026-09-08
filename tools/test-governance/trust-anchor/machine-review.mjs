@@ -6,7 +6,10 @@ import { checkTrust } from './check.mjs';
 
 const MAX_FILES = 24;
 const MAX_DIFF_BYTES = 64 * 1024;
-const MAX_MODEL_RESPONSE_BYTES = 32 * 1024;
+/** Hard cap on the raw HTTP provider envelope, including non-authorizing fields. */
+export const MAX_PROVIDER_RESPONSE_BYTES = 256 * 1024;
+/** Hard cap on the authorization candidate (tool arguments or message.content). */
+export const MAX_VERDICT_BYTES = 32 * 1024;
 const MODEL_MAX_TOKENS = 8192;
 const REVIEW_TOOL_NAME = 'submit_governance_review';
 const REVIEW_TOOL = {
@@ -157,6 +160,9 @@ export function parseReviewContent(content, role = 'reviewer') {
   if (typeof content !== 'string' || content.trim() === '') {
     throw new Error(`${role} returned empty review content`);
   }
+  if (Buffer.byteLength(content, 'utf8') > MAX_VERDICT_BYTES) {
+    throw new Error(`${role} review content too large`);
+  }
   const candidate = stripJsonFence(content);
   let parsed;
   try {
@@ -179,7 +185,7 @@ export function parseReviewToolCall(toolCalls, role = 'reviewer') {
   if (typeof args !== 'string' || args.trim() === '') {
     throw new Error(`${role} returned empty tool arguments`);
   }
-  if (Buffer.byteLength(args, 'utf8') > MAX_MODEL_RESPONSE_BYTES) {
+  if (Buffer.byteLength(args, 'utf8') > MAX_VERDICT_BYTES) {
     throw new Error(`${role} tool arguments too large`);
   }
   let parsed;
@@ -189,6 +195,39 @@ export function parseReviewToolCall(toolCalls, role = 'reviewer') {
     throw new Error(`${role} returned invalid JSON tool arguments: ${error instanceof Error ? error.message : String(error)}`);
   }
   return validateReviewResult(parsed);
+}
+
+export function reviewFromProviderEnvelope(text, { ark, role = 'reviewer' } = {}) {
+  if (typeof text !== 'string') throw new Error(`${role} provider returned empty body`);
+  if (Buffer.byteLength(text, 'utf8') > MAX_PROVIDER_RESPONSE_BYTES) {
+    throw new Error(`${role} response too large`);
+  }
+  let envelope;
+  try {
+    envelope = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${role} provider returned invalid JSON envelope: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const choice = envelope?.choices?.[0];
+  const message = choice?.message;
+  const content = message?.content;
+  const finishReason = choice?.finish_reason ?? 'unknown';
+  const reasoningBytes = typeof message?.reasoning_content === 'string'
+    ? Buffer.byteLength(message.reasoning_content, 'utf8')
+    : 0;
+  if (finishReason === 'length') {
+    throw new Error(`${role} provider output truncated (finish_reason=length, reasoning_bytes=${reasoningBytes})`);
+  }
+  if (ark) {
+    if (typeof content === 'string' && content.trim() !== '') {
+      throw new Error(`${role} returned unexpected assistant content alongside tool verdict`);
+    }
+    return { result: parseReviewToolCall(message?.tool_calls, role), reasoningBytes };
+  }
+  if (typeof content !== 'string' || content.trim() === '') {
+    throw new Error(`${role} returned empty review content (finish_reason=${finishReason}, reasoning_bytes=${reasoningBytes})`);
+  }
+  return { result: parseReviewContent(content, role), reasoningBytes };
 }
 
 function isArkCodingUrl(url) {
@@ -234,37 +273,7 @@ async function callOpenAICompatible({ fetchImpl, url, apiKey, model, role, conte
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`${role} provider HTTP ${response.status}: ${bounded(text, 1000)}`);
-  if (Buffer.byteLength(text, 'utf8') > MAX_MODEL_RESPONSE_BYTES) throw new Error(`${role} response too large`);
-  let envelope;
-  try {
-    envelope = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`${role} provider returned invalid JSON envelope: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  const choice = envelope?.choices?.[0];
-  const message = choice?.message;
-  const content = message?.content;
-  const finishReason = choice?.finish_reason ?? 'unknown';
-  const reasoningBytes = typeof message?.reasoning_content === 'string'
-    ? Buffer.byteLength(message.reasoning_content, 'utf8')
-    : 0;
-
-  if (finishReason === 'length') {
-    throw new Error(`${role} provider output truncated (finish_reason=length, reasoning_bytes=${reasoningBytes})`);
-  }
-
-  if (ark) {
-    if (typeof content === 'string' && content.trim() !== '') {
-      throw new Error(`${role} returned unexpected assistant content alongside tool verdict`);
-    }
-    return parseReviewToolCall(message?.tool_calls, role);
-  }
-
-  if (typeof content !== 'string' || content.trim() === '') {
-    throw new Error(`${role} returned empty review content (finish_reason=${finishReason}, reasoning_bytes=${reasoningBytes})`);
-  }
-  return parseReviewContent(content, role);
+  return reviewFromProviderEnvelope(text, { ark, role });
 }
 
 function auditPath(env) {
@@ -310,8 +319,12 @@ export async function runMachineReview({ cwd, base, head, env = process.env, fet
     if (diffBytes > MAX_DIFF_BYTES) throw new Error(`machine review diff limit exceeded: ${diffBytes} > ${MAX_DIFF_BYTES}`);
     const context = buildContext({ trustResult, diff });
 
-    audit.reviewer = await callOpenAICompatible({ fetchImpl, url, apiKey, model: reviewerModel, role: 'reviewer', context });
-    audit.critic = await callOpenAICompatible({ fetchImpl, url, apiKey, model: criticModel, role: 'critic', context });
+    const reviewerParsed = await callOpenAICompatible({ fetchImpl, url, apiKey, model: reviewerModel, role: 'reviewer', context });
+    const criticParsed = await callOpenAICompatible({ fetchImpl, url, apiKey, model: criticModel, role: 'critic', context });
+    audit.reviewer = reviewerParsed.result;
+    audit.critic = criticParsed.result;
+    audit.reviewerReasoningBytes = reviewerParsed.reasoningBytes;
+    audit.criticReasoningBytes = criticParsed.reasoningBytes;
     audit.decision = machineConsensus(audit.reviewer, audit.critic);
     writeAudit(path, audit);
     return audit;
