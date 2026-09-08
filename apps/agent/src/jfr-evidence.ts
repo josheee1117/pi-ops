@@ -39,6 +39,8 @@ export function projectJfrSignalEvidence(
 ): EvidenceRecord | null {
   if (event.source !== 'jfr') return null;
   const message = boundNonEmptyString(event.message, JFR_MAX_MESSAGE_CHARS) ?? event.message.slice(0, JFR_MAX_MESSAGE_CHARS);
+  const attributes = projectAttributes(event);
+  const recognized = Object.keys(attributes).length > 0;
   return {
     id: jfrEvidenceId(event.id),
     incidentId: incident.id,
@@ -53,7 +55,8 @@ export function projectJfrSignalEvidence(
       observedAt: event.time,
       ...(event.traceId ? { traceId: event.traceId } : {}),
       message,
-      attributes: projectAttributes(event),
+      attributes,
+      ...(recognized ? { semanticType: event.type } : {}),
     },
   };
 }
