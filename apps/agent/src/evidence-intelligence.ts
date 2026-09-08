@@ -18,13 +18,23 @@ export interface EvidenceRelevanceScore {
   relevanceScore: number;
 }
 
-const PRIMARY_KINDS = new Set(['jfr.signal', 'docker.inspect', 'http.probe', 'docker.stats']);
+const PRIMARY_KINDS = new Set(['docker.inspect', 'http.probe', 'docker.stats']);
 const SUPPORTING_KINDS = new Set(['host.memory', 'host.load', 'host.disk']);
+
+function hasRecognizedJfrSemantics(data: unknown): boolean {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const record = data as Record<string, unknown>;
+  if (typeof record.semanticType !== 'string' || record.semanticType.length === 0) return false;
+  const attributes = record.attributes;
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return false;
+  return Object.keys(attributes).length > 0;
+}
 
 export function classifyEvidence(evidence: EvidenceRecord): EvidenceProfile {
   const failed = evidence.status === 'failed';
   let category: EvidenceCategory = 'weak_signal';
-  if (!failed && PRIMARY_KINDS.has(evidence.kind)) category = 'primary_signal';
+  if (!failed && evidence.kind === 'jfr.signal' && hasRecognizedJfrSemantics(evidence.data)) category = 'primary_signal';
+  else if (!failed && PRIMARY_KINDS.has(evidence.kind)) category = 'primary_signal';
   else if (!failed && SUPPORTING_KINDS.has(evidence.kind)) category = 'supporting_signal';
   else category = 'weak_signal';
 
