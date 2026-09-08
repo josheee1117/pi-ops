@@ -1480,6 +1480,27 @@
       ]
     },
     {
+      "id": "safe-redact-inspect-sqlite",
+      "featureId": "evidence.model-safe-projection",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "location": {
+        "file": "apps/agent/src/__tests__/model-safe-evidence.test.ts",
+        "testName": "redacts docker.inspect secrets in runtime Evidence without mutating the store"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-SAFE-01",
+          "level": "A",
+          "source": "SQLite row keeps secrets; Runtime payload is toRuntimeSafeEvidence"
+        }
+      ],
+      "limitations": [
+        "Same test as safe-redact-inspect C; this entry records the SQLite persistence half as A."
+      ]
+    },
+    {
       "id": "jfr-materialize",
       "featureId": "evidence.jfr-semantic",
       "status": "ACTIVE",
