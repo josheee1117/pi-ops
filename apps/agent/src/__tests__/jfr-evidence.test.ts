@@ -160,6 +160,77 @@ describe('JFR semantic evidence projector', () => {
     assert.equal(attributes.unexpectedField, undefined);
   });
 
+  it('C. illegal CPU ratio types and ranges are dropped', () => {
+    const event: OpsEvent = {
+      schemaVersion: 1,
+      id: 'evt-bad-ratio',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'jfr',
+      nodeId: 'test-svc-02',
+      service: 'data-asset-service',
+      type: 'jvm.cpu_pressure',
+      severity: 'warning',
+      message: 'JVM CPU pressure',
+      attributes: {
+        jvmUser: '0.9',
+        jvmSystem: true,
+        machineTotal: 2,
+        containerName: 'data-asset',
+      },
+    };
+    const attributes = (projectJfrSignalEvidence({ id: 'inc-1', node_id: 'test-svc-02' }, event)!
+      .data as { attributes: Record<string, unknown> }).attributes;
+    assert.equal(attributes.jvmUser, undefined);
+    assert.equal(attributes.jvmSystem, undefined);
+    assert.equal(attributes.machineTotal, undefined);
+    assert.equal(attributes.containerName, 'data-asset');
+  });
+
+  it('D. overlong containerName and message are bounded', () => {
+    const event: OpsEvent = {
+      schemaVersion: 1,
+      id: 'evt-long',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'jfr',
+      nodeId: 'test-svc-02',
+      service: 'data-asset-service',
+      type: 'jvm.cpu_pressure',
+      severity: 'warning',
+      message: 'm'.repeat(2000),
+      attributes: {
+        jvmUser: 0.9,
+        jvmSystem: 0.1,
+        machineTotal: 0.95,
+        containerName: 'c'.repeat(400),
+      },
+    };
+    const projected = projectJfrSignalEvidence({ id: 'inc-1', node_id: 'test-svc-02' }, event)!;
+    const data = projected.data as { message: string; attributes: { containerName: string } };
+    assert.equal(data.message.length, 1024);
+    assert.equal(data.attributes.containerName.length, 256);
+  });
+
+  it('E. valid CPU contract ratios stay unchanged', () => {
+    const event: OpsEvent = {
+      schemaVersion: 1,
+      id: 'evt-ok',
+      time: '2026-08-20T12:00:00.000Z',
+      source: 'jfr',
+      nodeId: 'test-svc-02',
+      service: 'data-asset-service',
+      type: 'jvm.cpu_pressure',
+      severity: 'warning',
+      message: 'JVM CPU pressure',
+      attributes: { jvmUser: 0.9, jvmSystem: 0.1, machineTotal: 0.95, containerName: 'data-asset' },
+    };
+    const attributes = (projectJfrSignalEvidence({ id: 'inc-1', node_id: 'test-svc-02' }, event)!
+      .data as { attributes: Record<string, number | string> }).attributes;
+    assert.equal(attributes.jvmUser, 0.9);
+    assert.equal(attributes.jvmSystem, 0.1);
+    assert.equal(attributes.machineTotal, 0.95);
+    assert.equal(attributes.containerName, 'data-asset');
+  });
+
   it('E/I. InvestigationContext keeps jfr.signal with host/docker and does not drop conflict', async () => {
     const { batch, event } = loadGolden();
     const { store } = await ingest(batch);
@@ -185,9 +256,7 @@ describe('JFR semantic evidence projector', () => {
     assert.ok(kinds.includes('docker.stats'));
     const jfr = context.evidence.find((item) => item.kind === 'jfr.signal')!;
     assert.equal((jfr.data as { attributes: { jvmUser: number } }).attributes.jvmUser, 0.9);
-    const load = context.evidence.find((item) => item.id === 'evd-host-conflict' || (item.kind === 'host.load' && item.id === host.id));
-    assert.ok(context.evidence.some((item) => item.kind === 'host.load'));
-    assert.ok(load ?? true);
+    assert.ok(context.evidence.some((item) => item.id === 'evd-host-conflict'));
     store.close();
   });
 

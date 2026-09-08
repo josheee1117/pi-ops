@@ -63,26 +63,57 @@ export function evidenceRank(item: Pick<EvidenceRecord, 'kind' | 'status'>): num
   return KIND_RANK[item.kind] ?? 4;
 }
 
+const DIVERSITY_KINDS = [
+  'jfr.signal',
+  'docker.inspect',
+  'docker.stats',
+  'host.load',
+  'host.memory',
+  'http.probe',
+] as const;
+
+function compareEvidenceOrder(left: EvidenceRecord, right: EvidenceRecord): number {
+  const rank = evidenceRank(left) - evidenceRank(right);
+  if (rank !== 0) return rank;
+  const collected = right.collectedAt.localeCompare(left.collectedAt);
+  if (collected !== 0) return collected;
+  return left.id.localeCompare(right.id);
+}
+
+/** Prefer one current row per key kind, then fill remaining slots by rank/freshness. */
+export function selectEvidenceForContext(
+  evidence: EvidenceRecord[],
+  maxEvidenceItems: number,
+): EvidenceRecord[] {
+  const ordered = [...evidence].sort(compareEvidenceOrder);
+  const selected: EvidenceRecord[] = [];
+  const selectedIds = new Set<string>();
+  const take = (item: EvidenceRecord | undefined) => {
+    if (!item || selectedIds.has(item.id) || selected.length >= maxEvidenceItems) return;
+    selected.push(item);
+    selectedIds.add(item.id);
+  };
+  for (const kind of DIVERSITY_KINDS) {
+    take(ordered.find((item) => item.kind === kind));
+  }
+  for (const item of ordered) take(item);
+  return selected;
+}
+
 export function buildIncidentContext(
   incident: IncidentRow,
   evidence: EvidenceRecord[],
   bounds: IncidentContextBounds,
 ): IncidentContext {
-  const ordered = [...evidence].sort((left, right) => {
-    const rank = evidenceRank(left) - evidenceRank(right);
-    if (rank !== 0) return rank;
-    const collected = right.collectedAt.localeCompare(left.collectedAt);
-    if (collected !== 0) return collected;
-    return left.id.localeCompare(right.id);
-  });
-
+  const ordered = [...evidence].sort(compareEvidenceOrder);
   const droppedEvidenceIds: string[] = [];
   const truncatedItems: string[] = [];
   const maxItemBytes = Math.max(256, Math.min(16_384, Math.floor(bounds.maxContextBytes / 2)));
 
-  const selected = ordered.slice(0, bounds.maxEvidenceItems);
-  for (const extra of ordered.slice(bounds.maxEvidenceItems)) {
-    droppedEvidenceIds.push(extra.id);
+  const selected = selectEvidenceForContext(ordered, bounds.maxEvidenceItems);
+  const selectedIds = new Set(selected.map((item) => item.id));
+  for (const extra of ordered) {
+    if (!selectedIds.has(extra.id)) droppedEvidenceIds.push(extra.id);
   }
 
   const items: IncidentContextEvidence[] = selected.map((item) => {

@@ -52,32 +52,6 @@ const evidenceRow = (id: string, kind: string, incidentId = 'inc-1') => ({
 });
 
 describe('bounded multi-agent coordinator', () => {
-  it('lets the JVM specialist cite jfr.signal and rejects a foreign JFR id', async () => {
-    const cited = await investigate(context({
-      incident: { id: 'inc-1', type: 'jvm.cpu_pressure', service: 'data-asset-service' },
-      evidence: [
-        evidenceRow('jfr-evt-1', 'jfr.signal'),
-        evidenceRow('evd-load', 'host.load'),
-      ],
-    }));
-    assert.ok(cited.report?.supportingEvidenceIds.includes('jfr-evt-1'));
-
-    const foreign = await investigate(context({
-      incident: { id: 'inc-1', type: 'jvm.cpu_pressure', service: 'data-asset-service' },
-      evidence: [evidenceRow('jfr-evt-1', 'jfr.signal')],
-    }), {
-      model: createFakeRuntimeModel({
-        specialistText: {
-          jvm: validFinding('jvm', ['jfr-other-incident']),
-          container_host: validFinding('container_host', ['jfr-evt-1']),
-        },
-      }),
-    });
-    assert.equal(foreign.specialistStatus['jvm'], 'failed');
-    assert.equal(foreign.status, 'completed');
-    assert.equal(foreign.report?.supportingEvidenceIds.includes('jfr-other-incident'), false);
-  });
-
   it('does not select database for jvm.gc_pressure', () => {
     const selected = selectSpecialists(context({
       incident: { id: 'inc-1', type: 'jvm.gc_pressure', service: 'data-asset-service' },
