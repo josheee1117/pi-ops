@@ -14,4 +14,3 @@ coverage/
 .pi-astack/
 deploy/local/data/
 artifacts/test-evidence/
-artifacts/jvm-diagnosis-benchmark/
