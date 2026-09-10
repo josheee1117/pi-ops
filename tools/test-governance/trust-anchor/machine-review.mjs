@@ -111,6 +111,9 @@ function systemPrompt(role) {
     'The final verdict schema is:',
     '{"decision":"APPROVE|REJECT","blockingFindings":["..."],"riskNotes":["..."],"summary":"..."}',
     'APPROVE requires blockingFindings to be empty.',
+    'decision MUST stay exactly APPROVE or REJECT. Never translate or rename it.',
+    'blockingFindings, riskNotes and summary MUST be written in Simplified Chinese (简体中文).',
+    'These fields are shown to a Chinese-speaking repository owner. Keep them short, concrete and free of chain-of-thought.',
     'If the API forces a function call, submit the verdict only through that function arguments.',
     'Otherwise return exactly one JSON object and no markdown or prose.',
   ].join('\n');

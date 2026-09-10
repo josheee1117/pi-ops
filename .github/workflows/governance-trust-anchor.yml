@@ -53,6 +53,18 @@ jobs:
           fi
           exit 1
 
+      - name: Write Chinese decision summary (display only)
+        if: always()
+        continue-on-error: true
+        env:
+          DETECT_DECISION: ${{ steps.detect.outputs.decision }}
+          DETECT_ROUTE: ${{ steps.detect.outputs.route }}
+        run: |
+          set -euo pipefail
+          node tools/test-governance/trust-anchor/human-summary.mjs \
+            --anchor "$RUNNER_TEMP/governance-trust-anchor.json" \
+            --out "$GITHUB_STEP_SUMMARY"
+
   machine-review:
     needs: detect
     if: needs.detect.outputs.decision == 'HUMAN_REQUIRED' && needs.detect.outputs.route == 'MACHINE_REVIEW'
@@ -98,6 +110,19 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Write Chinese review summary (display only)
+        if: always()
+        continue-on-error: true
+        env:
+          DETECT_DECISION: ${{ needs.detect.outputs.decision }}
+          DETECT_ROUTE: ${{ needs.detect.outputs.route }}
+          MACHINE_REVIEW_RESULT: ${{ needs.machine-review.result }}
+        run: |
+          set -euo pipefail
+          node tools/test-governance/trust-anchor/human-summary.mjs \
+            --audit "$RUNNER_TEMP/governance-machine-review.json" \
+            --out "$GITHUB_STEP_SUMMARY"
+
   authorize:
     needs: detect
     if: needs.detect.outputs.decision == 'HUMAN_REQUIRED' && needs.detect.outputs.route == 'BREAK_GLASS'
@@ -141,3 +166,18 @@ jobs:
           MACHINE_REVIEW_RESULT: ${{ needs.machine-review.result }}
           AUTHORIZE_RESULT: ${{ needs.authorize.result }}
         run: node tools/test-governance/trust-anchor/final-decision.mjs
+
+      - name: Write Chinese final summary (display only)
+        if: always()
+        continue-on-error: true
+        env:
+          DETECT_DECISION: ${{ needs.detect.outputs.decision }}
+          DETECT_ROUTE: ${{ needs.detect.outputs.route }}
+          MACHINE_REVIEW_RESULT: ${{ needs.machine-review.result }}
+          AUTHORIZE_RESULT: ${{ needs.authorize.result }}
+        run: |
+          set -euo pipefail
+          final="PASS"
+          if [[ "${{ needs.final.result }}" != "success" ]]; then final="FAIL"; fi
+          FINAL_RESULT="$final" node tools/test-governance/trust-anchor/human-summary.mjs \
+            --out "$GITHUB_STEP_SUMMARY"
