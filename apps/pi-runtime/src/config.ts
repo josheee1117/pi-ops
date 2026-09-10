@@ -1,3 +1,5 @@
+import { parseThinkingLevel, type RuntimeThinkingLevel } from './thinking-level.js';
+
 export interface PiRuntimeConfig {
   port: number;
   token: string;
@@ -12,6 +14,12 @@ export interface PiRuntimeConfig {
   piProvider: string;
   piModel: string;
   piApiKey?: string;
+  /**
+   * Pi SDK thinking level. `loadConfig` always sets it (default `off`).
+   * Optional so config literals written before this milestone keep the
+   * unchanged production default instead of picking up the SDK's `medium`.
+   */
+  piThinkingLevel?: RuntimeThinkingLevel;
 }
 
 function requireEnv(key: string): string {
@@ -49,6 +57,7 @@ export function loadConfig(): PiRuntimeConfig {
     maxDeliveryAttempts: integerEnv('PI_OPS_PI_RUNTIME_MAX_DELIVERY_ATTEMPTS', 5, { max: 20 }),
     piProvider: process.env['PI_OPS_PI_PROVIDER'] ?? '',
     piModel: process.env['PI_OPS_PI_MODEL'] ?? '',
+    piThinkingLevel: parseThinkingLevel(process.env['PI_OPS_PI_THINKING_LEVEL']),
     ...(piApiKey ? { piApiKey } : {}),
   };
 }
