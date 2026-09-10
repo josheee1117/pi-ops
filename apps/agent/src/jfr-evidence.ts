@@ -33,6 +33,31 @@ function projectAttributes(event: OpsEvent): Record<string, string | number> {
   return {};
 }
 
+/** Diagnostic CPU metrics. `containerName` is metadata and never decides recognition. */
+const CPU_DIAGNOSTIC_FIELDS = ['jvmUser', 'jvmSystem', 'machineTotal'] as const;
+
+function hasDiagnosticCpuFact(attributes: unknown): boolean {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return false;
+  const record = attributes as Record<string, unknown>;
+  return CPU_DIAGNOSTIC_FIELDS.some((field) => cpuRatio(record[field]));
+}
+
+/**
+ * Single source of truth for "is this JFR semantic payload recognized?".
+ * Shared by the projector (to stamp `semanticType`) and Evidence Intelligence
+ * (to decide `primary_signal`), so the two can never disagree.
+ */
+export function recognizedJfrSemantic(data: unknown): boolean {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const record = data as Record<string, unknown>;
+  switch (record.semanticType) {
+    case 'jvm.cpu_pressure':
+      return hasDiagnosticCpuFact(record.attributes);
+    default:
+      return false;
+  }
+}
+
 export function projectJfrSignalEvidence(
   incident: { id: string; node_id: string },
   event: OpsEvent,
@@ -40,7 +65,7 @@ export function projectJfrSignalEvidence(
   if (event.source !== 'jfr') return null;
   const message = boundNonEmptyString(event.message, JFR_MAX_MESSAGE_CHARS) ?? event.message.slice(0, JFR_MAX_MESSAGE_CHARS);
   const attributes = projectAttributes(event);
-  const recognized = Object.keys(attributes).length > 0;
+  const recognized = hasDiagnosticCpuFact(attributes);
   return {
     id: jfrEvidenceId(event.id),
     incidentId: incident.id,
