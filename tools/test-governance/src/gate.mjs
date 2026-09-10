@@ -218,3 +218,5 @@ function runTypecheck(root) {
 }
 
 export { effectiveMaxGate };
+
+// K1 human-UX live verification: semantic no-op comment only (never merged).
