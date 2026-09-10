@@ -175,3 +175,5 @@ A previous revision counted smoke's `super-secret not in safe view` assertion as
 ## Retirement (later phase)
 
 Dominance proof required. An LLM recommendation alone never deletes a PINNED regression.
+
+<!-- required-check verification 1789032297 -->
