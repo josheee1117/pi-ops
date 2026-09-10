@@ -1,5 +1,5 @@
 import { createPiSdkRuntimeModel } from '../pi-session.js';
-import { DEFAULT_THINKING_LEVEL, parseThinkingLevel, type RuntimeThinkingLevel } from '../thinking-level.js';
+import { parseThinkingLevel, type RuntimeThinkingLevel } from '../thinking-level.js';
 import type { RuntimeModel } from '../model.js';
 
 /**
@@ -39,9 +39,8 @@ export async function createLiveBenchmarkModel(options: LiveModelOptions): Promi
     maxDeliveryAttempts: 1,
     piProvider: provider,
     piModel: modelId,
-    piThinkingLevel: options.thinkingLevel,
     ...(apiKey ? { piApiKey: apiKey } : {}),
-  });
+  }, { thinkingLevel: options.thinkingLevel });
   return { model, provider, modelId };
 }
 

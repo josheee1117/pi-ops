@@ -2,14 +2,23 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PiRuntimeConfig } from './config.js';
-import { DEFAULT_THINKING_LEVEL } from './thinking-level.js';
+import { resolveRuntimeThinkingLevel, type RuntimeThinkingLevel } from './thinking-level.js';
 import type { RuntimeModel, RuntimeModelRequest, RuntimeModelResponse } from './model.js';
 
 /**
  * Pi SDK adapter. Uses only createAgentSession + noTools:'all'
  * from @earendil-works/pi-coding-agent 0.84.x.
  */
-export async function createPiSdkRuntimeModel(config: PiRuntimeConfig): Promise<RuntimeModel> {
+export interface PiSdkModelOptions {
+  /** Overrides `PI_OPS_PI_THINKING_LEVEL`. Unsupported values throw. */
+  thinkingLevel?: RuntimeThinkingLevel;
+}
+
+export async function createPiSdkRuntimeModel(
+  config: PiRuntimeConfig,
+  options: PiSdkModelOptions = {},
+): Promise<RuntimeModel> {
+  const thinkingLevel = options.thinkingLevel ?? resolveRuntimeThinkingLevel();
   const {
     createAgentSession,
     DefaultResourceLoader,
@@ -58,7 +67,7 @@ export async function createPiSdkRuntimeModel(config: PiRuntimeConfig): Promise<
         cwd: isolatedDir,
         agentDir: isolatedDir,
         model,
-        thinkingLevel: config.piThinkingLevel ?? DEFAULT_THINKING_LEVEL,
+        thinkingLevel,
         modelRuntime,
         noTools: 'all',
         resourceLoader: loader,

@@ -32,6 +32,18 @@ export function isThinkingLevel(value: unknown): value is RuntimeThinkingLevel {
   return typeof value === 'string' && (THINKING_LEVELS as readonly string[]).includes(value);
 }
 
+/**
+ * Resolve the configured level from the environment. Read here (not in
+ * `loadConfig`) so a production default change stays a one-line, auditable edit
+ * in the adapter rather than a change to fail-closed config semantics.
+ * Throws on an unsupported value instead of silently clamping.
+ */
+export function resolveRuntimeThinkingLevel(
+  env: Record<string, string | undefined> = process.env,
+): RuntimeThinkingLevel {
+  return parseThinkingLevel(env['PI_OPS_PI_THINKING_LEVEL']);
+}
+
 /** Strict parse: unknown values throw. Never silently falls back. */
 export function parseThinkingLevel(
   raw: string | undefined,
