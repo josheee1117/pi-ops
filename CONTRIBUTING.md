@@ -17,6 +17,45 @@ For each milestone:
 
 Do not skip ahead to model integration and do not introduce arbitrary shell execution.
 
+## Merge rule (non-negotiable)
+
+`Governance Trust Anchor / final` is the authoritative required check. An agent must
+never merge while it is not `success`.
+
+```text
+detect = REJECT                -> never merge (deterministic veto)
+machine-review failure         -> never merge
+Test Governance Gate failure   -> never merge
+final != success               -> never merge
+BREAK_GLASS authorize waiting   -> wait for the owner's intent confirmation
+final = success                -> allowed to merge
+```
+
+GitHub technically allowing a merge is **not** governance approval. The absence of
+branch protection or required human review is not permission to bypass this rule.
+Never enable branch protection, rulesets, or required reviewer approval to
+"fix" a red governance check, and never lower an Evidence floor, relabel a proof
+grade, or edit an accepted Proof Source to make governance green.
+
+If a check is red, report it as red and stop.
+
+## Language defaults
+
+Commit subject lines and PR titles/bodies default to Chinese. Conventional Commit
+types stay English:
+
+```text
+feat(agent): 增加 JFR 语义证据投影
+fix(agent): 修正 JFR 未识别信号权重
+test(governance): 覆盖中文治理摘要渲染
+docs(adr): 记录治理人机交互边界
+refactor(agent): 拆分证据选择逻辑
+```
+
+Machine protocol stays English. Never translate `APPROVE` / `REJECT` / `PASS` /
+`MACHINE_REVIEW` / `BREAK_GLASS` / reason codes, and never feed Chinese display
+text back into an authorization decision.
+
 ## Commit examples
 
 ```text
