@@ -116,7 +116,7 @@ jobs:
         env:
           DETECT_DECISION: ${{ needs.detect.outputs.decision }}
           DETECT_ROUTE: ${{ needs.detect.outputs.route }}
-          MACHINE_REVIEW_RESULT: ${{ needs.machine-review.result }}
+          MACHINE_REVIEW_RESULT: ${{ job.status }}
         run: |
           set -euo pipefail
           node tools/test-governance/trust-anchor/human-summary.mjs \
@@ -177,7 +177,6 @@ jobs:
           AUTHORIZE_RESULT: ${{ needs.authorize.result }}
         run: |
           set -euo pipefail
-          final="PASS"
-          if [[ "${{ needs.final.result }}" != "success" ]]; then final="FAIL"; fi
+          if [[ "${{ job.status }}" == "success" ]]; then final="PASS"; else final="FAIL"; fi
           FINAL_RESULT="$final" node tools/test-governance/trust-anchor/human-summary.mjs \
             --out "$GITHUB_STEP_SUMMARY"
