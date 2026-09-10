@@ -23,11 +23,6 @@ export interface RuntimeModel {
   readonly provider: string;
   readonly model: string;
   readonly networkCalls: number;
-  /**
-   * Thinking level actually applied by the provider adapter, once known.
-   * `undefined` when the model has no thinking capability or has not run yet.
-   */
-  readonly effectiveThinkingLevel?: string;
   invoke(request: RuntimeModelRequest): Promise<RuntimeModelResponse>;
 }
 
@@ -50,10 +45,6 @@ export function createFakeRuntimeModel(options: FakeRuntimeModelOptions = {}): R
     model: 'deterministic',
     networkCalls: 0,
     invocations: 0,
-    // The fake model is deterministic and has no thinking budget. Reporting the
-    // level explicitly lets the benchmark mark it N/A instead of pretending a
-    // requested level was honored.
-    effectiveThinkingLevel: 'off',
     async invoke(request) {
       model.invocations += 1;
       if (request.signal?.aborted) throw new Error('aborted');

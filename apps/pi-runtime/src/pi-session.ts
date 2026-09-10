@@ -2,23 +2,13 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PiRuntimeConfig } from './config.js';
-import { resolveRuntimeThinkingLevel, type RuntimeThinkingLevel } from './thinking-level.js';
 import type { RuntimeModel, RuntimeModelRequest, RuntimeModelResponse } from './model.js';
 
 /**
  * Pi SDK adapter. Uses only createAgentSession + noTools:'all'
  * from @earendil-works/pi-coding-agent 0.84.x.
  */
-export interface PiSdkModelOptions {
-  /** Overrides `PI_OPS_PI_THINKING_LEVEL`. Unsupported values throw. */
-  thinkingLevel?: RuntimeThinkingLevel;
-}
-
-export async function createPiSdkRuntimeModel(
-  config: PiRuntimeConfig,
-  options: PiSdkModelOptions = {},
-): Promise<RuntimeModel> {
-  const thinkingLevel = options.thinkingLevel ?? resolveRuntimeThinkingLevel();
+export async function createPiSdkRuntimeModel(config: PiRuntimeConfig): Promise<RuntimeModel> {
   const {
     createAgentSession,
     DefaultResourceLoader,
@@ -38,16 +28,12 @@ export async function createPiSdkRuntimeModel(
   if (!model) throw new Error(`Unknown Pi model ${config.piProvider}/${config.piModel}`);
   const isolatedDir = await mkdtemp(join(tmpdir(), 'pi-ops-runtime-'));
   let networkCalls = 0;
-  let effectiveThinkingLevel: string | undefined;
 
   return {
     provider: config.piProvider,
     model: config.piModel,
     get networkCalls() {
       return networkCalls;
-    },
-    get effectiveThinkingLevel() {
-      return effectiveThinkingLevel;
     },
     async invoke(request: RuntimeModelRequest): Promise<RuntimeModelResponse> {
       networkCalls += 1;
@@ -67,7 +53,7 @@ export async function createPiSdkRuntimeModel(
         cwd: isolatedDir,
         agentDir: isolatedDir,
         model,
-        thinkingLevel,
+        thinkingLevel: 'off',
         modelRuntime,
         noTools: 'all',
         resourceLoader: loader,
@@ -77,9 +63,6 @@ export async function createPiSdkRuntimeModel(
           retry: { enabled: false },
         }),
       });
-      // The SDK clamps to what the model supports. Record the effective level so
-      // a benchmark can report UNSUPPORTED instead of assuming it was honored.
-      effectiveThinkingLevel = session.thinkingLevel;
       const abort = () => {
         void session.abort();
       };
