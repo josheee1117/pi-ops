@@ -1,42 +1,84 @@
 # Pi-Ops documentation
 
-The current implementation source of truth is:
+## 1. Current architecture
 
-1. `adr/ADR-0001-dual-source-node-agent-architecture.md`
-2. `adr/ADR-0006-reasoning-memory-foundation.md`
-3. `adr/ADR-0008-reasoning-strategy-boundary.md`
-4. `adr/ADR-0009-memory-governance.md`
-5. `adr/ADR-0010-memory-retrieval-boundary.md`
-6. `adr/ADR-0011-reasoning-delegation-boundary.md`
-7. `adr/ADR-0012-pi-runtime-delegation-contract.md`
-8. `adr/ADR-0013-delegated-result-ingestion.md`
-9. `adr/ADR-0014-delegation-lifecycle.md`
-10. `adr/ADR-0015-reasoning-quality-evaluation.md`
-11. `adr/ADR-0016-memory-feedback-loop.md`
-12. `adr/ADR-0017-memory-intelligence-phase.md`
-13. `adr/ADR-0018-pi-runtime-investigation-loop.md`
-14. `adr/ADR-0019-pi-runtime-production-contract.md`
-15. `adr/ADR-0020-investigation-quality-governance.md`
-16. `adr/ADR-0021-investigation-knowledge-graph.md`
-17. `adr/ADR-0022-evidence-intelligence.md`
-18. `adr/ADR-0023-investigation-knowledge-graph.md`
-19. `adr/ADR-0024-operational-knowledge-retrieval.md`
-20. `adr/ADR-0025-external-bounded-multi-agent-runtime.md`
-21. `adr/ADR-0026-typed-read-only-evidence-enrichment.md`
-22. `adr/ADR-0027-durable-operational-notification-delivery.md`
-23. `plans/PLAN-0001-dual-source-v0.1-implementation.md`
-24. `evolution/timeline.md`
-25. `evolution/phase12-local-work-log.md`
-26. `local-integration.md`
-27. `testing/test-strategy.md`
-28. `testing/test-case-matrix.md`
-29. `testing/test-gap-report.md`
+Pi-Ops is an event-driven operations platform with **dual-source observation**: source-controlled
+applications push high-semantic OpsEvents (DataAsset RecordingStream/JFR), while third-party services
+are observed deterministically by a node agent (Docker / host / logs / health). Deterministic
+collectors detect events, incidents aggregate them, evidence is collected on demand, and only then
+does a bounded reasoning plane run over the evidence.
 
-The architecture intentionally separates:
+```text
+Source-controlled application                     Third-party / black-box services
+DataAsset RecordingStream/JFR                     Docker / Host / Logs / Health
+             │                                                │
+             │ high-semantic OpsEvent                         │ node observer event
+             └───────────────────┐                  ┌─────────┘
+                                 ▼                  ▼
+                              pi-ops-agent
+                    Event / Incident / Evidence / Evidence orchestration
+                                  │
+                    InvestigationContext (frozen, model-safe)
+                                  ▼
+                              pi-runtime
+                       Coordinator → specialists → synthesis
+                                  │
+                            InvestigationReport
+                                  ▼
+                     Notification / Memory / audit
+```
 
-- `pi-ops-agent`: event/incident/evidence/reasoning/notification/audit.
-- `pi-ops-node-agent`: deterministic per-host observation and typed read-only evidence.
-- `pi-runtime`: external bounded coordinator/specialist investigation.
-- `@pi-ops/protocol`: the one shared contract for events, evidence, and the investigation runtime.
+| Service | Owns | Must never |
+|---------|------|-----------|
+| `apps/agent` (pi-ops-agent) | event ingress, Incident lifecycle, evidence orchestration, Investigation lifecycle, notification, audit, memory governance | call a model, run shell, restart containers, write outside its SQLite |
+| `apps/node-agent` | deterministic per-host observation and typed read-only evidence (`docker.*`, `host.*`, `http.probe`) | reason, call a model, accept model-supplied targets |
+| `apps/pi-runtime` | bounded coordinator/specialist investigation and synthesis over a frozen context | reach Docker/JVM/host, run shell, write to Pi-Ops storage |
+| `packages/protocol` | the single shared wire contract: OpsEvent, Evidence, investigation runtime | depend on any app |
 
-Implementation must proceed milestone-by-milestone. Do not skip ahead to Pi SDK integration before deterministic event, incident, and evidence flows are working.
+Reasoning plane ownership is fixed by ADR-0029: `apps/pi-runtime` is the only component that calls a
+model. `reasonerType=fake` is deterministic-only and never calls one.
+
+## 2. ADR index
+
+| # | Title | Status |
+|---|-------|--------|
+| 0001 | Dual-source node agent architecture | Accepted |
+| 0006 | Reasoning memory foundation | Accepted |
+| 0008 | Reasoning strategy boundary | Accepted |
+| 0009 | Memory governance | Accepted |
+| 0010 | Memory retrieval boundary | Accepted |
+| 0011 | Reasoning delegation contract boundary | Superseded by 0029 |
+| 0012 | Pi Runtime delegation contract | Superseded by 0029 |
+| 0013 | Delegated reasoning result ingestion | Superseded by 0029 |
+| 0014 | Delegation lifecycle | Superseded by 0029 (DelegationTask entity retained) |
+| 0015 | Reasoning quality evaluation | Accepted |
+| 0016 | Memory feedback loop | Accepted |
+| 0017 | Memory intelligence phase | Accepted |
+| 0018 | Pi Runtime investigation loop | Accepted |
+| 0019 | Pi Runtime production contract | Accepted |
+| 0020 | Investigation quality governance | Accepted |
+| 0021 | Investigation knowledge graph | Accepted |
+| 0022 | Evidence intelligence | Accepted |
+| 0023 | Investigation knowledge graph (Phase 8) | Accepted |
+| 0024 | Operational knowledge retrieval | Accepted |
+| 0025 | External bounded multi-agent runtime | Accepted |
+| 0026 | Typed read-only evidence enrichment | Accepted |
+| 0027 | Durable operational notification delivery | Accepted |
+| 0028 | JFR semantic evidence bridge | Accepted |
+| 0029 | Reasoning plane consolidation | Accepted |
+
+Numbers 0002–0005 and 0007 are unused; they were never written.
+
+## 3. Other documents
+
+- `plans/PLAN-0001-dual-source-v0.1-implementation.md` — v0.1 scope and Definition of Done status
+- `plans/PLAN-0002-architecture-consolidation.md` — current milestone plan (M1–M10)
+- `evolution/timeline.md` — what shipped, in order
+- `evolution/phase12-local-work-log.md` — Phase 12 local integration log
+- `local-integration.md` — running the local stack
+- `testing/test-strategy.md` — what each test layer is for
+- `testing/test-case-matrix.md` — scenario → invariant coverage
+- `testing/test-gap-report.md` — open Evidence gaps
+
+Governance tooling lives in `tools/test-governance/`; see its `README.md`. Repository-wide
+conventions (merge rule, language defaults) are in `CONTRIBUTING.md`.

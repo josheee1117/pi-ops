@@ -1,6 +1,7 @@
 # ADR-0013: Delegated reasoning result ingestion
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0029
+- **Superseded note**: polled `DelegatedReasoningResult` ingestion is retired; results return through the ADR-0025 callback.
 - **Date**: 2026-08-21
 - **Scope**: How Pi-Ops accepts a DelegatedReasoningResult and becomes the lifecycle authority again
 - **Supersedes**: none

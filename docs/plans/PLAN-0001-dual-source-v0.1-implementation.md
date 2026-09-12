@@ -1,6 +1,6 @@
 # PLAN-0001: Dual-source Pi-Ops v0.1 implementation
 
-- **Status**: Ready for Implementation
+- **Status**: In Progress — DoD tracked below
 - **Date**: 2026-08-20
 - **Executor**: AI Coding Agent
 - **Architecture**: ADR-0001
@@ -563,15 +563,17 @@ Pi/model unavailable
 
 ## v0.1 Definition of Done
 
-- both white-box and black-box event paths work
-- two node agents can identify themselves and answer typed evidence requests
-- no arbitrary shell endpoint exists
-- event/incident/evidence/model-output separation is persisted
-- OOM and container die scenarios are genuinely tested
-- central/model outage is fail-safe for application/node collection
-- secrets are not committed
-- tests/typecheck pass
-- deployment artifacts are ready for `test-infra`
-- README documents how to run agent and node-agent locally
+- [x] both white-box and black-box event paths work  — 黑盒 compose 已验证；白盒仅 contract test，见 `evolution/phase12-local-work-log.md`
+- [ ] two node agents can identify themselves and answer typed evidence requests  — 只有单节点 local-dev
+- [x] no arbitrary shell endpoint exists
+- [x] event/incident/evidence/model-output separation is persisted
+- [ ] OOM and container die scenarios are genuinely tested  — PLAN-0002 M6
+- [x] central/model outage is fail-safe for application/node collection  — C 级证据；A 级见 PLAN-0002 M5
+- [x] secrets are not committed
+- [x] tests/typecheck pass
+- [ ] deployment artifacts are ready for `test-infra`
+- [x] README documents how to run agent and node-agent locally
+
+Remaining items are tracked as PLAN-0002 milestones (M5, M6).
 
 Only after this DoD should v0.2 consider controlled remediation such as restart/reload through policy-gated typed actions.

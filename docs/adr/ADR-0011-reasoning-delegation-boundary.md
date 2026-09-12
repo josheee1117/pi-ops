@@ -1,6 +1,7 @@
 # ADR-0011: Reasoning delegation contract boundary
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0029
+- **Superseded note**: the submit/poll delegation contract defined here is retired; the external Pi Runtime callback (ADR-0025) is the live path.
 - **Date**: 2026-08-21
 - **Scope**: The durable contract Pi-Ops exposes to a future Pi Runtime without becoming an agent host
 - **Supersedes**: none

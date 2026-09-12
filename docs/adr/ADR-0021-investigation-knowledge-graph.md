@@ -5,6 +5,7 @@
 - **Scope**: Provenance-preserving relations between Incident, Evidence, Hypothesis, and Memory
 - **Supersedes**: none
 - **Related**: ADR-0017, ADR-0018, ADR-0019, ADR-0020
+- **Note**: ADR-0023-investigation-knowledge-graph-phase8.md records the Phase 8 production contract for this same graph. Read it together with this ADR.
 
 ## Context
 
