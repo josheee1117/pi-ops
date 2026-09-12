@@ -3,8 +3,9 @@
 - **Status**: Accepted
 - **Date**: 2026-08-21
 - **Scope**: Production-grade asynchronous, idempotent, recoverable Pi Runtime integration
-- **Supersedes**: ADR-0019-pi-runtime-contract-hardening
-- **Related**: ADR-0012, ADR-0013, ADR-0014, ADR-0018
+- **Supersedes**: ADR-0019-pi-runtime-contract-hardening (deleted; recover it from git history before this ADR's introducing commit)
+- **Related**: ADR-0012, ADR-0013, ADR-0014, ADR-0018, ADR-0029
+- **Note**: the earlier same-numbered `ADR-0019-pi-runtime-contract-hardening.md` was removed once its content was fully covered here. Use git history if it is needed.
 
 ## Context
 

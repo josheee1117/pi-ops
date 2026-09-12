@@ -1,6 +1,7 @@
 # ADR-0012: Pi Runtime delegation contract
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0029
+- **Superseded note**: the submit/poll delegation transport is retired; the external Pi Runtime callback (ADR-0025) is the live path.
 - **Date**: 2026-08-21
 - **Scope**: How Pi-Ops hands an InvestigationPlan to an external Pi Runtime without hosting agents
 - **Supersedes**: none

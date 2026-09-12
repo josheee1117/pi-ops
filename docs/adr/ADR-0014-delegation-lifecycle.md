@@ -1,6 +1,7 @@
 # ADR-0014: Delegation lifecycle
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0029
+- **Superseded note**: only the submit/poll lifecycle is retired. The `DelegationTask` entity is retained as part of the ADR-0025 attempt graph (one InvestigationSession owns one DelegationTask) — do not delete it.
 - **Date**: 2026-08-21
 - **Scope**: Durable DelegationTask between InvestigationPlan and a Pi Runtime
 - **Supersedes**: none
