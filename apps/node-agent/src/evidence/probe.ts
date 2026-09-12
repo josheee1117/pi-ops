@@ -13,9 +13,6 @@ export function createProbeEvidenceProvider(): ProbeEvidenceProvider {
       const method = request.method ?? 'GET';
       const timeout = request.timeout ?? config.probeMaxTimeoutMs;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
       const start = Date.now();
       let status: number | undefined;
       let error: string | undefined;
@@ -23,7 +20,7 @@ export function createProbeEvidenceProvider(): ProbeEvidenceProvider {
       try {
         const res = await fetch(url, {
           method,
-          signal: controller.signal,
+          signal: AbortSignal.timeout(timeout),
           redirect: 'manual',
         });
         status = res.status;
@@ -32,8 +29,6 @@ export function createProbeEvidenceProvider(): ProbeEvidenceProvider {
         await res.body?.cancel().catch(() => {});
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
-      } finally {
-        clearTimeout(timeoutId);
       }
 
       const latencyMs = Date.now() - start;

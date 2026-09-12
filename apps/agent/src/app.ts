@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { AgentConfig } from './config.js';
 import { DuplicateEventConflictError, type EventStore } from './store.js';
@@ -17,6 +18,17 @@ import {
 } from './incident-context.js';
 
 class RequestBodyTooLargeError extends Error {}
+
+/**
+ * Constant-time Bearer comparison. A plain `!==` leaks token length and the
+ * length of any matching prefix through timing; `timingSafeEqual` requires
+ * equal-length buffers first, so compare lengths explicitly.
+ */
+function bearerMatches(header: string | undefined, token: string): boolean {
+  const expected = Buffer.from(`Bearer ${token}`);
+  const actual = Buffer.from(header ?? '');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
 
 async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
   const declaredLength = Number(request.headers.get('content-length') ?? '0');
@@ -67,8 +79,7 @@ export function createApp(
 
   app.post('/v1/events', async (c) => {
     const auth = c.req.header('Authorization');
-    const expected = `Bearer ${config.ingestToken}`;
-    if (!auth || auth !== expected) {
+    if (!bearerMatches(auth, config.ingestToken)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
 
@@ -129,7 +140,7 @@ export function createApp(
     if (!investigationLoop) return c.json({ error: 'investigation loop unavailable' }, 503);
     const expectedToken = config.piRuntimeToken;
     const auth = c.req.header('Authorization');
-    if (!expectedToken || !auth || auth !== `Bearer ${expectedToken}`) {
+    if (!expectedToken || !bearerMatches(auth, expectedToken)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     let body: unknown;
@@ -157,7 +168,7 @@ export function createApp(
     if (!investigationEvidence) return c.json({ error: 'investigation evidence unavailable' }, 503);
     const expectedToken = config.piRuntimeToken;
     const auth = c.req.header('Authorization');
-    if (!expectedToken || !auth || auth !== `Bearer ${expectedToken}`) {
+    if (!expectedToken || !bearerMatches(auth, expectedToken)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     let body: unknown;
@@ -301,5 +312,5 @@ export function createApp(
 
 function operatorAuthorized(c: { req: { header(name: string): string | undefined } }, config: AgentConfig): boolean {
   const auth = c.req.header('Authorization');
-  return Boolean(auth && auth === `Bearer ${config.operatorToken}`);
+  return bearerMatches(auth, config.operatorToken);
 }
