@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import {
   INVESTIGATION_RUNTIME_SCHEMA_VERSION,
@@ -16,6 +17,17 @@ import { createFakeRuntimeModel, type RuntimeModel } from './model.js';
 import { createRuntimeTaskStore, type RuntimeTaskRecord, type RuntimeTaskStore } from './store.js';
 
 class RequestBodyTooLargeError extends Error {}
+
+/**
+ * Constant-time Bearer comparison. A plain `!==` leaks token length and the
+ * length of any matching prefix through timing; `timingSafeEqual` requires
+ * equal-length buffers first, so compare lengths explicitly.
+ */
+function bearerMatches(header: string | undefined, token: string): boolean {
+  const expected = Buffer.from(`Bearer ${token}`);
+  const actual = Buffer.from(header ?? '');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
 
 export interface PiRuntimeApp {
   app: Hono;
@@ -52,7 +64,7 @@ export function createPiRuntimeApp(
 
   app.get('/v1/tasks/:runtimeRequestId', (c) => {
     const auth = c.req.header('Authorization');
-    if (!auth || auth !== `Bearer ${config.token}`) {
+    if (!bearerMatches(auth, config.token)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     const task = tasks.getByRequestId(c.req.param('runtimeRequestId'));
@@ -69,7 +81,7 @@ export function createPiRuntimeApp(
 
   app.post('/v1/investigations', async (c) => {
     const auth = c.req.header('Authorization');
-    if (!auth || auth !== `Bearer ${config.token}`) {
+    if (!bearerMatches(auth, config.token)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
     let body: unknown;

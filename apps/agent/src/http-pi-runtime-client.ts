@@ -40,27 +40,21 @@ export function createHttpPiRuntimeClient(options: {
       };
       const parsed = validateInvestigationSubmitRequest(payload);
       if (!parsed.success) throw new Error(parsed.message);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetchImpl(`${baseUrl}/v1/investigations`, {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${options.token}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify(parsed.value),
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new Error(`pi-runtime submit ${response.status}`);
-        }
-        const ack = await response.json() as InvestigationSubmitAck;
-        if (!ack.runtimeTaskId) throw new Error('pi-runtime ack missing runtimeTaskId');
-        return { runtimeTaskId: ack.runtimeTaskId };
-      } finally {
-        clearTimeout(timer);
+      const response = await fetchImpl(`${baseUrl}/v1/investigations`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${options.token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(parsed.value),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!response.ok) {
+        throw new Error(`pi-runtime submit ${response.status}`);
       }
+      const ack = await response.json() as InvestigationSubmitAck;
+      if (!ack.runtimeTaskId) throw new Error('pi-runtime ack missing runtimeTaskId');
+      return { runtimeTaskId: ack.runtimeTaskId };
     },
   };
 }

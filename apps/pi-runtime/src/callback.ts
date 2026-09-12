@@ -7,22 +7,16 @@ export async function postRuntimeResult(
   fetchImpl: typeof fetch = fetch,
   timeoutMs = 5000,
 ): Promise<void> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(callbackUrl, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(result),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      throw new Error(`callback ${response.status}`);
-    }
-  } finally {
-    clearTimeout(timer);
+  const response = await fetchImpl(callbackUrl, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(result),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`callback ${response.status}`);
   }
 }

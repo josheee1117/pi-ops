@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { NodeAgentConfig } from './config.js';
 import { validateQueryRequest, queryTypeToSource } from './evidence/types.js';
@@ -6,6 +7,17 @@ import { createHostEvidenceProvider } from './evidence/host.js';
 import { createProbeEvidenceProvider } from './evidence/probe.js';
 
 class RequestBodyTooLargeError extends Error {}
+
+/**
+ * Constant-time Bearer comparison. A plain `!==` leaks token length and the
+ * length of any matching prefix through timing; `timingSafeEqual` requires
+ * equal-length buffers first, so compare lengths explicitly.
+ */
+function bearerMatches(header: string | undefined, token: string): boolean {
+  const expected = Buffer.from(`Bearer ${token}`);
+  const actual = Buffer.from(header ?? '');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
 
 async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
   const declaredLength = Number(request.headers.get('content-length') ?? '0');
@@ -62,8 +74,7 @@ export function createApp(config: NodeAgentConfig): Hono {
   app.post('/v1/evidence/query', async (c) => {
     // Auth
     const auth = c.req.header('Authorization');
-    const expected = `Bearer ${config.nodeToken}`;
-    if (!auth || auth !== expected) {
+    if (!bearerMatches(auth, config.nodeToken)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
 

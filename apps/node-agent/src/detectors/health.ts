@@ -27,20 +27,16 @@ export async function defaultProbe(
   method: string,
   timeoutMs: number,
 ): Promise<ProbeResult> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       method,
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
       redirect: 'manual',
     });
     await res.body?.cancel().catch(() => {});
     return { ok: res.status >= 200 && res.status < 400, status: res.status };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

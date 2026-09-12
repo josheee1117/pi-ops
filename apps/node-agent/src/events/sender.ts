@@ -57,9 +57,6 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= config.eventMaxRetries; attempt++) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), config.eventSendTimeoutMs);
-
         const res = await fetch(`${config.agentUrl}/v1/events`, {
           method: 'POST',
           headers: {
@@ -67,9 +64,8 @@ export function createEventSender(config: NodeAgentConfig): EventSender {
             Authorization: `Bearer ${config.ingestToken}`,
           },
           body,
-          signal: controller.signal,
+          signal: AbortSignal.timeout(config.eventSendTimeoutMs),
         });
-        clearTimeout(timeoutId);
 
         if (res.ok) {
           if (attempt > 0) {
