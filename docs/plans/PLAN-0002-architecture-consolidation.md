@@ -32,6 +32,11 @@ tools/test-governance/README.md
    ```
 
    `plan --strict` 非零退出时不得提 PR，先按 §0.1 处理。
+   注意 `plan` 默认只比较 `HEAD~1..HEAD`，未提交的工作区改动和分支上更早的提交都不会被检查。里程碑分支提交后用真实区间验证：
+
+   ```bash
+   node tools/test-governance/src/cli.mjs plan --strict --base main --head <branch>
+   ```
 3. 不新增基础设施依赖，不新增 npm 依赖。stdlib 优先。
 4. 不触碰 v0.1 只读边界：无 shell、无 restart/kill、无写操作。
 5. 不改 `packages/protocol` 的 wire contract（DataAsset 依赖它）。
@@ -55,7 +60,7 @@ tools/test-governance/README.md
    grep -n "<文件相对路径>" tools/test-governance/config/features.json tools/test-governance/config/catalog.json tools/test-governance/config/architecture-guards.json
    ```
 
-   无命中：直接删。
+   无命中：**仍不能直接删**。治理工具把删除也算作 production change，被删文件若不匹配任何 Feature path，`plan --strict` 报 `UNMAPPED_PRODUCTION_CHANGE`（2026-09-14 在 throwaway worktree 上实测）。做法：同一 PR 内把被删文件路径**追加**到语义最近的 Feature 的 `paths`（追加是 strengthening，policyDelta 通过；features.json 已有指向不存在文件的路径先例 `reasoning-service.ts`）。不要改 `unmappedIgnore`。
 2. **有命中但只在 catalog 且 status 为 ACTIVE（非 PINNED）**：连同 catalog 条目一起删，跑 `cli.mjs validate`。
 3. **命中 features.json paths 或 PINNED**：该改动会触发 `HUMAN_REQUIRED`，必须走 GitHub Environment `governance-review`。代理在 PR 描述里写清"本 PR 预期 GOVERNANCE_POLICY_WEAKENING，原因：<删除的文件已从入口不可达 / 已被 ADR-00xx 取代>"，然后 **[OWNER]** 审批。绝不通过"把路径留着指向不存在的文件"来绕过。
 
@@ -233,6 +238,9 @@ fix(auth): 三服务 Bearer 校验改用 timingSafeEqual 并统一超时信号
 
    评审时无命中。若有命中且非 PINNED，连同 catalog 条目删除。
 3. `git rm apps/agent/src/delegated-result-ingestion.ts apps/agent/src/__tests__/delegated-result-ingestion.test.ts`
+   然后在 `tools/test-governance/config/features.json` 的 `reasoning.local.paths` 追加 `apps/agent/src/delegated-result-ingestion.ts`（见 §0.1 第 1 条；已实测：不加则 `plan --strict` 为 UNMAPPED_PRODUCTION_CHANGE，加上后 READY 且 policyDelta=PASS）。
+   本地验证必须用真实提交区间而非默认 HEAD~1：先 commit 到分支，再跑
+   `node tools/test-governance/src/cli.mjs plan --strict --base main --head <branch>`。
 4. 检查 `store.ts` 中只被该文件调用的方法：
 
    ```bash
@@ -340,6 +348,7 @@ refactor(agent): 移除进程内 PiReasoner，外部 Pi Runtime 成为唯一推�
    - `docker compose start pi-ops-node-agent`，轮询直到该 Incident 出现新的 `succeeded` Evidence
 2. `package.json` 加 `"smoke:node-outage": "bash deploy/local/smoke-node-outage.sh"`。
 3. catalog 登记为 INV-EVD-02 的 A1。
+4. 同一 PR 内完成 M2 延后的 `apps/agent/src/evidence-orchestrator.ts` 超时统一（M2 因该 feature 有 INV-EVD-02:A 缺口而跳过，缺口关闭后才能动它）。注意它用 `controller.signal.aborted` 区分超时与连接失败；改为 `AbortSignal.timeout` 后要改成判断 `error.name === 'TimeoutError'`，否则超时会被记成 "connection failed"。
 
 ### 5.3 INV-STALE-01（Runtime ACK 后死亡）
 
