@@ -5,6 +5,7 @@
 - **Executor**: AI Coding Agent（一次一个里程碑）
 - **Architecture**: ADR-0001、ADR-0025 不变
 - **Input**: 2026-09-12 架构评审结论（见 §1）
+- **Revised**: 2026-09-15 回看立项后插入 M5–M7 闭环里程碑，原 M5–M10 顺延为 M8–M13
 
 ## 0. 执行代理必读规则
 
@@ -43,6 +44,7 @@ tools/test-governance/README.md
 6. Commit subject 中文、Conventional Commit type 英文，见 CONTRIBUTING.md。
 7. 每个里程碑结束提交一份完成报告：改动文件、决策、验证命令输出摘要、遗留项。
 8. 标记为 **[OWNER]** 的步骤需要仓库 owner 决策或审批，代理不得自行推进，停下来报告。
+9. **冻结**：在 M5–M7 于真实主机通过前，不新增任何推理智能类 ADR（记忆、图谱、评估、检索），治理工具不新增功能，不启动 M8 以后的里程碑。
 
 ### 0.1 治理工具的硬约束（删代码前必读）
 
@@ -68,6 +70,8 @@ tools/test-governance/README.md
 
 ## 1. 评审结论摘要（本计划的依据）
 
+**2026-09-15 回看立项源头**（test-infra ADR-0002 / ADR-0005 / PLAN-0005）：立项目标是在 test-svc-02 与 test-ai-01 两台真实主机上跑通"DataAsset 白盒 + 第三方黑盒 → Incident → 证据 → Pi → 企业微信"的闭环，ADR-0002 明言不做大而全平台。截至当日 pi-ops 从未部署到真实主机、未处理过真实事故、无企业微信实现；偏离始于 8 月 21 日一天内写下的 19 份推理智能 ADR。这是 P0，由 M5–M7 关闭。
+
 架构骨架成立，问题是叠加而非设计。按严重程度：
 
 | # | 问题 | 证据 |
@@ -86,19 +90,22 @@ tools/test-governance/README.md
 ## 2. 里程碑总览
 
 ```text
-M1  文档收敛（无代码改动）                      风险低   ~0.5 天
-M2  小型加固：timingSafeEqual + AbortSignal.timeout   风险低   ~0.5 天
-M3  删除不可达代码 delegated-result-ingestion   风险低   ~0.5 天
-M4  移除进程内 PiReasoner 路径                  [OWNER]  ~1 天
-M5  关闭 3 个 P1 Evidence 缺口                  风险中   ~2 天
-M6  S3 OOM / S5 洪泛 compose 演练               风险中   ~1 天
-M7  pi-session 结构化输出修复重试 + benchmark 扩展   需凭证  ~2 天
-M8  store.ts 迁移改 user_version + 按域拆文件   风险中   ~2 天
-M9  Memory 子系统去留                           [OWNER]  视决策
-M10 治理工具瘦身                                [OWNER]  视决策
+M1  文档收敛                                        已合入
+M2  小型加固：timingSafeEqual + AbortSignal.timeout   已合入
+M3  删除不可达代码 delegated-result-ingestion       风险低   ~0.5 天
+M4  移除进程内 PiReasoner 路径                      [OWNER]  ~1 天
+M5  部署到真实主机并跑通场景 B（黑盒）              [OWNER]  ~2 天   立项闭环
+M6  企业微信通知                                    [OWNER]  ~1 天   立项闭环
+M7  场景 A：真实 DataAsset 白盒事件端到端           [OWNER]  ~2 天   立项闭环
+M8  关闭 3 个 P1 Evidence 缺口                      风险中   ~2 天
+M9  S3 OOM / S5 洪泛 compose 演练                   风险中   ~1 天
+M10 pi-session 结构化输出修复重试 + benchmark 扩展  需凭证   ~2 天
+M11 store.ts 迁移改 user_version + 按域拆文件       风险中   ~2 天
+M12 Memory 子系统去留                               [OWNER]  视决策
+M13 治理工具瘦身                                    [OWNER]  视决策
 ```
 
-M1→M3 顺序执行。M4 等 owner。M5/M6 可并行。M7 需要 live 凭证。M8 独立。M9 在 M7 数据出来后决策。M10 独立且全程 owner 主导。
+M3→M4 顺序执行。M5→M6→M7 是立项闭环，优先级高于其后全部里程碑；M6 的代码部分可与 M5 部署并行写，验收依赖 M5。M8 的 A 级证据可直接用 M5 的真实主机产出，做 M8 前先核对哪些缺口已被 M5 覆盖。M10 需要 live 凭证。M11 独立。M12 在 M10 数据出来后决策。M13 全程 owner 主导。
 
 ---
 
@@ -132,8 +139,8 @@ M1→M3 顺序执行。M4 等 owner。M5/M6 可并行。M7 需要 live 凭证。
      - [ ] two node agents can identify themselves ...           （只有单节点 local-dev）
      - [x] no arbitrary shell endpoint exists
      - [x] event/incident/evidence/model-output separation is persisted
-     - [ ] OOM and container die scenarios are genuinely tested  （M6）
-     - [x] central/model outage is fail-safe ...                 （C 级证据，A 级见 M5）
+     - [ ] OOM and container die scenarios are genuinely tested  （M9）
+     - [x] central/model outage is fail-safe ...                 （C 级证据，A 级见 M8）
      - [x] secrets are not committed
      - [x] tests/typecheck pass
      - [ ] deployment artifacts are ready for test-infra
@@ -320,7 +327,176 @@ refactor(agent): 移除进程内 PiReasoner，外部 Pi Runtime 成为唯一推�
 
 ---
 
-# M5 — 关闭 3 个 P1 Evidence 缺口
+# M5 — 部署到真实主机并跑通场景 B（黑盒）**[OWNER]**
+
+## Goal
+
+PLAN-0005 §1 的场景 B 在真实环境跑通一次：test-ai-01 上一个一次性容器故障 → node-agent 事件 → test-svc-02 上的 pi-ops Incident → 跨主机拉取证据 → pi-runtime 调查 → 通知 → 恢复。这是立项以来第一次在真实主机上闭环。
+
+## 前置事实
+
+- 主机：test-svc-02 172.17.2.35（SSH 端口 10022），test-ai-01 172.17.1.52。Ansible inventory 组 `test_service` / `test_ai`。跨主机只能走"宿主机 IP + 发布端口"（test-infra ADR-0001）。
+- 仓库边界（ADR-0001、PLAN-0001 M12）：pi-ops 仓库只放 Dockerfile 和应用级产物；compose、.env.example、Ansible playbook 放 test-infra。
+- test-infra 惯例：按序号编号的 playbook；应用目录 `/opt/test-stack/apps/<app>/`，内含 compose.yml、.env.example、deploy.sh；真实 `.env` 只在服务器上手工创建，playbook 发现缺失即 fail（照 `ansible/17-dataasset-config.yml`）。先 `--check --diff` 再 apply。
+- 镜像：`deploy/docker/Dockerfile` 一次构建三个应用，用 command 切换。DataAsset 走公司 ACR + Jenkins；pi-ops 暂无 CI 出镜像。
+- 模型凭证：pi-runtime 生产模式需要 `PI_OPS_PI_PROVIDER` / `PI_OPS_PI_MODEL` / API key，只放服务器 `.env`。
+
+## 拓扑
+
+```text
+test-svc-02 (172.17.2.35)                        test-ai-01 (172.17.1.52)
+  pi-ops             :8686  发布                    pi-ops-node-agent :8081  发布
+  pi-runtime         :8090  不发布，compose 内网     pi-ops-drill      :8088  发布，仅演练用
+  pi-ops-node-agent  :8081  发布
+  notification-sink  :8099  M6 前临时
+
+test-ai-01 node-agent → http://172.17.2.35:8686/v1/events            ingest token
+pi-ops                → http://172.17.1.52:8081/v1/evidence/query    node token (ai-01)
+pi-ops                → http://172.17.2.35:8081/v1/evidence/query    node token (svc-02)，同机也走宿主机 IP
+pi-runtime            → http://pi-ops:8080/v1/investigation-results  compose 内网
+```
+
+端口以 DESIGN-0001 的 8686 为基线。部署前在两台主机 `ss -ltnp` 核对无冲突；有冲突改端口并在 test-infra 文档记录。
+
+## Steps
+
+### 5.1 镜像交付（pi-ops 仓库）
+
+1. 本机构建并导出，**必须指定平台**，服务器是 x86_64：
+
+   ```bash
+   docker build --platform linux/amd64 -f deploy/docker/Dockerfile -t pi-ops:$(git rev-parse --short HEAD) .
+   docker save pi-ops:<sha> | gzip > /tmp/pi-ops-<sha>.tar.gz
+   ```
+
+2. 新增 `deploy/remote/push-image.sh <ssh-target> <sha>`：scp 加 `docker load`，10 行以内。
+3. 脚本头加 `# ponytail: 手工 save/load 是首次部署最短路径；稳定后由 Jenkins 推 ACR，走 DataAsset 同款 deploy.sh`。切换到 ACR 是 **[OWNER]** 决定。
+
+### 5.2 test-infra 侧
+
+1. 新增 `apps/pi-ops/compose.svc-02.yml`：pi-ops、pi-runtime、pi-ops-node-agent、notification-sink（临时）。从 `deploy/local/docker-compose.yml` 改：去掉 build 改 `image: pi-ops:${PI_OPS_IMAGE_TAG:?}`；去掉 drill；pi-ops 发布 `8686:8080`；pi-runtime 不发布端口；SQLite 卷落 `/data/pi-ops/`；node-agent 挂 `/var/run/docker.sock`。
+2. 新增 `apps/pi-ops/compose.ai-01.yml`：pi-ops-node-agent 加 pi-ops-drill。drill 的 Dockerfile 与 server.mjs 从 `deploy/local/drill` 复制到 `apps/pi-ops/drill/`。node-agent 发布 `8081:8081`。
+3. 两份 `.env.example`，键名与 `deploy/local/compose.env` 一致，值留空或占位：
+   - svc-02：`PI_OPS_INGEST_TOKEN`、`PI_OPS_OPERATOR_TOKEN`、`PI_OPS_PI_RUNTIME_TOKEN`、`PI_OPS_NODE_TOKEN`、`PI_OPS_NODE_ID=test-svc-02`、`PI_OPS_NODE_AGENTS='[{"nodeId":"test-svc-02","url":"http://172.17.2.35:8081","token":""},{"nodeId":"test-ai-01","url":"http://172.17.1.52:8081","token":""}]'`、`PI_OPS_ALLOWED_CONTAINERS=dataasset`、`PI_OPS_HEALTH_TARGETS=[]`（M7 再加）、`PI_OPS_REASONER_TYPE=fake`、`PI_OPS_PI_RUNTIME_URL=http://pi-runtime:8090`、`PI_OPS_PI_RUNTIME_CALLBACK_URL=http://pi-ops:8080/v1/investigation-results`、`PI_OPS_NOTIFICATION_WEBHOOK_URL=http://notification-sink:8099/notify`、pi-runtime 的 `PI_OPS_PI_PROVIDER` / `PI_OPS_PI_MODEL` / key 首轮留空即 fake model。
+   - ai-01：`PI_OPS_NODE_ID=test-ai-01`、`PI_OPS_NODE_TOKEN`、`PI_OPS_AGENT_URL=http://172.17.2.35:8686`、`PI_OPS_INGEST_TOKEN`、`PI_OPS_ALLOWED_CONTAINERS=pi-ops-drill`、`PI_OPS_HEALTH_TARGETS=[{"name":"pi-ops-drill","url":"http://pi-ops-drill:8088/health","container":"pi-ops-drill","intervalMs":5000}]`。
+4. 新增 `ansible/20-pi-ops-config.yml`，照抄 `17-dataasset-config.yml` 的结构：建 `/opt/test-stack/apps/pi-ops` 与 `/data/pi-ops`，按主机组下发对应 compose 与 .env.example，`.env` 缺失则 fail 并提示。
+5. `ansible/README.md` 索引加一行；test-infra `docs/adr/ADR-0005` 末尾追加 Change Log 一行记录首次部署日期。
+6. Token：`openssl rand -hex 32` 生成五个（ingest、operator、runtime、node×2）。**[OWNER]** 在两台服务器手工写 `.env`，不入 Git。
+
+### 5.3 上线与验证
+
+1. 顺序：先 ai-01（node-agent 加 drill），再 svc-02。`docker compose up -d` 后各自 `/health` 200。
+2. 跨主机连通性，两条都必须通：svc-02 上 `curl http://172.17.1.52:8081/health`；ai-01 上 `curl http://172.17.2.35:8686/health`。不通先查 firewalld 与 docker 发布规则，不要改成 host 网络。
+3. 把 `deploy/local/smoke.sh` 参数化：`PI_OPS`、`NODE_URL`、`DRILL`、`SINK`、三个 token 全部允许环境变量覆盖，新增 `EXPECT_NODE_ID` 替换写死的 `local-dev`。**不新建第二个脚本**。
+4. 本机执行：
+
+   ```bash
+   PI_OPS=http://172.17.2.35:8686 DRILL=http://172.17.1.52:8088 NODE_URL=http://172.17.1.52:8081 \
+   SINK=http://172.17.2.35:8099 EXPECT_NODE_ID=test-ai-01 OPERATOR=… NODE=… RUNTIME=… \
+   bash deploy/local/smoke.sh
+   ```
+
+   预期与本机一致：health.failure Incident（nodeId=test-ai-01）→ 来自 ai-01 的 http.probe / docker.inspect / docker.logs 证据 → 1 个 COMPLETED session → OPEN / COMPLETED / RECOVERED 三条通知。
+5. 补一次 docker die：ai-01 上 `docker kill pi-ops-drill`，断言出现 die 类 Incident 且 `docker.inspect` 证据退出码非 0；`docker compose up -d pi-ops-drill` 后恢复。
+6. 首轮通过后 **[OWNER]** 填入模型凭证，重启 pi-runtime，重跑第 4 步，确认 `INVESTIGATION_COMPLETED` 通知里的 hypothesis 不再是 fake 固定文本。
+
+## Acceptance
+
+- PLAN-0001 DoD：`two node agents can identify themselves` 与 `deployment artifacts are ready for test-infra` 改 `[x]`；`OOM and container die` 的 die 半句 `[x]`。
+- test-infra PR 合入：compose ×2、.env.example ×2、playbook、README 索引、ADR-0005 Change Log。
+- pi-ops PR：`deploy/remote/push-image.sh`、smoke.sh 参数化。治理：smoke.sh 在 unmappedIgnore；`deploy/remote/` 不在 governed roots，若 plan 报 UNMAPPED，把 `deploy/remote/**` 追加到 `local.integration.paths`。
+- 完成报告附两台主机 `docker compose ps` 与 smoke 完整输出。
+
+## Commit
+
+```text
+feat(deploy): 增加远程镜像推送脚本并参数化 smoke 以支持真实主机      pi-ops
+feat(pi-ops): 首次部署 pi-ops 到 test-svc-02 与 test-ai-01              test-infra
+```
+
+---
+
+# M6 — 企业微信通知 **[OWNER]**
+
+## Goal
+
+ADR-0002 立项目标的最后一句："最终只把值得处理的事件推到企业微信群"。把现有 webhook 通知接到企业微信群机器人。
+
+## 前置事实
+
+- `createHttpWebhookNotifier`（`apps/agent/src/notifier.ts`）把 `NotificationPayload` 原样 POST 到 URL，带 `Idempotency-Key`。OPEN / INVESTIGATION_COMPLETED / RECOVERED 三种类型 state-guarded，同一 Incident 各只发一次，已满足 PLAN-0005 M9 的去重规则。
+- payload 可用字段：`incident{id,service,nodeId,severity,state,firstSeen,lastSeen}`、`facts{eventCount,evidenceIds}`、`analysis?{hypothesis,confidence,recommendation}`。缺 Incident 的 `type`（如 health.failure）。
+- 企业微信群机器人：`POST https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<KEY>`，body `{"msgtype":"markdown","markdown":{"content":"…"}}`，成功返回 `{"errcode":0,"errmsg":"ok"}`；markdown 上限 4096 字节；单机器人 20 条/分钟。key 在 URL 里，是 secret。执行时以官方文档核对一次。
+
+## Steps
+
+1. `NotificationIncidentFacts` 增加 `type: string`，来自 incidents 行的 type 列。加字段不改 schemaVersion；现有测试若深比较 payload，更新 fixture。
+2. `notifier.ts` 同文件新增 `createWeComNotifier({ webhookUrl, timeoutMs, maxResponseBytes })`，40 行以内：
+   - markdown 三种类型各一个模板，字段顺序按 PLAN-0005 M9：service、node、type、time、eventCount、evidence 数量、hypothesis 与 confidence、recommendation、incident id。COMPLETED 无 analysis 时只发事实。
+   - 超 4000 字节先截 recommendation 再截 hypothesis。
+   - HTTP 非 2xx 或 errcode≠0 抛错：errcode 45009（频率限制）与网络/超时为 retryable，其余 terminal。复用现有 `RetryableNotificationError` / `TerminalNotificationError`。
+   - 错误信息不得含 webhook URL。grep `lastError` 的写入路径确认。
+3. `config.ts` 加 `PI_OPS_NOTIFICATION_WEBHOOK_KIND=generic|wecom`，默认 generic，本机 compose 与测试零变化。`index.ts` 按 kind 选 notifier。不加其他配置。
+4. 测试一个文件，fake fetch：三种类型的 body 结构、errcode≠0 → terminal、45009 → retryable、错误文本不含 URL。登记 catalog 到 notification 相关 feature，属 strengthening。
+5. README Notification 段加 wecom 两行；`.env.example` 加 KIND。
+6. **[OWNER]** 建群机器人，URL 写入 test-svc-02 的 `.env`，`KIND=wecom`，重启 pi-ops。
+
+## Acceptance
+
+- 本机：`pnpm test` 绿，新测试已登记，`plan --strict` READY。
+- 真实主机（M5 之后）：重跑 M5 §5.3 第 4 步，群里依次收到 OPEN、COMPLETED、RECOVERED；连续触发 3 次 `/fail` 不刷屏。
+- 完成报告附三条消息文本。
+
+## Commit
+
+```text
+feat(agent): 增加企业微信群机器人通知
+```
+
+---
+
+# M7 — 场景 A：真实 DataAsset 白盒事件端到端 **[OWNER]**
+
+## Goal
+
+PLAN-0005 §1 的场景 A：真实 DataAsset 容器发出的白盒事件进入真实 pi-ops，得到引用 `jfr.signal` 的调查报告并推到企业微信。做完这一条，v0.1 立项闭环才算闭合。
+
+## 前置事实
+
+- DataAsset 运行在 test-svc-02，容器名 `dataasset`，宿主机端口 8089，JDK17 dev runtime，经 Jenkins → ACR → `deploy.sh <tag>` 部署（test-infra `apps/dataasset/`）。
+- pi-ops 侧已具备：`EventBatch` 合同测试与三个 DataAsset fixture、JFR → `jfr.signal` 投影（ADR-0028）、`dataasset-transport` 测试。
+- DataAsset 侧状态**不明**：test-infra PLAN-0001（RecordingStream）写的是输出 `[PI_OPS_JFR]` 结构化日志行；pi-ops README 写的是 HTTP 批量推送到 `/v1/events`；DESIGN-0001 §23 的配置草案是 `pi-ops.endpoint` 加 `pi-ops.token`。DataAsset 仓库不在本机。
+
+## Steps
+
+0. **[OWNER]** 在 DataAsset 仓库确认三件事并回填本节：(a) 是否已有 HTTP sender 及其配置键名；(b) 哪个镜像 tag 含该 sender；(c) 它发出的事件类型清单。没有 sender 就先在 DataAsset 侧补，pi-ops 这边不动。
+1. test-infra：`apps/dataasset/.env.example` 与服务器 `.env` 加 DataAsset 侧的 pi-ops endpoint `http://172.17.2.35:8686` 与 ingest token（与 pi-ops 同值）；按现有流程 `deploy.sh <tag>` 上线含 sender 的镜像。
+2. svc-02 的 pi-ops `.env`：`PI_OPS_HEALTH_TARGETS` 加 `{"name":"dataasset","url":"http://172.17.2.35:8089/actuator/health","container":"dataasset","intervalMs":10000}`，路径以 DataAsset 实际 actuator 为准；`PI_OPS_ALLOWED_CONTAINERS` 含 `dataasset`。重启 node-agent。
+3. 触发一个可控的白盒事件，按第 0 步的清单选最容易稳定复现的一种：
+   - 调一个已知抛业务异常的接口 → `business.error`
+   - 执行一条超过 slow-sql 阈值的查询 → slow SQL
+   - DataAsset 自带 diagnostic-burst 或 CPU 热点接口 → jvm cpu
+
+   由 **[OWNER]** 与 DataAsset 同学定一个，写进报告。
+4. 验证链路：`GET /v1/ops/incidents` 出现 service=data-asset 的 Incident 且 producer 为 application；证据同时含 `jfr.signal` 与来自 test-svc-02 node-agent 的 `docker.inspect` / `docker.logs`；session COMPLETED 且 report 引用 `jfr.signal` 证据 id；企业微信收到 COMPLETED 消息。
+5. 把这次真实事件的 EventBatch 脱敏后存为 `apps/agent/src/__tests__/fixtures/dataasset-real-<type>.eventbatch.json`，加一条合同回归测试，防止 DataAsset 侧格式漂移。
+
+## Acceptance
+
+- PLAN-0001 DoD 第一条 `both white-box and black-box event paths work` 成为真实 `[x]`。
+- `docs/evolution/timeline.md` 顶部加 "v0.1 闭环首次在真实环境跑通" 一节，附 Incident id 与日期。
+- 完成报告附第 4 步四个断言的原始输出。
+
+## Commit
+
+```text
+test(agent): 以真实 DataAsset 事件作为合同回归 fixture       pi-ops
+feat(dataasset): 接入 pi-ops 事件推送                           test-infra 或 DataAsset
+```
+
+---
+
+# M8 — 关闭 3 个 P1 Evidence 缺口
 
 ## Goal
 
@@ -330,7 +506,7 @@ refactor(agent): 移除进程内 PiReasoner，外部 Pi Runtime 成为唯一推�
 
 ## Steps
 
-### 5.1 INV-SAFE-01（成本最低，先做）
+### 8.1 INV-SAFE-01（成本最低，先做）
 
 1. `deploy/local/drill/server.mjs`：`/fail` 路径触发时额外向 stdout 打一行 `ENV_KEY=drill-super-secret-value SECRET_KEY=drill-secret-2`。
 2. `deploy/local/smoke.sh` 第 95-96 行已经断言 safe 视图不含 `super-secret`。补两条：
@@ -338,7 +514,7 @@ refactor(agent): 移除进程内 PiReasoner，外部 Pi Runtime 成为唯一推�
    - safe 视图里不包含它，但包含脱敏占位（查 `apps/agent/src` 里 `toRuntimeSafeEvidence` 的实际占位字符串后写断言）
 3. catalog：把 `safe-redact-inspect` 所在 invariant 的 A1 slot 指向 `pnpm smoke:local`。
 
-### 5.2 INV-EVD-02（Node Agent 中途不可达）
+### 8.2 INV-EVD-02（Node Agent 中途不可达）
 
 1. 新建 `deploy/local/smoke-node-outage.sh`：
    - 启动 compose，触发 drill `/fail`，等到 Incident OPEN
@@ -350,7 +526,7 @@ refactor(agent): 移除进程内 PiReasoner，外部 Pi Runtime 成为唯一推�
 3. catalog 登记为 INV-EVD-02 的 A1。
 4. 同一 PR 内完成 M2 延后的 `apps/agent/src/evidence-orchestrator.ts` 超时统一（M2 因该 feature 有 INV-EVD-02:A 缺口而跳过，缺口关闭后才能动它）。注意它用 `controller.signal.aborted` 区分超时与连接失败；改为 `AbortSignal.timeout` 后要改成判断 `error.name === 'TimeoutError'`，否则超时会被记成 "connection failed"。
 
-### 5.3 INV-STALE-01（Runtime ACK 后死亡）
+### 8.3 INV-STALE-01（Runtime ACK 后死亡）
 
 1. 新建 `deploy/local/smoke-runtime-crash.sh`，需要在 compose 里用 env 覆盖 `PI_OPS_INVESTIGATION_STALE_TIMEOUT_MS=15000` 和 `PI_OPS_INVESTIGATION_RETRY_MAX_ATTEMPTS=2`（用 `docker compose --env-file` 叠加文件 `deploy/local/compose.env.stale`，不改默认 env）。
    - 触发 Incident，等 session 进入 SUBMITTED 或 RUNNING（`GET /v1/ops/incidents/:id` 的 sessions 字段）
@@ -360,7 +536,7 @@ refactor(agent): 移除进程内 PiReasoner，外部 Pi Runtime 成为唯一推�
 2. `package.json` 加 `"smoke:runtime-crash"`。
 3. catalog 登记为 INV-STALE-01 的 A1。
 
-### 5.4 CI
+### 8.4 CI
 
 `.github/workflows/test-governance.yml` 当前是否启动 compose？若否，这三个 smoke 在 CI 中不可执行，catalog 的 `executionClass` 要按治理 README 标为本地执行类，并在 `docs/testing/test-gap-report.md` 注明"A 级证据在本机 compose 实现，CI 不运行"。**[OWNER]** 决定是否在 CI 加 docker compose job（GitHub-hosted runner 支持）。
 
@@ -383,7 +559,7 @@ test(smoke): Pi Runtime ACK 后崩溃触发 stale 失败与有界重试
 
 ---
 
-# M6 — S3 OOM / S5 事件洪泛演练
+# M9 — S3 OOM / S5 事件洪泛演练
 
 ## Goal
 
@@ -391,13 +567,13 @@ PLAN-0001 里 "OOM and container die scenarios are genuinely tested" 打勾。
 
 ## Steps
 
-### 6.1 S3 OOM
+### 9.1 S3 OOM
 
 1. `deploy/local/docker-compose.yml` 加一个 `pi-ops-oom-drill` 服务：`mem_limit: 32m`，镜像用 `node:22-alpine`，command 为分配内存直到被 kill 的一行 node 脚本，`restart: "no"`。默认 `profiles: [oom]`，不影响 `smoke:local`。
 2. `deploy/local/smoke-oom.sh`：`docker compose --profile oom up -d pi-ops-oom-drill`，等 node-agent 上报 `docker.die` 且 `exitCode=137` / `OOMKilled=true`（查 `apps/node-agent/src/events/docker-events.ts` 实际字段名），断言 Incident type 为 OOM 相关类型，Evidence 中同时有 `docker.inspect` 与 `host.memory`。
 3. 登记 catalog（新 invariant 归到 `node.docker-evidence` 或现有 OOM feature，只加不减）。
 
-### 6.2 S5 事件洪泛
+### 9.2 S5 事件洪泛
 
 1. `deploy/local/smoke-flood.sh`：用 ingest token 向 `/v1/events` 连发 100 个同 fingerprint 的 EventBatch（fixture 复用 `apps/agent/src/__tests__/fixtures/dataasset-business-error.eventbatch.json`，只改 `time`）。
 2. 断言：`GET /v1/ops/incidents` 中该 fingerprint 只有 1 个 Incident；`sessions` ≤ 1；notification-sink 收到的 `INCIDENT_OPEN` 恰 1 条。
@@ -416,7 +592,7 @@ test(smoke): 增加 OOM 容器与事件洪泛的本机演练
 
 ---
 
-# M7 — 诊断质量：结构化输出修复 + benchmark 扩展
+# M10 — 诊断质量：结构化输出修复 + benchmark 扩展
 
 ## Goal
 
@@ -428,7 +604,7 @@ test(smoke): 增加 OOM 容器与事件洪泛的本机演练
 
 ## Steps
 
-### 7.1 pi-session 一次修复重试
+### 10.1 pi-session 一次修复重试
 
 1. 读 `apps/pi-runtime/src/pi-session.ts` 与 `specialists.ts` 中解析 specialist 输出的位置。
 2. 校验失败时，**同一 session** 内追加一条用户消息：`Your previous reply failed schema validation: <zod/validator 错误摘要，≤ 300 字符>. Reply with only the JSON object.` 重试一次。重试仍失败则按现有逻辑标 failed。
@@ -436,7 +612,7 @@ test(smoke): 增加 OOM 容器与事件洪泛的本机演练
 4. `apps/pi-runtime/src/__tests__/` 加一个 fake model 测试：第一次返回非法 JSON、第二次合法 → completed；两次都非法 → failed。
 5. 不加 `PI_OPS_*` 配置项，重试次数硬编码 1，代码注释 `// ponytail: one repair retry; make configurable only if benchmark shows a second retry helps`。
 
-### 7.2 benchmark 扩展（需凭证）
+### 10.2 benchmark 扩展（需凭证）
 
 1. `apps/pi-runtime/src/benchmark/fixtures.ts` 增加两组 golden case，每组 ≥ 3 个：
    - `oom-*`：容器 OOM vs 主机内存压力归因，Evidence 只用现有 `docker.inspect / docker.stats / host.memory / jfr.signal` 字段
@@ -459,7 +635,7 @@ feat(benchmark): 增加 OOM 与 container die 场景并记录多模型评测
 
 ---
 
-# M8 — store.ts 迁移编号化与按域拆文件
+# M11 — store.ts 迁移编号化与按域拆文件
 
 ## Goal
 
@@ -467,7 +643,7 @@ feat(benchmark): 增加 OOM 与 container die 场景并记录多模型评测
 
 ## Steps
 
-### 8.1 迁移编号化
+### 11.1 迁移编号化
 
 1. 读 `apps/agent/src/store.ts:1488-1760`，列出所有 `CREATE TABLE` 与 `ALTER TABLE ADD COLUMN`。
 2. 新建 `apps/agent/src/store-migrations.ts`：
@@ -488,7 +664,7 @@ feat(benchmark): 增加 OOM 与 container die 场景并记录多模型评测
 4. `reasoning_jobs` 的 UNIQUE 重建（1488-1505）和 `reasoning_results` fail-closed 检查（ADR-0025）原样保留在对应 version 内，**不改语义**。
 5. 现有 `reasoning-jobs-migration.test.ts` 与 `reasoning-results-migration.test.ts` 不改即绿。另加一个测试：对 `deploy/local/data/pi-ops/pi-ops.sqlite` 的副本（若存在）打开一次，断言 `user_version === MIGRATIONS.at(-1).version` 且不抛。
 
-### 8.2 按域拆文件
+### 11.2 按域拆文件
 
 只拆两组自包含的表族，其它不动：
 
@@ -516,7 +692,7 @@ refactor(agent): 按 memory 与 investigation graph 拆分 store
 
 ---
 
-# M9 — Memory 子系统去留 **[OWNER]**
+# M12 — Memory 子系统去留 **[OWNER]**
 
 ## 现状
 
@@ -524,7 +700,7 @@ candidate 会写入（`reasoning-evaluation.ts:103`），但 approve / reject / 
 
 ## 决策输入
 
-等 M7 benchmark 数据：如果没有历史知识注入时诊断 hard pass 已经稳定 ≥ 90%，说明 Memory 不是当前瓶颈。
+等 M10 benchmark 数据：如果没有历史知识注入时诊断 hard pass 已经稳定 ≥ 90%，说明 Memory 不是当前瓶颈。
 
 ## 选项 A：接通（约 2 天）
 
@@ -551,7 +727,7 @@ candidate 会写入（`reasoning-evaluation.ts:103`），但 approve / reject / 
 
 ---
 
-# M10 — 治理工具瘦身 **[OWNER]**
+# M13 — 治理工具瘦身 **[OWNER]**
 
 ## 现状
 

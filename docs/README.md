@@ -72,7 +72,7 @@ Numbers 0002–0005 and 0007 are unused; they were never written.
 ## 3. Other documents
 
 - `plans/PLAN-0001-dual-source-v0.1-implementation.md` — v0.1 scope and Definition of Done status
-- `plans/PLAN-0002-architecture-consolidation.md` — current milestone plan (M1–M10)
+- `plans/PLAN-0002-architecture-consolidation.md` — current milestone plan (M1–M13; M5–M7 close the founding v0.1 loop on real hosts)
 - `evolution/timeline.md` — what shipped, in order
 - `evolution/phase12-local-work-log.md` — Phase 12 local integration log
 - `local-integration.md` — running the local stack
