@@ -41,24 +41,14 @@ export interface AgentConfig {
   reasoningTimeoutMs: number;
   /** Maximum reasoning jobs processed in one drain. */
   reasoningJobBatchSize: number;
-  /** Reasoner selected for newly created ReasoningJobs. */
-  reasonerType: 'fake' | 'pi';
-  /** Pi SDK provider id. Required when reasonerType is pi. */
-  piProvider: string;
-  /** Pi SDK model id. Required when reasonerType is pi. */
-  piModel: string;
-  /** Optional runtime API key override. Never logged. */
-  piApiKey?: string;
-  /** Bounded provider retries inside one ReasoningJob attempt. */
-  reasoningMaxRetries: number;
+  /** Reasoner selected for newly created ReasoningJobs. Only fake remains in-process (ADR-0029). */
+  reasonerType: 'fake';
   /** Maximum IncidentContext JSON bytes sent to the model. */
   reasoningMaxContextBytes: number;
   /** Maximum evidence items included in IncidentContext. */
   reasoningMaxEvidenceItems: number;
   /** Maximum log lines retained per evidence item. */
   reasoningMaxLogLines: number;
-  /** Maximum model output bytes accepted as structured JSON. */
-  reasoningMaxOutputBytes: number;
   /** Canonical: all of URL/token/callback are set. */
   externalRuntimeEnabled: boolean;
   /** External Pi Runtime base URL. When unset, investigation submit stays local/no-op. */
@@ -170,12 +160,6 @@ function parseNodeAgents(): Map<string, NodeAgentEndpoint> {
 
 export function loadConfig(): AgentConfig {
   const reasonerType = parseReasonerType();
-  const piProvider = process.env['PI_OPS_PI_PROVIDER'] ?? '';
-  const piModel = process.env['PI_OPS_PI_MODEL'] ?? '';
-  const piApiKey = process.env['PI_OPS_PI_API_KEY'];
-  if (reasonerType === 'pi' && (!piProvider || !piModel)) {
-    throw new Error('PI_OPS_PI_PROVIDER and PI_OPS_PI_MODEL are required when PI_OPS_REASONER_TYPE=pi');
-  }
   const ingestToken = requireEnv('PI_OPS_INGEST_TOKEN');
   const operatorToken = requireEnv('PI_OPS_OPERATOR_TOKEN');
   const externalRuntime = resolveExternalRuntimeSettings();
@@ -235,13 +219,6 @@ export function loadConfig(): AgentConfig {
       max: 1000,
     }),
     reasonerType,
-    piProvider,
-    piModel,
-    ...(piApiKey ? { piApiKey } : {}),
-    reasoningMaxRetries: integerEnv('PI_OPS_REASONING_MAX_RETRIES', 2, {
-      min: 0,
-      max: 10,
-    }),
     reasoningMaxContextBytes: integerEnv('PI_OPS_REASONING_MAX_CONTEXT_BYTES', 32_768, {
       min: 1024,
       max: 1_000_000,
@@ -251,10 +228,6 @@ export function loadConfig(): AgentConfig {
     }),
     reasoningMaxLogLines: integerEnv('PI_OPS_REASONING_MAX_LOG_LINES', 50, {
       max: 500,
-    }),
-    reasoningMaxOutputBytes: integerEnv('PI_OPS_REASONING_MAX_OUTPUT_BYTES', 8192, {
-      min: 256,
-      max: 100_000,
     }),
     externalRuntimeEnabled: externalRuntime.externalRuntimeEnabled,
     ...(externalRuntime.externalRuntimeEnabled
@@ -340,10 +313,13 @@ function assertDistinctTokens(tokens: Array<{ name: string; value: string }>): v
   }
 }
 
-function parseReasonerType(): 'fake' | 'pi' {
+function parseReasonerType(): 'fake' {
   const raw = process.env['PI_OPS_REASONER_TYPE'] ?? 'fake';
-  if (raw !== 'fake' && raw !== 'pi') {
-    throw new Error('PI_OPS_REASONER_TYPE must be fake or pi');
+  if (raw === 'pi') {
+    throw new Error("reasonerType 'pi' removed in ADR-0029; use external Pi Runtime");
+  }
+  if (raw !== 'fake') {
+    throw new Error('PI_OPS_REASONER_TYPE must be fake');
   }
   return raw;
 }

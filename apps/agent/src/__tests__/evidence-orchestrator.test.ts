@@ -44,13 +44,9 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     reasoningTimeoutMs: 5000,
     reasoningJobBatchSize: 10,
     reasonerType: 'fake',
-    piProvider: '',
-    piModel: '',
-    reasoningMaxRetries: 2,
     reasoningMaxContextBytes: 32_768,
     reasoningMaxEvidenceItems: 12,
     reasoningMaxLogLines: 50,
-    reasoningMaxOutputBytes: 8192,
     ...overrides,
   };
 }

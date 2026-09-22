@@ -25,14 +25,9 @@ const CONFIG_KEYS = [
   'PI_OPS_REASONING_TIMEOUT_MS',
   'PI_OPS_REASONING_JOB_BATCH_SIZE',
   'PI_OPS_REASONER_TYPE',
-  'PI_OPS_PI_PROVIDER',
-  'PI_OPS_PI_MODEL',
-  'PI_OPS_PI_API_KEY',
-  'PI_OPS_REASONING_MAX_RETRIES',
   'PI_OPS_REASONING_MAX_CONTEXT_BYTES',
   'PI_OPS_REASONING_MAX_EVIDENCE_ITEMS',
   'PI_OPS_REASONING_MAX_LOG_LINES',
-  'PI_OPS_REASONING_MAX_OUTPUT_BYTES',
   'PI_OPS_NOTIFICATION_WEBHOOK_URL',
   'PI_OPS_NOTIFICATION_WEBHOOK_TOKEN',
   'PI_OPS_NOTIFICATION_TIMEOUT_MS',
@@ -164,11 +159,9 @@ describe('loadConfig node-agent registry', () => {
       ['PI_OPS_EVIDENCE_JOB_MAX_ATTEMPTS', '101'],
       ['PI_OPS_EVIDENCE_JOB_BATCH_SIZE', '1001'],
       ['PI_OPS_EVENT_REPLAY_BATCH_SIZE', '10001'],
-      ['PI_OPS_REASONING_MAX_RETRIES', '-1'],
       ['PI_OPS_REASONING_MAX_CONTEXT_BYTES', '16'],
       ['PI_OPS_REASONING_MAX_EVIDENCE_ITEMS', '0'],
       ['PI_OPS_REASONING_MAX_LOG_LINES', '0'],
-      ['PI_OPS_REASONING_MAX_OUTPUT_BYTES', '10'],
     ];
 
     for (const [key, value] of invalidValues) {
@@ -188,13 +181,12 @@ describe('loadConfig node-agent registry', () => {
     withConfigEnv({}, () => {
       const config = loadConfig();
       assert.equal(config.reasonerType, 'fake');
-      assert.equal(config.piApiKey, undefined);
     });
   });
 
-  it('fails fast when PiReasoner is enabled without provider/model', () => {
+  it('fails closed when the removed in-process Pi reasoner is selected', () => {
     withConfigEnv({ PI_OPS_REASONER_TYPE: 'pi' }, () => {
-      assert.throws(() => loadConfig(), /PI_OPS_PI_PROVIDER/);
+      assert.throws(() => loadConfig(), /ADR-0029/);
     });
   });
 });

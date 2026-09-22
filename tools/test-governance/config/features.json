@@ -735,8 +735,6 @@
       "paths": [
         "apps/agent/src/reasoner.ts",
         "apps/agent/src/reasoning-worker.ts",
-        "apps/agent/src/reasoning-service.ts",
-        "apps/agent/src/pi-reasoner.ts",
         "apps/agent/src/delegated-result-ingestion.ts"
       ],
       "invariants": [

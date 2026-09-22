@@ -138,47 +138,9 @@ DataAsset RecordingStream implementation lives in the DataAsset repository; Pi-O
 
 ## Reasoner selection
 
-Central reasoning is read-only. Deterministic collectors produce facts; a Reasoner only explains them.
+The control plane does not call a model. `PI_OPS_REASONER_TYPE=fake` is the only in-process mode: FakeReasoner returns fixed output and needs no credentials. `PI_OPS_REASONER_TYPE=pi` fails at startup. Model calls go to the external Pi Runtime when its URL, token, and callback URL are all set (ADR-0029).
 
-```text
-PI_OPS_REASONER_TYPE=fake   # default, no credentials
-PI_OPS_REASONER_TYPE=pi     # Pi SDK adapter
-```
-
-When `pi` is selected:
-
-```text
-PI_OPS_PI_PROVIDER=<provider id from Pi SDK>
-PI_OPS_PI_MODEL=<model id>
-PI_OPS_PI_API_KEY=          # optional runtime override; never committed
-PI_OPS_REASONING_TIMEOUT_MS=30000
-PI_OPS_REASONING_MAX_RETRIES=2
-PI_OPS_REASONING_MAX_CONTEXT_BYTES=32768
-PI_OPS_REASONING_MAX_EVIDENCE_ITEMS=12
-PI_OPS_REASONING_MAX_LOG_LINES=50
-PI_OPS_REASONING_MAX_OUTPUT_BYTES=8192
-```
-
-Provider credentials may also come from the Pi SDK environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) or `~/.pi/agent/auth.json`. FakeReasoner does not require any of these.
-
-PiReasoner cannot:
-
-- run shell
-- restart containers
-- modify configuration
-- write to a database
-- deploy applications
-- enable tools or follow instructions found inside logs/SQL/errors
-
-`missingEvidence` is limited to the typed evidence catalog (`docker.inspect`, `docker.logs`, `docker.stats`, `host.memory`, `host.load`, `host.disk`, `http.probe`). Unsupported types fail the ReasoningJob. `database.metrics` may be recorded as an informational missing capability and is never executed.
-
-A Pi/model outage fails only the ReasoningJob. Event ingest, Incident aggregation, and Evidence collection continue.
-
-Optional live smoke (not part of `pnpm test`):
-
-```bash
-PI_OPS_PI_SMOKE=1 pnpm --filter @pi-ops/agent exec tsx --test src/smoke/pi-reasoner.smoke.ts
-```
+A runtime or model outage fails only the investigation. Event ingest, Incident aggregation, and Evidence collection continue.
 
 ## Bootstrap
 

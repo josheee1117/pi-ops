@@ -37,9 +37,9 @@ function evidence(): EvidenceRecord[] {
 }
 
 describe('ReasoningStrategy', () => {
-  it('maps fake to deterministic and pi to single_reasoner', () => {
+  it('maps fake to deterministic and rejects the removed pi reasoner', () => {
     assert.equal(strategyNameFor('fake'), 'deterministic');
-    assert.equal(strategyNameFor('pi'), 'single_reasoner');
+    assert.throws(() => strategyNameFor('pi'), /ADR-0029/);
     assert.equal(strategyNameFor('delegated_analysis'), 'delegated_analysis');
   });
 
@@ -58,14 +58,6 @@ describe('ReasoningStrategy', () => {
     assert.deepEqual(viaStrategy.hypotheses, [HYPOTHESIS_DATABASE_INVESTIGATION]);
   });
 
-  it('keeps FakeReasoner output unchanged through single_reasoner', async () => {
-    const reasoner = createFakeReasoner();
-    const input = { incident: incident(), evidence: evidence(), reasoner };
-    const direct = reasoner.reason(input.incident, input.evidence);
-    const strategy = createDefaultReasoningStrategies().get('single_reasoner');
-    assert.ok(strategy);
-    assert.deepEqual(await strategy.execute(input), direct);
-  });
 
   it('does not implement delegated_analysis in Pi-Ops', () => {
     assert.throws(
