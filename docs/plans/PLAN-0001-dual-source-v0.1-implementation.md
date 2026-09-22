@@ -563,15 +563,15 @@ Pi/model unavailable
 
 ## v0.1 Definition of Done
 
-- [x] both white-box and black-box event paths work  — 黑盒 compose 已验证；白盒仅 contract test，见 `evolution/phase12-local-work-log.md`
-- [ ] two node agents can identify themselves and answer typed evidence requests  — 只有单节点 local-dev
+- [ ] both white-box and black-box event paths work  — 黑盒仅本机 compose；白盒仅 contract test，见 `evolution/phase12-local-work-log.md`。真实主机端到端：PLAN-0002 M5（黑盒）/ M7（白盒）
+- [ ] two node agents can identify themselves and answer typed evidence requests  — 只有单节点 local-dev；PLAN-0002 M5
 - [x] no arbitrary shell endpoint exists
 - [x] event/incident/evidence/model-output separation is persisted
-- [ ] OOM and container die scenarios are genuinely tested  — PLAN-0002 M6
-- [x] central/model outage is fail-safe for application/node collection  — C 级证据；A 级见 PLAN-0002 M5
+- [ ] OOM and container die scenarios are genuinely tested  — die：PLAN-0002 M5；OOM：PLAN-0002 M9
+- [x] central/model outage is fail-safe for application/node collection  — C 级证据；A 级见 PLAN-0002 M5 / M8
 - [x] secrets are not committed
 - [x] tests/typecheck pass
-- [ ] deployment artifacts are ready for `test-infra`
+- [ ] deployment artifacts are ready for `test-infra`  — PLAN-0002 M5
 - [x] README documents how to run agent and node-agent locally
 
 Remaining items are tracked as PLAN-0002 milestones (M5, M6).
