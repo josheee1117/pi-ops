@@ -308,11 +308,10 @@ test('policy state precedence still fails closed', () => {
   assert.equal(resolvePlanStatus({ architectureViolations: [], unmappedProductionFiles: ['x'], hasGaps: false, budgetExceeded: false }), 'UNMAPPED_PRODUCTION_CHANGE');
 });
 
-test('the accepted machine gap set remains exactly three', () => {
+test('the accepted machine gap set remains exactly one', () => {
   const features = JSON.parse(readFileSync(join(ROOT, 'tools/test-governance/config/features.json'), 'utf8'));
   const catalog = JSON.parse(readFileSync(join(ROOT, 'tools/test-governance/config/catalog.json'), 'utf8'));
   assert.deepEqual(collectMachineGaps(features.features, catalog.entries), [
     { featureId: 'evidence.collection', invariantId: 'INV-EVD-02', level: 'A', missing: 1 },
-    { featureId: 'investigation.reconciliation', invariantId: 'INV-STALE-01', level: 'A', missing: 1 },
   ]);
 });

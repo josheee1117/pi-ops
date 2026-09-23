@@ -143,6 +143,23 @@
       ]
     },
     {
+      "id": "recon-stale-runtime-crash",
+      "featureId": "investigation.reconciliation",
+      "status": "ACTIVE",
+      "maintenanceCost": 4,
+      "executionClass": "SMOKE",
+      "command": "pnpm smoke:runtime-crash",
+      "location": {
+        "file": "deploy/local/smoke-runtime-crash.sh"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-STALE-01",
+          "level": "A"
+        }
+      ]
+    },
+    {
       "id": "recon-idempotent",
       "featureId": "investigation.reconciliation",
       "status": "ACTIVE",
