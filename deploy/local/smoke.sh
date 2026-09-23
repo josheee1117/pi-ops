@@ -3,15 +3,21 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 COMPOSE=(docker compose -f "$ROOT/deploy/local/docker-compose.yml" --env-file "$ROOT/deploy/local/compose.env")
-INGEST=local-ingest-token
-OPERATOR=local-operator-token
-RUNTIME=local-runtime-token
-NODE=local-node-token
-PI_OPS=http://127.0.0.1:18080
-NODE_URL=http://127.0.0.1:18081
-RUNTIME_URL=http://127.0.0.1:18090
-DRILL=http://127.0.0.1:18088
-SINK=http://127.0.0.1:18099
+# Every endpoint, token and the expected node identity is overridable so one
+# script serves both the local compose stack and the real two-host deployment.
+# The defaults are the local compose stack.
+INGEST=${INGEST:-local-ingest-token}
+OPERATOR=${OPERATOR:-local-operator-token}
+RUNTIME=${RUNTIME:-local-runtime-token}
+# Not `NODE`: npm and pnpm export NODE=<node binary path> into every script,
+# so a `NODE` override silently becomes the token and every call 401s.
+NODE_TOKEN=${NODE_TOKEN:-local-node-token}
+PI_OPS=${PI_OPS:-http://127.0.0.1:18080}
+NODE_URL=${NODE_URL:-http://127.0.0.1:18081}
+RUNTIME_URL=${RUNTIME_URL:-http://127.0.0.1:18090}
+DRILL=${DRILL:-http://127.0.0.1:18088}
+SINK=${SINK:-http://127.0.0.1:18099}
+EXPECT_NODE_ID=${EXPECT_NODE_ID:-local-dev}
 
 wait_http() {
   local url=$1
@@ -42,7 +48,7 @@ wait_http "$SINK/health"
 
 echo "== network directions =="
 curl -fsS "$NODE_URL/health" >/dev/null
-curl -fsS -H "Authorization: Bearer $NODE" \
+curl -fsS -H "Authorization: Bearer $NODE_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"type":"host.memory","incidentId":"inc-smoke"}' \
   "$NODE_URL/v1/evidence/query" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["kind"]=="host.memory" and "usedPercent" in d["data"]'
@@ -55,7 +61,7 @@ curl -fsS -X POST "$DRILL/fail" >/dev/null
 incident_id=""
 for _ in $(seq 1 40); do
   payload=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents")
-  incident_id=$(PAYLOAD="$payload" python3 -c 'import json,os; rows=[i for i in json.loads(os.environ["PAYLOAD"]).get("incidents") or [] if i.get("type")=="health.failure" and i.get("service")=="pi-ops-drill" and i.get("nodeId")=="local-dev"]; open=[i for i in rows if i["state"]=="OPEN"]; pick=(open or sorted(rows, key=lambda i: i.get("lastSeen") or ""))[-1] if (open or rows) else None; print(pick["id"] if pick else "")')
+  incident_id=$(PAYLOAD="$payload" EXPECT_NODE_ID="$EXPECT_NODE_ID" python3 -c 'import json,os; rows=[i for i in json.loads(os.environ["PAYLOAD"]).get("incidents") or [] if i.get("type")=="health.failure" and i.get("service")=="pi-ops-drill" and i.get("nodeId")==os.environ["EXPECT_NODE_ID"]]; open=[i for i in rows if i["state"]=="OPEN"]; pick=(open or sorted(rows, key=lambda i: i.get("lastSeen") or ""))[-1] if (open or rows) else None; print(pick["id"] if pick else "")')
   if [[ -n "$incident_id" ]]; then break; fi
   sleep 2
 done
@@ -123,19 +129,23 @@ AGAIN="$again" python3 -c 'import json,os; data=json.loads(os.environ["AGAIN"]);
 wait_http "$RUNTIME_URL/health"
 "${COMPOSE[@]}" restart pi-ops-node-agent
 wait_http "$NODE_URL/health"
-curl -fsS -H "Authorization: Bearer $NODE" -H 'content-type: application/json' \
+curl -fsS -H "Authorization: Bearer $NODE_TOKEN" -H 'content-type: application/json' \
   -d '{"type":"host.load","incidentId":"inc-smoke"}' "$NODE_URL/v1/evidence/query" >/dev/null
 
 echo "== runtime data-dependent finding + bound =="
-python3 - <<'PY'
-import json, time, urllib.request
+EXPECT_NODE_ID="$EXPECT_NODE_ID" RUNTIME_URL="$RUNTIME_URL" RUNTIME="$RUNTIME" python3 - <<'PY'
+import json, os, time, urllib.request
+
+NODE_ID = os.environ["EXPECT_NODE_ID"]
+RUNTIME_URL = os.environ["RUNTIME_URL"]
+RUNTIME_TOKEN = os.environ["RUNTIME"]
 
 def submit(tag, percent=None, blob=None):
-    evidence = [{"id":"evd-load","kind":"host.load","incidentId":f"inc-local-{tag}","nodeId":"local-dev","source":"host","collectedAt":"2026-08-20T12:00:00.000Z","data":{"load1":0.1}}]
+    evidence = [{"id":"evd-load","kind":"host.load","incidentId":f"inc-local-{tag}","nodeId":NODE_ID,"source":"host","collectedAt":"2026-08-20T12:00:00.000Z","data":{"load1":0.1}}]
     if percent is not None:
-        evidence.append({"id":"evd-mem","kind":"host.memory","incidentId":f"inc-local-{tag}","nodeId":"local-dev","source":"host","collectedAt":"2026-08-20T12:00:00.000Z","data":{"usedPercent":percent}})
+        evidence.append({"id":"evd-mem","kind":"host.memory","incidentId":f"inc-local-{tag}","nodeId":NODE_ID,"source":"host","collectedAt":"2026-08-20T12:00:00.000Z","data":{"usedPercent":percent}})
     if blob is not None:
-        evidence = [{"id":"evd-huge","kind":"host.load","incidentId":f"inc-local-{tag}","nodeId":"local-dev","source":"host","collectedAt":"2026-08-20T12:00:00.000Z","data":{"blob":blob}}]
+        evidence = [{"id":"evd-huge","kind":"host.load","incidentId":f"inc-local-{tag}","nodeId":NODE_ID,"source":"host","collectedAt":"2026-08-20T12:00:00.000Z","data":{"blob":blob}}]
     body={
       "schemaVersion":1,
       "runtimeRequestId":f"rreq-local-{tag}",
@@ -144,11 +154,11 @@ def submit(tag, percent=None, blob=None):
       "callbackUrl":"http://pi-ops:8080/v1/investigation-results",
       "context":{"schemaVersion":1,"incident":{"id":f"inc-local-{tag}","type":"health.failure","service":"pi-ops-drill"},"evidence":evidence}
     }
-    req=urllib.request.Request("http://127.0.0.1:18090/v1/investigations", data=json.dumps(body).encode(), headers={"Authorization":"Bearer local-runtime-token","content-type":"application/json"})
+    req=urllib.request.Request(f"{RUNTIME_URL}/v1/investigations", data=json.dumps(body).encode(), headers={"Authorization":f"Bearer {RUNTIME_TOKEN}","content-type":"application/json"})
     urllib.request.urlopen(req).read()
 
 def task(tag):
-    req=urllib.request.Request(f"http://127.0.0.1:18090/v1/tasks/rreq-local-{tag}", headers={"Authorization":"Bearer local-runtime-token"})
+    req=urllib.request.Request(f"{RUNTIME_URL}/v1/tasks/rreq-local-{tag}", headers={"Authorization":f"Bearer {RUNTIME_TOKEN}"})
     return json.loads(urllib.request.urlopen(req).read().decode())
 
 submit("92", percent=92)
