@@ -5,8 +5,6 @@ import { createIncidentEngine } from './incident.js';
 import { createEvidenceOrchestrator } from './evidence-orchestrator.js';
 import { createEvidenceJobWorker } from './evidence-worker.js';
 import { createFakeReasoner, createReasonerRegistry, type Reasoner } from './reasoner.js';
-import { createPiReasoner, PI_REASONER_VERSION } from './pi-reasoner.js';
-import { createPiSdkClient } from './pi-sdk-client.js';
 import { createMemoryRetriever } from './memory-retriever.js';
 import { createHttpPiRuntimeClient } from './http-pi-runtime-client.js';
 import { createInvestigationEvidenceService } from './investigation-evidence.js';
@@ -23,7 +21,7 @@ const store = createEventStore(config.sqlitePath);
 const incidentEngine = createIncidentEngine(store, {
   aggregationWindowMs: config.aggregationWindowMs,
   reasonerType: config.reasonerType,
-  reasonerVersion: config.reasonerType === 'pi' ? PI_REASONER_VERSION : '1',
+  reasonerVersion: '1',
   scheduleLocalReasoning: !config.externalRuntimeEnabled,
 });
 let replayedEvents = 0;
@@ -68,12 +66,6 @@ const evidenceWorker = createEvidenceJobWorker(config, store, evidenceOrchestrat
 evidenceWorker.start();
 investigationReconciler.start();
 const reasoners: Reasoner[] = [createFakeReasoner()];
-if (config.reasonerType === 'pi') {
-  reasoners.push(createPiReasoner({
-    config,
-    client: await createPiSdkClient(config),
-  }));
-}
 const reasoningWorker = createReasoningJobWorker(
   config,
   store,

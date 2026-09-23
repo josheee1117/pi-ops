@@ -39,13 +39,9 @@ function makeConfig(): AgentConfig {
     reasoningTimeoutMs: 5000,
     reasoningJobBatchSize: 10,
     reasonerType: 'fake',
-    piProvider: '',
-    piModel: '',
-    reasoningMaxRetries: 2,
     reasoningMaxContextBytes: 8192,
     reasoningMaxEvidenceItems: 8,
     reasoningMaxLogLines: 20,
-    reasoningMaxOutputBytes: 2048,
   };
 }
 

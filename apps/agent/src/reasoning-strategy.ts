@@ -5,7 +5,7 @@ import type { EvidenceRecord, IncidentRow } from './store.js';
  * How a ReasoningJob chooses to obtain a ReasoningResult.
  * Pi-Ops executes and tracks the job; it does not orchestrate agents.
  */
-export type ReasoningStrategyName = 'deterministic' | 'single_reasoner' | 'delegated_analysis';
+export type ReasoningStrategyName = 'deterministic' | 'delegated_analysis';
 
 export interface ReasoningStrategyInput {
   incident: IncidentRow;
@@ -36,7 +36,9 @@ export interface ReasoningStrategyRegistry {
 
 export function strategyNameFor(reasonerType: string): ReasoningStrategyName {
   if (reasonerType === 'fake') return 'deterministic';
-  if (reasonerType === 'pi') return 'single_reasoner';
+  if (reasonerType === 'pi') {
+    throw new Error("reasonerType 'pi' removed in ADR-0029; use external Pi Runtime");
+  }
   if (reasonerType === 'delegated_analysis') return 'delegated_analysis';
   throw new Error(`unknown reasoning strategy for reasoner type ${reasonerType}`);
 }
@@ -73,7 +75,6 @@ export function createReasoningStrategyRegistry(
 export function createDefaultReasoningStrategies(): ReasoningStrategyRegistry {
   return createReasoningStrategyRegistry([
     createDeterministicStrategy(),
-    createSingleReasonerStrategy(),
     createDelegatedAnalysisStrategy(),
   ]);
 }
@@ -81,16 +82,6 @@ export function createDefaultReasoningStrategies(): ReasoningStrategyRegistry {
 export function createDeterministicStrategy(): ReasoningStrategy {
   return {
     name: 'deterministic',
-    version: REASONING_STRATEGY_VERSION,
-    execute({ reasoner, incident, evidence }): ReasoningResult | Promise<ReasoningResult> {
-      return reasoner.reason(incident, evidence);
-    },
-  };
-}
-
-export function createSingleReasonerStrategy(): ReasoningStrategy {
-  return {
-    name: 'single_reasoner',
     version: REASONING_STRATEGY_VERSION,
     execute({ reasoner, incident, evidence }): ReasoningResult | Promise<ReasoningResult> {
       return reasoner.reason(incident, evidence);

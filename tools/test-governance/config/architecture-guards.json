@@ -70,6 +70,13 @@
       "kind": "requiredText",
       "scope": ["apps/agent/src/investigation-evidence.ts"],
       "patterns": ["toRuntimeSafeEvidence"]
+    },
+    {
+      "id": "ARCH-AGENT-NO-MODEL-SDK",
+      "description": "Pi-Ops control plane must not call a model SDK directly (ADR-0029).",
+      "kind": "forbiddenImport",
+      "scope": ["apps/agent/src/**"],
+      "patterns": ["@earendil-works/pi-coding-agent", "pi-sdk-client", "pi-reasoner"]
     }
   ]
 }
