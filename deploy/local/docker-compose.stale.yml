@@ -1,0 +1,12 @@
+services:
+  pi-ops:
+    environment:
+      PI_OPS_INVESTIGATION_STALE_TIMEOUT_MS: "15000"
+      PI_OPS_INVESTIGATION_RETRY_MAX_ATTEMPTS: "2"
+      PI_OPS_INVESTIGATION_RETRY_BACKOFF_MS: "1000"
+      PI_OPS_PI_RUNTIME_CALLBACK_URL: http://pi-ops:8080/v1/stale-undeliverable
+  pi-runtime:
+    environment:
+      PI_OPS_PI_RUNTIME_CALLBACK_URL: http://pi-ops:8080/v1/stale-undeliverable
+      PI_OPS_PI_RUNTIME_DELIVERY_BACKOFF_MS: "1000"
+      PI_OPS_PI_RUNTIME_MAX_DELIVERY_ATTEMPTS: "20"
