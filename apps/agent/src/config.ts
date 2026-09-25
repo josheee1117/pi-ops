@@ -59,6 +59,7 @@ export interface AgentConfig {
   piRuntimeCallbackUrl?: string;
   notificationWebhookUrl?: string;
   notificationWebhookToken?: string;
+  notificationWebhookKind?: 'generic' | 'wecom';
   notificationTimeoutMs?: number;
   notificationMaxResponseBytes?: number;
   notificationJobPollIntervalMs?: number;
@@ -160,6 +161,10 @@ function parseNodeAgents(): Map<string, NodeAgentEndpoint> {
 
 export function loadConfig(): AgentConfig {
   const reasonerType = parseReasonerType();
+  const notificationWebhookKind = process.env['PI_OPS_NOTIFICATION_WEBHOOK_KIND'] ?? 'generic';
+  if (notificationWebhookKind !== 'generic' && notificationWebhookKind !== 'wecom') {
+    throw new Error('PI_OPS_NOTIFICATION_WEBHOOK_KIND must be generic or wecom');
+  }
   const ingestToken = requireEnv('PI_OPS_INGEST_TOKEN');
   const operatorToken = requireEnv('PI_OPS_OPERATOR_TOKEN');
   const externalRuntime = resolveExternalRuntimeSettings();
@@ -246,6 +251,7 @@ export function loadConfig(): AgentConfig {
     ...(process.env['PI_OPS_NOTIFICATION_WEBHOOK_TOKEN']
       ? { notificationWebhookToken: process.env['PI_OPS_NOTIFICATION_WEBHOOK_TOKEN'] }
       : {}),
+    notificationWebhookKind,
     notificationTimeoutMs: integerEnv('PI_OPS_NOTIFICATION_TIMEOUT_MS', 3000, {
       max: 60_000,
     }),

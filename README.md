@@ -142,6 +142,11 @@ The control plane does not call a model. `PI_OPS_REASONER_TYPE=fake` is the only
 
 A runtime or model outage fails only the investigation. Event ingest, Incident aggregation, and Evidence collection continue.
 
+## Notification
+
+Set `PI_OPS_NOTIFICATION_WEBHOOK_KIND=wecom` and `PI_OPS_NOTIFICATION_WEBHOOK_URL` to the enterprise WeCom group robot webhook; the default `generic` kind keeps the existing JSON webhook behavior.
+Keep the webhook URL (including its key) only in the server `.env`, never in Git or logs.
+
 ## Bootstrap
 
 The repository intentionally contains only workspace scaffolding before Milestone 1. Protocol schemas and service implementations are left to the development plan rather than being pre-generated in bootstrap.
