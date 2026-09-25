@@ -87,7 +87,7 @@ describe('WeCom notifier', () => {
   it('classifies nonzero errcode and HTTP errors as terminal', async () => {
     for (const response of [
       new Response(JSON.stringify({ errcode: 40058, errmsg: URL })),
-      new Response(JSON.stringify({ errcode: 0 }), { status: 500 }),
+      new Response(JSON.stringify({ errcode: 0 }), { status: 400 }),
       new Response('not-json', { status: 200 }),
     ]) {
       const notifier = createWeComNotifier({ webhookUrl: URL, timeoutMs: 100, maxResponseBytes: 128, fetch: async () => response });
@@ -99,9 +99,23 @@ describe('WeCom notifier', () => {
     }
   });
 
+  it('retries 503 non-JSON and 429 gateway responses', async () => {
+    for (const status of [503, 429]) {
+      const notifier = createWeComNotifier({
+        webhookUrl: URL, timeoutMs: 100, maxResponseBytes: 128,
+        fetch: async () => new Response('<html>gateway error</html>', { status }),
+      });
+      await assert.rejects(() => notifier.send(payload), (error: unknown) => {
+        assert.ok(error instanceof RetryableNotificationError);
+        assert.doesNotMatch(error.message, /secret-key/);
+        return true;
+      });
+    }
+  });
+
   it('retries 45009, network and timeout without exposing the webhook URL', async () => {
     const fetches: Array<typeof fetch> = [
-      async () => new Response(JSON.stringify({ errcode: 45009 }), { status: 429 }),
+      async () => new Response(JSON.stringify({ errcode: 45009 })),
       async () => { throw new TypeError(`fetch ${URL} failed`); },
       async (_url, init) => new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));

@@ -139,14 +139,19 @@ export function createWeComNotifier(options: {
           body: JSON.stringify({ msgtype: 'markdown', markdown: { content } }),
           signal: AbortSignal.timeout(options.timeoutMs),
         });
+        const body = await drainBounded(response, options.maxResponseBytes, true);
+        if (response.status === 429 || response.status >= 500) {
+          throw new RetryableNotificationError(`wecom webhook ${response.status}`);
+        }
+        if (!response.ok) throw new TerminalNotificationError(`wecom webhook ${response.status}`);
         let errcode: unknown;
         try {
-          errcode = JSON.parse(await drainBounded(response, options.maxResponseBytes, true)).errcode;
+          errcode = JSON.parse(body).errcode;
         } catch {
           throw new TerminalNotificationError('wecom invalid response');
         }
         if (errcode === 45009) throw new RetryableNotificationError('wecom rate limited (45009)');
-        if (!response.ok || errcode !== 0) throw new TerminalNotificationError(`wecom error ${response.status}${typeof errcode === 'number' ? ` code ${errcode}` : ''}`);
+        if (errcode !== 0) throw new TerminalNotificationError(`wecom error code ${typeof errcode === 'number' ? errcode : 'invalid'}`);
       } catch (error) {
         if (error instanceof RetryableNotificationError || error instanceof TerminalNotificationError) throw error;
         if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
