@@ -186,7 +186,7 @@ describe('HttpWebhookNotifier', () => {
         notificationId: 'njob-open-inc',
         type: 'INCIDENT_OPEN',
         incident: {
-          id: 'inc', service: 'svc', nodeId: 'n', severity: 'warning', state: 'OPEN',
+          id: 'inc', service: 'svc', nodeId: 'n', type: 'health.failure', severity: 'warning', state: 'OPEN',
           firstSeen: 't', lastSeen: 't',
         },
         facts: { eventCount: 1, evidenceIds: [] },
@@ -212,7 +212,7 @@ describe('HttpWebhookNotifier', () => {
       notificationId: 'njob-open-inc',
       type: 'INCIDENT_OPEN',
       incident: {
-        id: 'inc', service: 'svc', nodeId: 'n', severity: 'warning', state: 'OPEN',
+        id: 'inc', service: 'svc', nodeId: 'n', type: 'health.failure', severity: 'warning', state: 'OPEN',
         firstSeen: 't', lastSeen: 't',
       },
       facts: { eventCount: 1, evidenceIds: [] },
@@ -230,7 +230,7 @@ describe('HttpWebhookNotifier', () => {
       notificationId: 'njob-open-inc',
       type: 'INCIDENT_OPEN',
       incident: {
-        id: 'inc', service: 'svc', nodeId: 'n', severity: 'warning', state: 'OPEN',
+        id: 'inc', service: 'svc', nodeId: 'n', type: 'health.failure', severity: 'warning', state: 'OPEN',
         firstSeen: 't', lastSeen: 't',
       },
       facts: { eventCount: 1, evidenceIds: [] },
@@ -251,7 +251,7 @@ describe('HttpWebhookNotifier', () => {
           notificationId: 'njob-open-inc',
           type: 'INCIDENT_OPEN',
           incident: {
-            id: 'inc', service: 'svc', nodeId: 'n', severity: 'warning', state: 'OPEN',
+            id: 'inc', service: 'svc', nodeId: 'n', type: 'health.failure', severity: 'warning', state: 'OPEN',
             firstSeen: 't', lastSeen: 't',
           },
           facts: { eventCount: 1, evidenceIds: [] },
@@ -296,7 +296,7 @@ describe('HttpWebhookNotifier', () => {
       notificationId: 'njob-open-inc-1',
       type: 'INCIDENT_OPEN',
       incident: {
-        id: 'inc', service: 'svc', nodeId: 'n', severity: 'warning', state: 'OPEN',
+        id: 'inc', service: 'svc', nodeId: 'n', type: 'health.failure', severity: 'warning', state: 'OPEN',
         firstSeen: 't', lastSeen: 't',
       },
       facts: { eventCount: 1, evidenceIds: [] },

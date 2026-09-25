@@ -13,7 +13,7 @@ import { createInvestigationReconciler } from './investigation-reconciler.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import { createReasoningJobWorker } from './reasoning-worker.js';
 import { createNotificationJobWorker } from './notification-worker.js';
-import { createHttpWebhookNotifier } from './notifier.js';
+import { createHttpWebhookNotifier, createWeComNotifier } from './notifier.js';
 import { createApp } from './app.js';
 
 const config = loadConfig();
@@ -79,12 +79,18 @@ const notificationWorker = config.notificationWebhookUrl
   ? createNotificationJobWorker(
     config,
     store,
-    createHttpWebhookNotifier({
-      url: config.notificationWebhookUrl,
-      timeoutMs: config.notificationTimeoutMs ?? 3000,
-      maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
-      ...(config.notificationWebhookToken ? { token: config.notificationWebhookToken } : {}),
-    }),
+    config.notificationWebhookKind === 'wecom'
+      ? createWeComNotifier({
+        webhookUrl: config.notificationWebhookUrl,
+        timeoutMs: config.notificationTimeoutMs ?? 3000,
+        maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
+      })
+      : createHttpWebhookNotifier({
+        url: config.notificationWebhookUrl,
+        timeoutMs: config.notificationTimeoutMs ?? 3000,
+        maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
+        ...(config.notificationWebhookToken ? { token: config.notificationWebhookToken } : {}),
+      }),
   )
   : undefined;
 notificationWorker?.start();

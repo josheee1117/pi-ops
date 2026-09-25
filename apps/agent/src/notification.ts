@@ -21,6 +21,7 @@ export interface NotificationIncidentFacts {
   id: string;
   service: string;
   nodeId: string;
+  type: string;
   severity: string;
   state: string;
   firstSeen: string;
@@ -84,6 +85,7 @@ export function buildNotificationPayload(input: {
       id: input.incident.id,
       service: input.incident.service,
       nodeId: input.incident.nodeId,
+      type: input.incident.type,
       severity: input.incident.severity,
       state: input.incident.state,
       firstSeen: input.incident.firstSeen,
@@ -104,6 +106,7 @@ export function incidentFactsFromRow(incident: {
   id: string;
   service: string;
   node_id: string;
+  type: string;
   severity: string;
   state: string;
   first_seen: string;
@@ -114,6 +117,7 @@ export function incidentFactsFromRow(incident: {
     id: incident.id,
     service: incident.service,
     nodeId: incident.node_id,
+    type: incident.type,
     severity: incident.severity,
     state: incident.state,
     firstSeen: incident.first_seen,

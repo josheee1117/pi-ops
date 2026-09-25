@@ -994,6 +994,23 @@
       ]
     },
     {
+      "id": "not-wecom-markdown",
+      "featureId": "notification.lifecycle",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "COMPONENT",
+      "location": {
+        "file": "apps/agent/src/__tests__/wecom-notifier.test.ts",
+        "testName": "sends three markdown templates with ordered incident facts and an Idempotency-Key"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-NOT-02",
+          "level": "C"
+        }
+      ]
+    },
+    {
       "id": "not-reset-running",
       "featureId": "notification.lifecycle",
       "status": "ACTIVE",
