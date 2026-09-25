@@ -9,9 +9,9 @@ COMPOSE=(docker compose -f "$ROOT/deploy/local/docker-compose.yml" --env-file "$
 INGEST=${INGEST:-local-ingest-token}
 OPERATOR=${OPERATOR:-local-operator-token}
 RUNTIME=${RUNTIME:-local-runtime-token}
-# Direct bash accepts NODE per M5; pnpm may set NODE to its binary path.
-NODE_TOKEN=${NODE_TOKEN:-${NODE:-local-node-token}}
-if [[ $NODE_TOKEN == */node ]]; then NODE_TOKEN=local-node-token; fi
+# Not `NODE`: npm and pnpm export NODE=<node binary path> into every script,
+# so a `NODE` override silently becomes the token and every call 401s.
+NODE_TOKEN=${NODE_TOKEN:-local-node-token}
 PI_OPS=${PI_OPS:-http://127.0.0.1:18080}
 NODE_URL=${NODE_URL:-http://127.0.0.1:18081}
 RUNTIME_URL=${RUNTIME_URL:-http://127.0.0.1:18090}
