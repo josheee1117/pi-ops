@@ -18,6 +18,7 @@ RUNTIME_URL=${RUNTIME_URL:-http://127.0.0.1:18090}
 DRILL=${DRILL:-http://127.0.0.1:18088}
 SINK=${SINK:-http://127.0.0.1:18099}
 EXPECT_NODE_ID=${EXPECT_NODE_ID:-local-dev}
+REMOTE=${REMOTE:-}
 
 wait_http() {
   local url=$1
@@ -31,18 +32,20 @@ wait_http() {
   return 1
 }
 
-echo "== clean smoke sqlite =="
-"${COMPOSE[@]}" down >/dev/null 2>&1 || true
-rm -rf "$ROOT/deploy/local/data/pi-ops" "$ROOT/deploy/local/data/pi-runtime"
-mkdir -p "$ROOT/deploy/local/data/pi-ops" "$ROOT/deploy/local/data/pi-runtime"
+if [[ -z "$REMOTE" ]]; then
+  echo "== clean smoke sqlite =="
+  "${COMPOSE[@]}" down >/dev/null 2>&1 || true
+  rm -rf "$ROOT/deploy/local/data/pi-ops" "$ROOT/deploy/local/data/pi-runtime"
+  mkdir -p "$ROOT/deploy/local/data/pi-ops" "$ROOT/deploy/local/data/pi-runtime"
 
-echo "== build + start =="
-"${COMPOSE[@]}" up -d --build
+  echo "== build + start =="
+  "${COMPOSE[@]}" up -d --build
+fi
 
 echo "== health =="
 wait_http "$PI_OPS/health"
 wait_http "$NODE_URL/health"
-wait_http "$RUNTIME_URL/health"
+if [[ -z "$REMOTE" ]]; then wait_http "$RUNTIME_URL/health"; fi
 wait_http "$DRILL/health"
 wait_http "$SINK/health"
 
@@ -52,8 +55,8 @@ curl -fsS -H "Authorization: Bearer $NODE_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"type":"host.memory","incidentId":"inc-smoke"}' \
   "$NODE_URL/v1/evidence/query" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["kind"]=="host.memory" and "usedPercent" in d["data"]'
-curl -fsS -H "Authorization: Bearer $RUNTIME" "$RUNTIME_URL/ready" >/dev/null
-echo "four process health/evidence directions ok"
+if [[ -z "$REMOTE" ]]; then curl -fsS -H "Authorization: Bearer $RUNTIME" "$RUNTIME_URL/ready" >/dev/null; fi
+echo "process health/evidence directions ok"
 
 echo "== controlled failure =="
 curl -fsS -X POST "$DRILL/fail" >/dev/null
@@ -120,7 +123,8 @@ SINK_JSON="$sink" python3 -c 'import json,os; items=json.loads(os.environ["SINK_
 [item for item in items if item["idempotencyKey"]==item["notificationId"]];
 assert all(item["idempotencyKey"]==item["notificationId"] for item in items); print("idempotency keys matched", len(items))'
 
-echo "== persistence restart =="
+if [[ -z "$REMOTE" ]]; then
+  echo "== persistence restart =="
 "${COMPOSE[@]}" restart pi-ops
 wait_http "$PI_OPS/health"
 again=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
@@ -181,5 +185,7 @@ assert huge.get("executionStatus")=="failed", huge
 assert "context_too_large" in (err or ""), err
 print("runtime data bound ok", hyp92, hyp20, err)
 PY
-
-echo "LOCAL SMOKE OK incident=$incident_id"
+  echo "LOCAL SMOKE OK incident=$incident_id"
+else
+  echo "REMOTE SMOKE OK incident=$incident_id"
+fi

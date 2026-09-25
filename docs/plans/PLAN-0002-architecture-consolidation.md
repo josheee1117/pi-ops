@@ -391,8 +391,8 @@ pi-runtime            → http://pi-ops:8080/v1/investigation-results  compose �
 4. 本机执行：
 
    ```bash
-   PI_OPS=http://172.17.2.35:8686 DRILL=http://172.17.1.52:8088 NODE_URL=http://172.17.1.52:8081 \
-   SINK=http://172.17.2.35:8099 EXPECT_NODE_ID=test-ai-01 OPERATOR=… NODE=… RUNTIME=… \
+   REMOTE=1 PI_OPS=http://172.17.2.35:8686 DRILL=http://172.17.1.52:8088 NODE_URL=http://172.17.1.52:8081 \
+   SINK=http://172.17.2.35:8099 EXPECT_NODE_ID=test-ai-01 OPERATOR=… NODE_TOKEN=… \
    bash deploy/local/smoke.sh
    ```
 
