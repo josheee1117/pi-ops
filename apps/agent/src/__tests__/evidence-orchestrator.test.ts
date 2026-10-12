@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { EvidenceQueryRequest, OpsEvent } from '@pi-ops/protocol';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import {
   createEvidenceOrchestrator,
   planEvidenceQueries,
@@ -10,45 +11,12 @@ import {
 import { createEventStore, type IncidentRow } from '../store.js';
 
 function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return {
-    port: 0,
-    ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-    sqlitePath: ':memory:',
-    nodeId: 'central',
-    maxBodySize: 1024 * 1024,
-    aggregationWindowMs: 5 * 60 * 1000,
+  return makeAgentConfig({
     nodeAgents: new Map([
-      [
-        'test-svc-02',
-        {
-          nodeId: 'test-svc-02',
-          url: 'http://node-agent.test',
-          token: 'node-token',
-        },
-      ],
+      ['test-svc-02', { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'node-token' }],
     ]),
-    evidenceTimeoutMs: 1000,
-    evidenceMaxResponseBytes: 1024 * 1024,
-    evidenceLogsMaxLines: 200,
-    evidenceJobPollIntervalMs: 1000,
-    evidenceJobMaxAttempts: 3,
-    evidenceJobBatchSize: 10,
-    eventReplayBatchSize: 100,
-    reasoningJobPollIntervalMs: 1000,
-    reasoningJobMaxAttempts: 3,
-    reasoningTimeoutMs: 5000,
-    reasoningJobBatchSize: 10,
-    reasonerType: 'fake',
-    reasoningMaxContextBytes: 32_768,
-    reasoningMaxEvidenceItems: 12,
-    reasoningMaxLogLines: 50,
     ...overrides,
-  };
+  });
 }
 
 function makeIncident(overrides: Partial<IncidentRow> = {}): IncidentRow {
@@ -171,6 +139,26 @@ describe('planEvidenceQueries', () => {
     assert.deepEqual(planEvidenceQueries(incident, makeEvent(), 200), []);
   });
 
+  it('maps JVM heap OOME to mapped inspect/logs and host memory without guessing a target', () => {
+    const incident = makeIncident({ type: 'jvm.oom', service: 'application-service' });
+    const event = makeEvent({ source: 'jfr', type: 'jvm.oom', attributes: { containerName: 'data-asset' } });
+    assert.deepEqual(planEvidenceQueries(incident, event, 120).map((q) => q.type), ['docker.inspect', 'docker.logs', 'host.memory']);
+    assert.deepEqual(planEvidenceQueries(incident, { ...event, attributes: {} }, 120), [{ type: 'host.memory', incidentId: incident.id }]);
+  });
+
+  it('maps JVM stack overflow to inspect and logs without claiming memory pressure', () => {
+    const incident = makeIncident({ type: 'jvm.stack_overflow', service: 'application-service' });
+    const event = makeEvent({
+      source: 'docker',
+      type: 'jvm.stack_overflow',
+      attributes: { containerName: 'data-asset', observedVia: 'docker.logs' },
+    });
+    assert.deepEqual(
+      planEvidenceQueries(incident, event, 120).map((q) => q.type),
+      ['docker.inspect', 'docker.logs'],
+    );
+  });
+
   it('maps jvm.cpu_pressure to docker.stats and host.load using configured containerName', () => {
     const incident = makeIncident({ type: 'jvm.cpu_pressure', service: 'data-asset-service' });
     const event = makeEvent({
@@ -180,7 +168,7 @@ describe('planEvidenceQueries', () => {
       attributes: { containerName: 'data-asset' },
     });
     const queries = planEvidenceQueries(incident, event, 200);
-    assert.deepEqual(queries.map((query) => query.type), ['docker.stats', 'host.load']);
+    assert.deepEqual(queries.map((query) => query.type), ['docker.stats', 'docker.inspect', 'host.load']);
     assert.equal(queries[0]?.container, 'data-asset');
   });
 

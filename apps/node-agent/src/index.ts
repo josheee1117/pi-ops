@@ -6,6 +6,7 @@ import { createDockerWatcher } from './events/watcher.js';
 import { createMemoryDetector } from './detectors/memory.js';
 import { createDiskDetector } from './detectors/disk.js';
 import { createHealthDetector } from './detectors/health.js';
+import { createLogDetector, logScanEnabled } from './detectors/logs.js';
 
 const config = loadConfig();
 const app = createApp(config);
@@ -16,10 +17,16 @@ sender.start();
 const memoryDetector = createMemoryDetector(config, sender);
 const diskDetector = createDiskDetector(config, sender);
 const healthDetector = createHealthDetector(config, sender);
+const logDetector = createLogDetector(config, sender);
 
 memoryDetector.start();
 diskDetector.start();
 healthDetector.start();
+if (logScanEnabled(config)) {
+  logDetector.start();
+} else if (!config.logScanEnabled) {
+  console.log('[pi-ops-node-agent] log detector disabled (PI_OPS_LOG_SCAN_ENABLED=false)');
+}
 
 if (config.ingestToken) {
   const watcher = createDockerWatcher(config, sender);
@@ -46,6 +53,7 @@ async function shutdown(signal: string): Promise<void> {
   memoryDetector.stop();
   diskDetector.stop();
   healthDetector.stop();
+  logDetector.stop();
   await sender.stop();
   process.exit(0);
 }
