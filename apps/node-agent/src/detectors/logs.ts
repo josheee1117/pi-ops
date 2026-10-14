@@ -26,6 +26,7 @@ interface ContainerCursor {
   /** Unix seconds; Docker's `since` granularity means the overlap re-reads a little. */
   since: number;
   instrumented: boolean;
+  recentFatal: Map<string, number>;
 }
 
 export function createLogDetector(
@@ -48,7 +49,12 @@ export function createLogDetector(
     const cursor = cursors.get(container) ?? {
       since: Math.floor((nowMs - config.logScanInitialLookbackSeconds * 1000) / 1000),
       instrumented: false,
+      recentFatal: new Map<string, number>(),
     };
+
+    for (const [clazz, at] of cursor.recentFatal) {
+      if (nowMs - at > config.logScanDedupWindowMs) cursor.recentFatal.delete(clazz);
+    }
 
     let collected: { buffer: Buffer; truncated: boolean };
     try {
@@ -76,7 +82,14 @@ export function createLogDetector(
 
     const source: LogScanSource = { container, nodeId: config.nodeId, service: container };
     let emitted = 0;
-    for (const event of scanContainerLog(decoded.lines, source, cursor.instrumented)) {
+    const activeRecentFatal = new Set(cursor.recentFatal.keys());
+    for (const event of scanContainerLog(decoded.lines, source, cursor.instrumented, activeRecentFatal)) {
+      if (event.source === 'application' && (event.type === 'jvm.oom' || event.type === 'jvm.stack_overflow')) {
+        const clazz = typeof event.attributes['exceptionClass'] === 'string' ? event.attributes['exceptionClass'] : undefined;
+        if (clazz) cursor.recentFatal.set(clazz, nowMs);
+        if (event.type === 'jvm.oom') cursor.recentFatal.set('java.lang.OutOfMemoryError', nowMs);
+        if (event.type === 'jvm.stack_overflow') cursor.recentFatal.set('java.lang.StackOverflowError', nowMs);
+      }
       if (seen.has(event.id)) continue;
       seen.set(event.id, nowMs);
       sender.enqueue(event);
@@ -90,6 +103,7 @@ export function createLogDetector(
     cursors.set(container, {
       since: Math.floor((nowMs - config.logScanOverlapSeconds * 1000) / 1000),
       instrumented: cursor.instrumented,
+      recentFatal: cursor.recentFatal,
     });
   }
 

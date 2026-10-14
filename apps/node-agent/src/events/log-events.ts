@@ -50,6 +50,25 @@ function bounded(value: unknown, limit: number): string | undefined {
   return trimmed.length > limit ? trimmed.slice(0, limit) : trimmed;
 }
 
+/** Extracts an ISO-8601 timestamp from standard log prefixes if present. */
+export function extractLogTimestamp(line: string): string | undefined {
+  if (!line || typeof line !== 'string') return undefined;
+  // ISO format: 2026-10-12T08:02:00.029...
+  const isoMatch = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)/.exec(line.trim());
+  if (isoMatch && isoMatch[1]) {
+    const d = Date.parse(isoMatch[1]);
+    if (!Number.isNaN(d)) return new Date(d).toISOString();
+  }
+  // Logback standard: 2026-10-12 08:02:00.028
+  const stdMatch = /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/.exec(line.trim());
+  if (stdMatch && stdMatch[1] && stdMatch[2]) {
+    const isoStr = `${stdMatch[1]}T${stdMatch[2]}Z`;
+    const d = Date.parse(isoStr);
+    if (!Number.isNaN(d)) return new Date(d).toISOString();
+  }
+  return undefined;
+}
+
 /** `/auth/lab/server-fault` from `GET /auth/lab/server-fault`. */
 export function operationModule(operation: unknown): string | undefined {
   const text = bounded(operation, 256);
@@ -91,10 +110,24 @@ function fromJfrPayload(
   attributes['producer'] = 'pi-ops-jfr';
   if (!attributes['containerName']) attributes['containerName'] = source.container;
 
-  for (const key of ['exceptionClass', 'exceptionMessage', 'stackTrace', 'exceptionStackTrace', 'operation', 'module', 'errorCode', 'businessCode', 'responseStatus', 'businessType']) {
+  for (const key of ['exceptionClass', 'exceptionMessage', 'stackTrace', 'exceptionStackTrace', 'operation', 'module', 'errorCode', 'businessCode', 'businessType']) {
     const value = bounded(attributes[key], key === 'exceptionStackTrace' || key === 'stackTrace' ? 4096 : 256);
     if (value === undefined) delete attributes[key];
     else attributes[key] = value;
+  }
+
+  // Preserve responseStatus as integer when present
+  if (typeof attributes['responseStatus'] === 'number' && Number.isInteger(attributes['responseStatus'])) {
+    // keep as is
+  } else if (typeof attributes['responseStatus'] === 'string') {
+    const parsed = parseInt(attributes['responseStatus'], 10);
+    if (!Number.isNaN(parsed) && parsed >= 100 && parsed <= 599) {
+      attributes['responseStatus'] = parsed;
+    } else {
+      delete attributes['responseStatus'];
+    }
+  } else {
+    delete attributes['responseStatus'];
   }
 
   // The sender path stamps businessCode from errorCode; the fingerprint reads
@@ -119,7 +152,9 @@ function fromJfrPayload(
     else if (!/^[\w$]+(?:\.[\w$]+)+$/.test(exceptionClass)) return undefined;
   }
 
+  const rawService = bounded(payload['service'], 128);
   const observedAt = bounded(payload['timestamp'], 40);
+  const eventTime = observedAt && !Number.isNaN(Date.parse(observedAt)) ? observedAt : new Date().toISOString();
   const message =
     bounded(attributes['safeMessage'], 512)
     ?? (exceptionClass || undefined)
@@ -127,11 +162,11 @@ function fromJfrPayload(
 
   return {
     schemaVersion: 1,
-    id: stableId(['docker.logs', source.nodeId, resolvedType, observedAt ?? '', attributes]),
-    time: observedAt && !Number.isNaN(Date.parse(observedAt)) ? observedAt : new Date().toISOString(),
+    id: stableId(['docker.logs', source.nodeId, source.container, resolvedType, observedAt ?? eventTime, attributes]),
+    time: eventTime,
     source: 'application',
     nodeId: source.nodeId,
-    service: source.service,
+    service: rawService ?? source.service,
     type: resolvedType,
     severity: resolvedType === 'business.error' ? known.severity : 'critical',
     message,
@@ -147,6 +182,7 @@ function fatalErrorEvent(
   stack: string[],
   source: LogScanSource,
   line: string,
+  timestamp?: string,
 ): OpsEvent {
   const attributes: Record<string, unknown> = {
     observedVia: 'docker.logs',
@@ -155,10 +191,11 @@ function fatalErrorEvent(
     exceptionMessage: message,
     stackTrace: stack.join('\n').slice(0, 4096),
   };
+  const eventTime = timestamp ?? new Date().toISOString();
   return {
     schemaVersion: 1,
-    id: stableId(['docker.logs', source.nodeId, type, exceptionClass, line.slice(0, 200)]),
-    time: new Date().toISOString(),
+    id: stableId(['docker.logs', source.nodeId, source.container, type, exceptionClass, eventTime, line.slice(0, 200)]),
+    time: eventTime,
     source: 'docker',
     nodeId: source.nodeId,
     service: source.service,
@@ -180,27 +217,40 @@ export function scanContainerLog(
   lines: readonly string[],
   source: LogScanSource,
   instrumented: boolean,
+  recentFatal?: ReadonlySet<string>,
 ): OpsEvent[] {
   const events: OpsEvent[] = [];
-  // A JVM Error already recovered from a payload must not be re-reported from
-  // the raw stack line that the same container also printed.
-  const fatalFromPayload = new Set<string>();
+  const fatalFromPayload = new Set<string>(recentFatal ?? []);
+
+  // Pass 1: Recover all JFR payloads in this batch first, so any payload-reported
+  // fatal error suppresses raw stack duplicates regardless of line order.
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const payload = jfrPayload(line);
+    if (!payload) continue;
+
+    const event = fromJfrPayload(payload, source);
+    if (!event) continue;
+
+    if (event.type === 'jvm.oom' || event.type === 'jvm.stack_overflow') {
+      const clazz = bounded(event.attributes['exceptionClass'], 256);
+      if (clazz) fatalFromPayload.add(clazz);
+      if (event.type === 'jvm.oom') fatalFromPayload.add('java.lang.OutOfMemoryError');
+      if (event.type === 'jvm.stack_overflow') fatalFromPayload.add('java.lang.StackOverflowError');
+    }
+    events.push(event);
+  }
+
+  // Pass 2: Extract raw fatal errors and uninstrumented exceptions.
+  let currentTimestamp: string | undefined;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? '';
+    const lineTs = extractLogTimestamp(line);
+    if (lineTs) currentTimestamp = lineTs;
 
-    const payload = jfrPayload(line);
-    if (payload) {
-      const event = fromJfrPayload(payload, source);
-      if (event) {
-        if (event.type === 'jvm.oom' || event.type === 'jvm.stack_overflow') {
-          const clazz = bounded(event.attributes['exceptionClass'], 256);
-          if (clazz) fatalFromPayload.add(clazz);
-        }
-        events.push(event);
-      }
-      continue;
-    }
+    // JFR payloads already processed in pass 1
+    if (jfrPayload(line)) continue;
 
     const oom = OOM_RE.exec(line);
     if (oom) {
@@ -210,7 +260,7 @@ export function scanContainerLog(
       for (let next = index + 1; next < lines.length && STACK_FRAME_RE.test(lines[next] ?? ''); next += 1) {
         stack.push((lines[next] ?? '').trim());
       }
-      events.push(fatalErrorEvent('jvm.oom', 'critical', 'java.lang.OutOfMemoryError', message, stack, source, line));
+      events.push(fatalErrorEvent('jvm.oom', 'critical', 'java.lang.OutOfMemoryError', message, stack, source, line, currentTimestamp));
       continue;
     }
 
@@ -222,7 +272,7 @@ export function scanContainerLog(
       for (let next = index + 1; next < lines.length && STACK_FRAME_RE.test(lines[next] ?? ''); next += 1) {
         stack.push((lines[next] ?? '').trim());
       }
-      events.push(fatalErrorEvent('jvm.stack_overflow', 'critical', 'java.lang.StackOverflowError', message, stack, source, line));
+      events.push(fatalErrorEvent('jvm.stack_overflow', 'critical', 'java.lang.StackOverflowError', message, stack, source, line, currentTimestamp));
       continue;
     }
 
@@ -249,10 +299,11 @@ export function scanContainerLog(
       exceptionMessage: message,
       exceptionStackTrace: stack.join('\n').slice(0, 4096),
     };
+    const eventTime = currentTimestamp ?? new Date().toISOString();
     events.push({
       schemaVersion: 1,
-      id: stableId(['docker.logs', source.nodeId, 'business.error', className, line.slice(0, 200)]),
-      time: new Date().toISOString(),
+      id: stableId(['docker.logs', source.nodeId, source.container, 'business.error', className, eventTime, line.slice(0, 200)]),
+      time: eventTime,
       source: 'docker',
       nodeId: source.nodeId,
       service: source.service,

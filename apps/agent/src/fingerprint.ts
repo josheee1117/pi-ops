@@ -7,6 +7,16 @@ export const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
   'application.slow_sql_recovered': 'application.slow_sql',
 };
 
+function canonicalSource(event: FingerprintEvent): string {
+  // A JVM fatal crash (OOM, StackOverflow) is an application-tier failure whether
+  // captured directly via JFR or recovered from stdout/stderr via Docker logs.
+  const type = RECOVERY_TYPE_MAP[event.type] ?? event.type;
+  if (type === 'jvm.oom' || type === 'jvm.stack_overflow') {
+    return 'application';
+  }
+  return event.source;
+}
+
 type FingerprintEvent = Pick<OpsEvent, 'source' | 'nodeId' | 'service' | 'type'> & {
   attributes?: OpsEvent['attributes'];
 };
@@ -48,7 +58,7 @@ function typeSpecificDimensions(event: FingerprintEvent): string[] {
 export function computeFingerprint(event: FingerprintEvent): string {
   const canonicalType = RECOVERY_TYPE_MAP[event.type] ?? event.type;
   return JSON.stringify([
-    event.source,
+    canonicalSource(event),
     event.nodeId,
     event.service,
     canonicalType,

@@ -62,28 +62,21 @@ describe('computeFingerprint: sender path vs docker-log fallback', () => {
     assert.notEqual(otherCode, computeFingerprint(senderEvent));
   });
 
-  it('keeps log-observed JVM errors distinct from application business errors', () => {
-    const oom = computeFingerprint({
+  it('merges raw docker-observed JVM OOM and application JFR JVM OOM into the same Incident fingerprint', () => {
+    const dockerOom = computeFingerprint({
       source: 'docker',
       nodeId: 'node-1',
       service: 'app',
       type: 'jvm.oom',
       attributes: { exceptionClass: 'java.lang.OutOfMemoryError' },
     });
-    const overflow = computeFingerprint({
-      source: 'docker',
+    const appOom = computeFingerprint({
+      source: 'application',
       nodeId: 'node-1',
       service: 'app',
-      type: 'jvm.stack_overflow',
-      attributes: { exceptionClass: 'java.lang.StackOverflowError' },
+      type: 'jvm.oom',
+      attributes: { exceptionClass: 'java.lang.OutOfMemoryError' },
     });
-    const business = computeFingerprint({
-      source: 'docker',
-      nodeId: 'node-1',
-      service: 'app',
-      type: 'business.error',
-      attributes: { errorCode: 'UNHANDLED_EXCEPTION', module: 'com.example.Service' },
-    });
-    assert.equal(new Set([oom, overflow, business]).size, 3);
+    assert.equal(dockerOom, appOom);
   });
 });

@@ -62,6 +62,11 @@ describe('scanContainerLog: JFR payload recovery', () => {
     assert.equal(event.attributes['containerName'], 'rdl-dataasset-6dfb8e88');
   });
 
+  it('preserves responseStatus as integer from payload attributes', () => {
+    const event = scanContainerLog([REAL_JFR_LINE], SOURCE, false)[0]!;
+    assert.equal(event.attributes['responseStatus'], 500);
+  });
+
   it('ignores telemetry payload types instead of forwarding them', () => {
     const cpu =
       '2026-10-12 08:07:13.267  INFO 1 --- [ Event Stream 1] com.mbkj.piops.jfr.JfrEventLogger        : '
@@ -110,6 +115,31 @@ describe('scanContainerLog: JVM fatal errors', () => {
     assert.equal(events[0]!.severity, 'critical');
     assert.equal(events[0]!.attributes['exceptionClass'], 'java.lang.StackOverflowError');
   });
+
+  it('isolates event IDs between containers on the same node', () => {
+    const lines = [
+      '2026-10-12 08:10:00.000 ERROR 1 --- [nio-8080-exec-1] c.e.Handler : failed to allocate',
+      'java.lang.OutOfMemoryError: Java heap space',
+      '\tat com.example.Worker.allocate(Worker.java:42)',
+    ];
+    const sourceA = { container: 'container-a', nodeId: 'node-1', service: 'container-a' };
+    const sourceB = { container: 'container-b', nodeId: 'node-1', service: 'container-b' };
+    const eventA = scanContainerLog(lines, sourceA, false)[0]!;
+    const eventB = scanContainerLog(lines, sourceB, false)[0]!;
+    assert.notEqual(eventA.id, eventB.id);
+  });
+
+  it('keeps event ID and time stable when re-scanning timestamped lines', () => {
+    const lines = [
+      '2026-10-12 08:10:00.000 ERROR 1 --- [nio-8080-exec-1] c.e.Handler : failed to allocate',
+      'java.lang.OutOfMemoryError: Java heap space',
+      '\tat com.example.Worker.allocate(Worker.java:42)',
+    ];
+    const first = scanContainerLog(lines, SOURCE, false)[0]!;
+    const second = scanContainerLog(lines, SOURCE, false)[0]!;
+    assert.equal(first.id, second.id);
+    assert.equal(first.time, second.time);
+  });
 });
 
 describe('scanContainerLog: generic uncaught exception', () => {
@@ -155,6 +185,30 @@ describe('scanContainerLog: generic uncaught exception', () => {
     assert.equal(events.length, 1);
     assert.equal(events[0]!.type, 'jvm.oom');
     assert.equal(events[0]!.source, 'application');
+  });
+
+  it('suppresses raw fatal error when JFR payload appears later in the same scan', () => {
+    const reverseOrder = [
+      'java.lang.OutOfMemoryError: Java heap space',
+      '\tat com.example.Leak.fill(Leak.java:9)',
+      '[PI_OPS_JFR] {"type":"BUSINESS_ERROR","timestamp":"2026-10-12T09:00:00.000Z","attributes":{'
+      + '"errorCode":"UNHANDLED_EXCEPTION","module":"/auth/lab/heap-oom",'
+      + '"exceptionClass":"java.lang.OutOfMemoryError"}}',
+    ];
+    const events = scanContainerLog(reverseOrder, SOURCE, true);
+    assert.equal(events.length, 1);
+    assert.equal(events[0]!.type, 'jvm.oom');
+    assert.equal(events[0]!.source, 'application');
+  });
+
+  it('suppresses raw fatal error across scan batches via recentFatal', () => {
+    const rawOnly = [
+      'java.lang.OutOfMemoryError: Java heap space',
+      '\tat com.example.Leak.fill(Leak.java:9)',
+    ];
+    const recentFatal = new Set(['java.lang.OutOfMemoryError']);
+    const events = scanContainerLog(rawOnly, SOURCE, true, recentFatal);
+    assert.equal(events.length, 0);
   });
 
   it('reclassifies a JVM Error recorded through the business-error recorder', () => {
