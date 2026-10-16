@@ -5,6 +5,7 @@ node_modules
 .idea
 .agents
 .claude
+artifacts
 deploy/local/data
 *.sqlite
 *.log
