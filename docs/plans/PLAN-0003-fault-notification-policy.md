@@ -69,6 +69,17 @@
 
 成功发送的 FakeNotifier 用例分别断言 `['INCIDENT_OPEN','INCIDENT_RECOVERED']` 与 `[]`，不是只比较任务数。重大故障加入 OOME 与 cgroup oom 正例，以及普通 ERROR 与单独 137 对照。PENDING/RUNNING 恢复竞态只记录 proposed，未决前不得定义 PASS。既有 `first-batch-offline.check.ts` 是旧合同快照，保留原历史输出，不为了新策略改 golden 为当前结果。新验收必须单列预期与观测，且不加入默认测试或降低既有治理证明。
 
+已落地的两份离线检查，命令在 `apps/agent` 下运行：
+
+```text
+./node_modules/.bin/tsx src/__tests__/notification-policy.check.ts
+./node_modules/.bin/tsx src/__tests__/notification-stored-facts.check.ts
+```
+
+两个文件名都不是 `*.test.ts`。`apps/agent/package.json` 的 `test` 只加载 `src/**/*.test.ts`，所以默认 `pnpm test` 不会运行它们。不要把文件改成 `*.test.ts`，也不要加进默认 `test` 脚本。
+
+两份检查自备数据，不需要准备数据库或环境变量。`notification-policy.check.ts` 用 `:memory:` SQLite 跑判定函数和旧 `INCIDENT_OPEN` 投递；`notification-stored-facts.check.ts` 在系统临时目录建 `facts.sqlite` 并从第二个连接改写行，结束前删目录。全部通过时 exit 0，任一断言不符时 exit 非 0。exit 0 只表示纯函数与事实层的合同快照匹配，不是上面任何一个场景的 `PASS`。
+
 ## 部署迁移边界
 
 本波不部署、不操作旧数据库。未来先离线验证 additive 字段对旧库可读，旧行策略版本缺失表示 legacy，不回填新决定。不得回放、自动取消、删除、重排或改写旧任务。新策略只用于批准的切换边界之后的新故障；旧 Incident 的新事件如何归属也需在切换清单显式锁定，不能靠启动时间猜测。

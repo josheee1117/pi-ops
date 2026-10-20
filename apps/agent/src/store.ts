@@ -907,7 +907,6 @@ export interface EventStore {
   markReasoningJobRunning(id: string): boolean;
   markReasoningJobCompleted(id: string): void;
   markReasoningJobFailed(id: string, error: string): void;
-  markReasoningJobWaitingDelegation(id: string): void;
   resetRunningReasoningJobs(): number;
   getReasoningJob(id: string): ReasoningJob | undefined;
   insertReasoningResult(result: ReasoningResult): boolean;
@@ -2757,13 +2756,6 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       markReasoningJobFailedStmt.run({
         id,
         last_error: error,
-        updated_at: new Date().toISOString(),
-      });
-    },
-
-    markReasoningJobWaitingDelegation(id: string): void {
-      markReasoningJobWaitingDelegationStmt.run({
-        id,
         updated_at: new Date().toISOString(),
       });
     },
