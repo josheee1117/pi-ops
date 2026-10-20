@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from 'node:util';
 import {
   investigationReportInputSchema,
+  investigationDiagnosisSchema,
+  diagnosisEvidenceIds,
   MAX_EVIDENCE_ENRICHMENT_ROUNDS,
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   MAX_EVIDENCE_TYPES_PER_SPECIALIST,
@@ -17,7 +19,7 @@ import { boundInvestigationContext, ContextTooLargeError } from './bound-context
 import { ExecutionTimeoutError, withDeadline } from './deadline.js';
 import type { RuntimeEvidenceClient } from './evidence-client.js';
 import { createFakeRuntimeModel, parseModelJson, type RuntimeModel } from './model.js';
-import { CURRENT_EVIDENCE_LIMITS, ON_CALL_BRIEF, runSpecialist, selectSpecialists } from './specialists.js';
+import { CURRENT_EVIDENCE_LIMITS, DIAGNOSIS_CONTRACT, runSpecialist, selectSpecialists } from './specialists.js';
 
 export interface CoordinatorOptions {
   model?: RuntimeModel;
@@ -314,14 +316,28 @@ function synthesizeDeterministic(
   const recommendation = advisory
     ? `${best.summary}.${gaps} Advisory history (not Evidence): ${advisory}`
     : `${best.summary}.${gaps}`;
-  return {
+  return investigationReportInputSchema.parse({
     schemaVersion: 1,
     hypothesis: best.hypotheses[0] ?? best.summary,
     supportingEvidenceIds: supporting,
     contradictingEvidenceIds: contradicting,
     confidence: best.confidence,
-    recommendation: `${POLICY} ${recommendation}`.slice(0, 2000),
-  };
+    recommendation,
+    diagnosis: best.diagnosis ?? investigationDiagnosisSchema.parse({
+      observations: [],
+      candidateCauses: findings.flatMap((item) => item.hypotheses.map((cause) => ({
+        cause, supportingEvidenceIds: item.supportingEvidenceIds, contradictingEvidenceIds: item.contradictingEvidenceIds,
+      }))).slice(0, 5),
+      uncertainties: missing.map((type) => `Missing evidence: ${type}`),
+      actions: [{
+        purpose: 'evidence_collection', target: context.incident.service,
+        preconditions: ['修复尚未确定，先由值班人员核对当前证据与故障窗口。'],
+        operation: '对照故障窗口日志和当前部署配置。若发现配置与对应版本契约不同，记录差异并提交人工确认；若一致，继续核对调用链。',
+        expectedResult: '区分配置差异与调用链故障，取得依据后再确定修复。',
+        risk: '只读检查，不修改服务。', requiresApproval: false, evidenceIds: supporting,
+      }],
+    }),
+  });
 }
 
 async function synthesizeWithModel(
@@ -336,11 +352,11 @@ async function synthesizeWithModel(
     system: [
       'COORDINATOR_SYNTHESIS',
       'Return ONLY one JSON object. No markdown. No extra text.',
-      'Required keys: hypothesis, supportingEvidenceIds, contradictingEvidenceIds, confidence, recommendation.',
+      'Required keys: hypothesis, supportingEvidenceIds, contradictingEvidenceIds, confidence, recommendation, diagnosis.',
       'supportingEvidenceIds and contradictingEvidenceIds must be strings from the provided evidenceIds.',
       'confidence is 0 to 1. Do not persist chain-of-thought.',
       'Write hypothesis and recommendation in concise Simplified Chinese for the on-call engineer. Keep JSON keys unchanged. Evidence IDs in JSON arrays stay unchanged.',
-      ON_CALL_BRIEF,
+      DIAGNOSIS_CONTRACT,
       'Do not repeat internal policy text in the recommendation. Do not claim that a running container proves JVM health or that an exception message proves an external dependency failure.',
       POLICY,
       CURRENT_EVIDENCE_LIMITS,
@@ -356,13 +372,14 @@ async function synthesizeWithModel(
   });
   usage.inputTokens += response.inputTokens ?? 0;
   usage.outputTokens += response.outputTokens ?? 0;
-  const parsed = investigationReportInputSchema.safeParse(normalizeReportPayload(parseModelJson(response.text)));
+  const parsed = investigationReportInputSchema.extend({ diagnosis: investigationDiagnosisSchema }).safeParse(normalizeReportPayload(parseModelJson(response.text)));
   if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
   const supporting = parsed.data.supportingEvidenceIds.filter((id) => currentIds.has(id));
   const contradicting = parsed.data.contradictingEvidenceIds.filter((id) => currentIds.has(id));
   if (
     parsed.data.supportingEvidenceIds.some((id) => !currentIds.has(id))
     || parsed.data.contradictingEvidenceIds.some((id) => !currentIds.has(id))
+    || diagnosisEvidenceIds(parsed.data.diagnosis).some((id) => !currentIds.has(id))
   ) {
     throw new Error('coordinator cited evidence that does not belong to the current incident');
   }
@@ -370,9 +387,6 @@ async function synthesizeWithModel(
     ...parsed.data,
     supportingEvidenceIds: supporting,
     contradictingEvidenceIds: contradicting,
-    recommendation: parsed.data.recommendation.includes('Evidence describes the current incident')
-      ? parsed.data.recommendation
-      : `${POLICY} ${parsed.data.recommendation}`.slice(0, 2000),
   };
 }
 

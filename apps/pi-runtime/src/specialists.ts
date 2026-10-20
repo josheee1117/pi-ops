@@ -1,4 +1,5 @@
 import {
+  diagnosisEvidenceIds,
   MAX_SPECIALISTS_PER_INVESTIGATION,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   SPECIALIST_ROLES,
@@ -11,17 +12,18 @@ import { parseModelJson, type RuntimeModel } from './model.js';
 
 export { MAX_SPECIALISTS_PER_INVESTIGATION, SPECIALIST_ROLES };
 
-/** Phone notification shape. Evidence limits still constrain the judgment, not the prose. */
-export const ON_CALL_BRIEF = [
-  '值班人在手机上读完。hypothesis、recommendation、summary、hypotheses 是通知正文，不是调查底稿。',
-  'Evidence ID、哈希和 job id 只放 JSON 数组，禁止写入上述正文。',
-  'hypothesis 与 summary 用换行写成三行，总长不超过 320 个字符：',
-  '结论：一句话，先写直接原因。',
-  '依据：最多两句，只写支撑该结论的观测。时间写到分钟。',
-  '未知：一句话。没有会改变下一步的未知就写「未知：无」。',
-  'recommendation 最多三条，每条一行，总长不超过 180 个字符。写成可执行的下一步，不重复依据，不附 ID。',
-  'hypotheses 每条只写一句话，不附 ID。',
-  '证据限制只约束判断。不要把通用保留写进正文，例如运行中不能证明 JVM 健康、事后采样不能代表故障窗口、日志片段不是完整窗口。只有该保留本身就是本次结论时才写。',
+export const DIAGNOSIS_CONTRACT = [
+  '输出完整的诊断结论和处置依据，不按手机通知长度压缩。hypothesis、recommendation、summary、hypotheses 保持兼容旧读取方。',
+  'Evidence ID、哈希和 job id 只放 JSON 引用数组，禁止写入上述正文。',
+  'hypothesis 与 summary 写清结论、依据和未知项，每项最多 2000 字符；recommendation 最多 2000 字符，保留动作前提、时间和验证方法。',
+  'diagnosis 必须包含 observations、candidateCauses、uncertainties、actions。只保存结论和引用，不保存思维链。',
+  'observations 最多 10 项，每项为 {statement,evidenceIds}，引用至少一个当前证据。candidateCauses 为 1 至 5 项，每项为 {cause,supportingEvidenceIds,contradictingEvidenceIds}。',
+  'observations.statement 和 candidateCauses.cause 各最多 2000 字符。uncertainties 最多 10 条，每条最多 1000 字符，明确修复尚未确定的原因。',
+  'actions 为 1 至 8 项，每项必须包含 {purpose,target,preconditions,operation,expectedResult,risk,requiresApproval,evidenceIds}。',
+  'purpose 只能为 mitigation（止损）、repair（修复）、verification（验证）、evidence_collection（补证）。target 最多 500 字符；preconditions 为 1 至 5 条，每条最多 1000 字符；operation 最多 2000 字符；expectedResult 和 risk 各最多 1000 字符。',
+  '所有引用数组最多 20 个 ID。动作引用只能来自当前证据，除补证外至少引用一个。没有可用证据时只提出补证动作，不把待采证据当成已存在。',
+  '没有已核实的配置值、对应版本源码或接口契约，不得建议改成某个猜测值。修复尚未确定时给具体检查及能区分候选原因的结果分支。',
+  '动作要写明对象、执行前提、实际操作、预期结果、风险和是否需要人工批准。重启、发布、扩容、重跑或写入必须 requiresApproval=true，必要时在操作中写回滚要求。这些都是人工建议，不代表系统有执行权限。',
 ].join('\n');
 
 /** Cross-layer inference limits apply to both specialists and final synthesis. */
@@ -89,12 +91,12 @@ export async function runSpecialist(
     system: [
       `SPECIALIST_ROLE=${role}`,
       'Return ONLY one JSON object. No markdown. No extra text.',
-      'Required keys: role, hypotheses, supportingEvidenceIds, contradictingEvidenceIds, missingEvidence, confidence, summary, status.',
+      'Required keys: role, hypotheses, supportingEvidenceIds, contradictingEvidenceIds, missingEvidence, confidence, summary, status, diagnosis.',
       'status must be completed or failed. confidence is 0 to 1. missingEvidence items must be allowed capability classes.',
       'hypotheses must be an array of at most 5 non-empty strings. summary must be one non-empty string of at most 2000 characters, not an object.',
       'Do not persist chain-of-thought.',
       'Write hypotheses and summary in concise Simplified Chinese. Keep JSON keys, enum values, and technical identifiers unchanged. Evidence IDs in JSON arrays stay unchanged.',
-      ON_CALL_BRIEF,
+      DIAGNOSIS_CONTRACT,
       'Separate observed facts from hypotheses. State what remains unknown; do not turn missing evidence into a confirmed cause or a health guarantee.',
       'You are investigating CURRENT Evidence.',
       CURRENT_EVIDENCE_LIMITS,
@@ -122,7 +124,10 @@ export async function runSpecialist(
   if (!parsed.success) throw new Error(`invalid specialist output: ${parsed.message}`);
   const finding = parsed.value;
   if (finding.role !== role) throw new Error('specialist role mismatch');
-  const ids = [...finding.supportingEvidenceIds, ...finding.contradictingEvidenceIds];
+  if (!finding.diagnosis && model.provider !== 'fake') {
+    throw new Error('invalid specialist output: diagnosis is required');
+  }
+  const ids = [...finding.supportingEvidenceIds, ...finding.contradictingEvidenceIds, ...diagnosisEvidenceIds(finding.diagnosis)];
   if (ids.some((id) => !currentIds.has(id))) {
     throw new Error('specialist cited evidence that does not belong to the current incident');
   }

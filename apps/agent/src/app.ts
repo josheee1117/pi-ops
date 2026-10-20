@@ -242,6 +242,7 @@ export function createApp(
             hypothesis: report.hypothesis,
             confidence: report.confidence,
             recommendation: report.recommendation,
+            ...(report.diagnosis ? { diagnosis: report.diagnosis } : {}),
             supportingEvidenceIds: report.supportingEvidenceIds,
             contradictingEvidenceIds: report.contradictingEvidenceIds,
           } : undefined,

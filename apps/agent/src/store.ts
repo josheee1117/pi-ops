@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence, InvestigationRuntimeMetadata } from '@pi-ops/protocol';
-import { normalizeSpecialistRoles } from '@pi-ops/protocol';
+import { investigationDiagnosisSchema, normalizeSpecialistRoles } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
@@ -1176,6 +1176,7 @@ interface InvestigationReportRow {
   contradicting_evidence_ids_json: string;
   confidence: number;
   recommendation: string;
+  diagnosis_json: string | null;
   created_at: string;
 }
 
@@ -1280,6 +1281,7 @@ function mapInvestigationReportRow(row: InvestigationReportRow): InvestigationRe
     contradictingEvidenceIds: JSON.parse(row.contradicting_evidence_ids_json) as string[],
     confidence: row.confidence,
     recommendation: row.recommendation,
+    ...(row.diagnosis_json ? { diagnosis: investigationDiagnosisSchema.parse(JSON.parse(row.diagnosis_json)) } : {}),
     createdAt: row.created_at,
   };
 }
@@ -1706,6 +1708,9 @@ export function createEventStore(dbPath: string): EventStore {
     if (!reportColumns.has('schema_version')) {
       db.exec('ALTER TABLE investigation_reports ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1');
     }
+    if (!reportColumns.has('diagnosis_json')) {
+      db.exec('ALTER TABLE investigation_reports ADD COLUMN diagnosis_json TEXT');
+    }
     const memoryCandidateColumns = new Set(
       (db.pragma('table_info(memory_candidates)') as Array<{ name: string }>).map(({ name }) => name),
     );
@@ -1951,10 +1956,10 @@ WHERE id = @id;
   const insertInvestigationReportStmt = db.prepare(`
 INSERT INTO investigation_reports (
   id, session_id, schema_version, hypothesis, supporting_evidence_ids_json, contradicting_evidence_ids_json,
-  confidence, recommendation, created_at
+  confidence, recommendation, diagnosis_json, created_at
 ) VALUES (
   @id, @session_id, @schema_version, @hypothesis, @supporting_evidence_ids_json, @contradicting_evidence_ids_json,
-  @confidence, @recommendation, @created_at
+  @confidence, @recommendation, @diagnosis_json, @created_at
 );
 `);
   const getInvestigationReportStmt = db.prepare('SELECT * FROM investigation_reports WHERE id = ?');
@@ -3041,6 +3046,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         contradicting_evidence_ids_json: JSON.stringify(report.contradictingEvidenceIds),
         confidence: report.confidence,
         recommendation: report.recommendation,
+        diagnosis_json: report.diagnosis ? JSON.stringify(investigationDiagnosisSchema.parse(report.diagnosis)) : null,
         created_at: report.createdAt,
       });
     },

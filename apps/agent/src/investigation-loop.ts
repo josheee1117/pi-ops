@@ -12,7 +12,7 @@ import {
   runtimeRequestIdFor,
   type InvestigationSession,
 } from './investigation-session.js';
-import type { InvestigationRuntimeResult } from '@pi-ops/protocol';
+import { diagnosisEvidenceIds, investigationDiagnosisSchema, type InvestigationRuntimeResult } from '@pi-ops/protocol';
 import type { InvestigationReportCallback, PiRuntimeClient } from './pi-runtime-client.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasoningResult } from './reasoner.js';
@@ -239,6 +239,7 @@ export function createInvestigationLoopService(
             hypothesis: report.hypothesis,
             confidence: report.confidence,
             recommendation: report.recommendation,
+            ...(report.diagnosis ? { diagnosis: report.diagnosis } : {}),
           },
         }));
       });
@@ -329,6 +330,7 @@ function buildReport(
     contradictingEvidenceIds: [...input.contradictingEvidenceIds],
     confidence: input.confidence,
     recommendation: input.recommendation,
+    ...(input.diagnosis !== undefined ? { diagnosis: investigationDiagnosisSchema.parse(input.diagnosis) } : {}),
     createdAt,
   };
 }
@@ -368,6 +370,7 @@ function validateReport(
   for (const evidenceId of uniqueIds([
     ...report.supportingEvidenceIds,
     ...report.contradictingEvidenceIds,
+    ...diagnosisEvidenceIds(report.diagnosis),
   ])) {
     if (!known.has(evidenceId)) {
       throw new Error(`evidence id ${evidenceId} does not belong to the Incident`);

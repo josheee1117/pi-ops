@@ -50,6 +50,48 @@ export const MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION = 4;
 
 export type HistoricalKnowledgeStatus = 'available' | 'unavailable';
 
+export const investigationActionSchema = z.object({
+  purpose: z.enum(['mitigation', 'repair', 'verification', 'evidence_collection']),
+  target: z.string().trim().min(1).max(500),
+  preconditions: z.array(z.string().trim().min(1).max(1000)).min(1).max(5),
+  operation: z.string().trim().min(1).max(2000),
+  expectedResult: z.string().trim().min(1).max(1000),
+  risk: z.string().trim().min(1).max(1000),
+  requiresApproval: z.boolean(),
+  evidenceIds: z.array(z.string().min(1)).max(20),
+}).strict().superRefine((action, ctx) => {
+  if (action.purpose !== 'evidence_collection' && action.evidenceIds.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['evidenceIds'], message: 'action requires current evidence references' });
+  }
+});
+
+export type InvestigationAction = z.infer<typeof investigationActionSchema>;
+
+export const investigationDiagnosisSchema = z.object({
+  observations: z.array(z.object({
+    statement: z.string().trim().min(1).max(2000),
+    evidenceIds: z.array(z.string().min(1)).min(1).max(20),
+  }).strict()).max(10),
+  candidateCauses: z.array(z.object({
+    cause: z.string().trim().min(1).max(2000),
+    supportingEvidenceIds: z.array(z.string().min(1)).max(20),
+    contradictingEvidenceIds: z.array(z.string().min(1)).max(20),
+  }).strict()).min(1).max(5),
+  uncertainties: z.array(z.string().trim().min(1).max(1000)).max(10),
+  actions: z.array(investigationActionSchema).min(1).max(8),
+}).strict();
+
+export type InvestigationDiagnosis = z.infer<typeof investigationDiagnosisSchema>;
+
+export function diagnosisEvidenceIds(diagnosis: InvestigationDiagnosis | undefined): string[] {
+  if (!diagnosis) return [];
+  return [
+    ...diagnosis.observations.flatMap((item) => item.evidenceIds),
+    ...diagnosis.candidateCauses.flatMap((item) => [...item.supportingEvidenceIds, ...item.contradictingEvidenceIds]),
+    ...diagnosis.actions.flatMap((item) => item.evidenceIds),
+  ];
+}
+
 export const specialistFindingSchema = z.object({
   role: z.enum(SPECIALIST_ROLES),
   hypotheses: z.array(z.string().min(1)).max(5),
@@ -58,6 +100,7 @@ export const specialistFindingSchema = z.object({
   missingEvidence: z.array(z.enum(RUNTIME_ALLOWED_EVIDENCE_TYPES)).max(8),
   confidence: z.number().min(0).max(1),
   summary: z.string().min(1).max(2000),
+  diagnosis: investigationDiagnosisSchema.optional(),
   status: z.enum(['completed', 'failed']),
 });
 
@@ -70,6 +113,7 @@ export const investigationReportInputSchema = z.object({
   contradictingEvidenceIds: z.array(z.string().min(1)).max(50),
   confidence: z.number().min(0).max(1),
   recommendation: z.string().min(1).max(2000),
+  diagnosis: investigationDiagnosisSchema.optional(),
 });
 
 export type InvestigationReportInput = z.infer<typeof investigationReportInputSchema>;

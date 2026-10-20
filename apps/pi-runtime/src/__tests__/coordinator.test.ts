@@ -38,6 +38,16 @@ const validFinding = (role: 'jvm' | 'database' | 'container_host' | 'application
   missingEvidence: missing,
   confidence: 0.91,
   summary: `${role} used injected model output`,
+  diagnosis: {
+    observations: [],
+    candidateCauses: [{ cause: `${role} injected finding`, supportingEvidenceIds: ids, contradictingEvidenceIds: [] }],
+    uncertainties: ['需要更多当前证据。'],
+    actions: [{
+      purpose: 'evidence_collection', target: 'data-asset-service', preconditions: ['修复尚未确定。'],
+      operation: '核对故障窗口日志。若有异常则对照调用链，否则补齐故障窗口。',
+      expectedResult: '明确异常位置或证据缺口。', risk: '只读检查。', requiresApproval: false, evidenceIds: ids,
+    }],
+  },
   status: 'completed',
 });
 
@@ -103,6 +113,16 @@ describe('bounded multi-agent coordinator', () => {
             schemaVersion: 1, hypothesis: '健康接口返回 503，具体失败条件未知。',
             supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [], confidence: 0.8,
             recommendation: '检查健康接口详情。\n核对应用日志。',
+            diagnosis: {
+              observations: [{ statement: '健康接口返回 503。', evidenceIds: ['evd-now'] }],
+              candidateCauses: [{ cause: '具体失败条件未知。', supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [] }],
+              uncertainties: ['缺少健康详情。'],
+              actions: [{
+                purpose: 'evidence_collection', target: 'order-service 健康接口', preconditions: ['使用已批准健康目标。'],
+                operation: '检查健康接口详情。若组件失败则核对对应依赖，否则对齐应用日志。',
+                expectedResult: '区分健康组件失败与应用异常。', risk: '只读检查。', requiresApproval: false, evidenceIds: ['evd-now'],
+              }],
+            },
           }), provider: 'test', model: 'readable' };
         }
         return { text: validFinding('container_host', ['evd-now']), provider: 'test', model: 'readable' };
@@ -116,7 +136,8 @@ describe('bounded multi-agent coordinator', () => {
     for (const system of systems) {
       assert.match(system, /Simplified Chinese/);
       assert.match(system, /禁止写入上述正文/);
-      assert.match(system, /结论：/);
+      assert.match(system, /完整的诊断结论和处置依据/);
+      assert.doesNotMatch(system, /320 个字符|180 个字符|不是调查底稿/);
       assert.match(system, /JFR事件名.*观测名/);
       assert.match(system, /OOMKilled=false.*JVM堆/);
       assert.match(system, /不是容器配额百分比/);
@@ -129,7 +150,7 @@ describe('bounded multi-agent coordinator', () => {
     assert.match(systems[0]!, /at most 5 non-empty strings/);
     assert.match(systems[0]!, /summary must be one non-empty string of at most 2000 characters, not an object/);
     assert.deepEqual(JSON.parse(users[1]!).evidence, context().evidence);
-    assert.match(systems[1]!, /不要把通用保留写进正文/);
+    assert.match(systems[1]!, /没有已核实的配置值/);
     assert.match(systems[1]!, /Do not repeat internal policy/);
     assert.equal(outcome.report?.hypothesis, '健康接口返回 503，具体失败条件未知。');
     assert.match(outcome.report?.recommendation ?? '', /检查健康接口详情。\n核对应用日志。/);
@@ -192,7 +213,7 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(outcome.report?.supportingEvidenceIds.includes('inc-old'), false);
     assert.match(outcome.report?.hypothesis ?? '', /current incident/);
     assert.match(outcome.report?.recommendation ?? '', /advisory/i);
-    assert.match(outcome.report?.recommendation ?? '', /Evidence describes the current incident/);
+    assert.doesNotMatch(outcome.report?.recommendation ?? '', /Evidence describes the current incident/);
   });
 
   it('keeps runtime context bounded', async () => {

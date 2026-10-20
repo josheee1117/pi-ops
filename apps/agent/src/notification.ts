@@ -1,3 +1,5 @@
+import type { InvestigationDiagnosis } from '@pi-ops/protocol';
+
 export const NOTIFICATION_SCHEMA_VERSION = 1 as const;
 
 export const NOTIFICATION_TYPES = [
@@ -35,6 +37,7 @@ export interface NotificationAnalysis {
   hypothesis: string;
   confidence: number;
   recommendation: string;
+  diagnosis?: InvestigationDiagnosis;
 }
 
 export interface NotificationPayload {
