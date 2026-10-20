@@ -21,6 +21,7 @@ export interface InvestigationContext {
   schemaVersion: number;
   incident: IncidentContext['incident'];
   evidence: readonly IncidentContext['evidence'][number][];
+  truncation?: IncidentContext['truncation'];
   historicalKnowledge: OperationalKnowledgeContext;
   historicalKnowledgeStatus: HistoricalKnowledgeStatus;
   conflictingMemories: readonly MemoryIntelligence[];
@@ -56,6 +57,7 @@ export function buildInvestigationContext(
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
     incident: incidentContext.incident,
     evidence: incidentContext.evidence,
+    ...(incidentContext.truncation ? { truncation: incidentContext.truncation } : {}),
     historicalKnowledge: knowledge.context,
     historicalKnowledgeStatus: knowledge.status,
     conflictingMemories,

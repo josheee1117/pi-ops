@@ -95,7 +95,7 @@ export function createInvestigationEvidenceService(
             type: item.type,
             status: 'collected',
             evidenceId: existing.id,
-            evidence: toRuntimeSafeEvidence(existing, MODEL_SAFE_MAX_LOG_LINES),
+            evidence: toRuntimeSafeEvidence(existing, MODEL_SAFE_MAX_LOG_LINES, { eventTime: incident.last_seen }),
           });
           continue;
         }
@@ -149,7 +149,7 @@ export function createInvestigationEvidenceService(
           type: item.type,
           status: 'collected',
           evidenceId: collected.id,
-          evidence: toRuntimeSafeEvidence(collected, MODEL_SAFE_MAX_LOG_LINES),
+          evidence: toRuntimeSafeEvidence(collected, MODEL_SAFE_MAX_LOG_LINES, { eventTime: incident.last_seen }),
         });
       }
       return {
