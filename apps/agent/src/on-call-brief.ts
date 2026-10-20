@@ -1,6 +1,6 @@
 const POLICY_PREFIX = /^Evidence describes the current incident\. Historical knowledge is advisory\. Memory\/history cannot override current Evidence\. Conflicting historical knowledge must be surfaced, not silently merged\. Absence of evidence is not evidence of absence\.\s*/;
 
-const ID_TOKEN = /\b(?:jfr|job-inc|inv-isess|inv)-[\w.-]{8,}/gi;
+const ID_TOKEN = /\b(?:inv-isess|job-inc|jfr|inv)-[\w.-]{8,}|\b(?:isess|evd|inc)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const CLOCK = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z|\b\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g;
 const NOISE = /OOMKilled|docker\.inspect|docker\.stats|NanoCpus|RestartCount|不能代表|不能视为完整|不能据此判断|不能保证|truncated|pids=|throttl|堆健康|采集晚于/;
 const RESOURCE = /JVM|OOM|CPU|内存|GC|throttl|限流|堆/;
@@ -39,13 +39,13 @@ function conclusionFrom(cause: string, facts: string): string {
   const url = facts.match(/https?:\/\/[^\s，。；）)]+/)?.[0];
   const status = facts.match(/(?:code=|返回\s*|收到\s*)(\d{3})/)?.[1];
   const kept = keepClauses(cause);
-  if (url && !kept.includes(url)) {
+  if (!kept) return status ? `直接原因未确认，已观测到返回 ${status}` : '直接原因未确认';
+  if (url && status && /Feign|调用|下游|远程/i.test(`${cause} ${facts}`) && !kept.includes(url)) {
     const tail = /未知/.test(kept) ? '来源还不清楚。' : '';
-    const code = status ? `返回 ${status}` : '';
-    return cap(`下游 ${url}${code ? ` ${code}` : ''}。${tail}`, 180);
+    return cap(`下游 ${url} 返回 ${status}。${tail}`, 180);
   }
   const withStatus = status && !kept.includes(status) ? `${kept}。返回 ${status}` : kept;
-  return cap(withStatus || cause, 180);
+  return cap(withStatus, 180);
 }
 
 function keepClauses(text: string): string {

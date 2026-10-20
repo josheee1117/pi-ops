@@ -69,6 +69,91 @@ describe('on-call brief', () => {
     assert.doesNotMatch(JSON.stringify(located), /jfr-|inv-isess-|OOMKilled|truncated/);
   });
 
+  for (const { facts, expected } of [
+    { facts: '拦截器日志返回 code=502。', expected: '直接原因未确认，已观测到返回 502。' },
+    { facts: 'Feign 调 https://downstream.example/api 失败。', expected: '直接原因未确认。' },
+  ]) {
+    it(`states the uncertainty and observed status when all cause clauses are filtered: ${facts}`, () => {
+      const cause = '异常文本只证明应用报错，不证明外部依赖故障。';
+      const brief = toOnCallBrief(`已观测事实：${facts}较可能原因：${cause}`, '核对应用日志。');
+      assert.equal(brief.conclusion, expected);
+    });
+  }
+
+  it('preserves ordinary inc-prefixed text instead of treating it as an identifier', () => {
+    const brief = toOnCallBrief(
+      '已观测事实：sync-inc-20261020 批次失败。较可能原因：inc-analysis 报告显示异常。',
+      '核对 inc-analysis 报告。',
+    );
+    assert.equal(brief.conclusion, 'inc-analysis 报告显示异常。');
+    assert.equal(brief.evidence, 'sync-inc-20261020 批次失败。');
+    assert.deepEqual(brief.steps, ['核对 inc-analysis 报告。']);
+  });
+
+  for (const prefix of ['evd', 'inc', 'isess']) {
+    it(`preserves non-UUID ${prefix} text in every brief field`, () => {
+      const text = `${prefix}-analysis`;
+      const brief = toOnCallBrief(
+        `结论：${text} 报告显示异常。依据：${text} 记录批次失败。未知：${text} 的触发条件。`,
+        `核对 ${text} 报告。`,
+      );
+      assert.equal(brief.conclusion, `${text} 报告显示异常。`);
+      assert.equal(brief.evidence, `${text} 记录批次失败。`);
+      assert.equal(brief.unknown, `${text} 的触发条件。`);
+      assert.deepEqual(brief.steps, [`核对 ${text} 报告。`]);
+    });
+  }
+
+  it('preserves the cause of a local health check failure instead of calling it downstream', () => {
+    const brief = toOnCallBrief(
+      '已观测事实：健康检查 https://svc.example/health 返回 503。较可能原因：应用线程池耗尽。',
+      '核对线程池。',
+    );
+    assert.equal(brief.conclusion, '应用线程池耗尽。返回 503。');
+  });
+
+  for (const cue of ['Feign', '调用', '下游', '远程']) {
+    for (const source of ['facts', 'cause']) {
+      it(`keeps the downstream URL when ${source} identifies an external call with ${cue}`, () => {
+        const facts = `${source === 'facts' ? cue : ''} https://downstream.example/api 返回 503。`;
+        const cause = `${source === 'cause' ? cue : ''}请求处理失败。`;
+        const brief = toOnCallBrief(`已观测事实：${facts}较可能原因：${cause}`, '核对调用日志。');
+        assert.equal(brief.conclusion, '下游 https://downstream.example/api 返回 503。');
+      });
+    }
+  }
+
+  it('keeps the legacy non-UUID identifier filtering', () => {
+    const brief = toOnCallBrief(
+      '结论：应用请求失败（jfr-12345678、job-inc-12345678、inv-isess-12345678、inv-12345678）。',
+      '核对日志。',
+    );
+    assert.equal(brief.conclusion, '应用请求失败。');
+  });
+
+  it('does not replace a cause with a downstream URL when no status is observed', () => {
+    const brief = toOnCallBrief(
+      '已观测事实：Feign 调 https://downstream.example/api 失败。较可能原因：应用请求处理失败。未知：根因。',
+      '核对应用日志。',
+    );
+    assert.equal(brief.conclusion, '应用请求处理失败。');
+  });
+
+  for (const prefix of ['evd', 'inc', 'isess', 'job-inc', 'inv-isess', 'inv', 'jfr']) {
+    it(`removes ${prefix} identifiers from every brief field`, () => {
+      const id = `${prefix}-5f0a1c2e-1234-4567-890a-bcdef0123456`;
+      const brief = toOnCallBrief(
+        `结论：应用请求处理失败（${id}）。依据：日志记录异常（${id}）。未知：触发条件（${id}）。`,
+        `核对应用日志（${id}）。`,
+      );
+      assert.doesNotMatch(JSON.stringify(brief), /evd-|inc-|isess-|job-|inv-|jfr-/);
+      assert.equal(brief.conclusion, '应用请求处理失败。');
+      assert.equal(brief.evidence, '日志记录异常。');
+      assert.equal(brief.unknown, '触发条件。');
+      assert.deepEqual(brief.steps, ['核对应用日志。']);
+    });
+  }
+
   it('leaves a short report and a resource finding intact', () => {
     const short = toOnCallBrief('健康接口返回 503，具体失败条件尚不明确。', '检查健康接口详情。\n核对应用日志。');
     assert.equal(short.conclusion, '健康接口返回 503，具体失败条件尚不明确。');

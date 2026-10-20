@@ -183,23 +183,29 @@ function describeFault(type: string, service: string, recovered: boolean): { tit
 function formatWeComMarkdown(notification: NotificationPayload): string {
   const incident = notification.incident;
   const recovered = notification.type === 'INCIDENT_RECOVERED';
+  const completedAfterRecovery = notification.type === 'INVESTIGATION_COMPLETED' && incident.state === 'RECOVERED';
   const described = describeFault(incident.type, incident.service, recovered);
   const title = notification.type === 'INVESTIGATION_COMPLETED'
-    ? `${incident.service} 诊断完成`
+    ? `${incident.service} 诊断完成${completedAfterRecovery ? '（故障已恢复）' : ''}`
     : described.title;
-  const when = beijingTime(notification.type === 'INCIDENT_OPEN' ? incident.firstSeen : incident.lastSeen);
+  const body = completedAfterRecovery ? '故障已在诊断完成前恢复，以下是诊断时的判断。' : described.body;
+  const when = beijingTime(notification.type === 'INCIDENT_OPEN' || completedAfterRecovery ? incident.firstSeen : incident.lastSeen);
   const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
+  const time = `${completedAfterRecovery ? '发生时间' : '时间'}：${when}`;
   const lines = [`### ${title}`];
+  if (completedAfterRecovery) lines.push(body);
   if (analysis) {
     const brief = toOnCallBrief(analysis.hypothesis, analysis.recommendation);
     lines.push(`**${brief.conclusion.replaceAll('*', '')}**`);
-    lines.push(described.body, `机器：${incident.nodeId}`, `时间：${when}`);
+    if (!completedAfterRecovery) lines.push(body);
+    lines.push(`机器：${incident.nodeId}`, time);
     if (brief.evidence) lines.push('', '**依据**', brief.evidence);
     if (brief.unknown) lines.push('', '**未知**', brief.unknown);
     if (brief.steps.length > 0) lines.push('', '**下一步**', ...brief.steps.map((step, index) => `${index + 1}. ${step}`));
     lines.push('', `<font color="comment">模型自评 ${Math.round(analysis.confidence * 100)}%，不是准确率</font>`);
   } else {
-    lines.push(described.body, `机器：${incident.nodeId}`, `时间：${when}`);
+    if (!completedAfterRecovery) lines.push(body);
+    lines.push(`机器：${incident.nodeId}`, time);
   }
   lines.push('', `编号：${incident.id}`);
   const content = lines.join('\n');

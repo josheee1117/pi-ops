@@ -49,6 +49,9 @@ describe('WeCom notifier', () => {
     assert.match(contents[2]!, /pi-ops-drill 已恢复/);
     assert.match(contents[2]!, /健康检查重新通过/);
     assert.match(contents[0]!, /时间：9月25日 18:00/);
+    assert.match(contents[1]!, /健康检查连续没有通过/);
+    assert.match(contents[1]!, /时间：9月25日 18:01/);
+    assert.match(contents[2]!, /时间：9月25日 18:01/);
     for (const content of contents) {
       assert.match(content, /机器：test-ai-01/);
       assert.match(content, /编号：inc-1/);
@@ -65,6 +68,78 @@ describe('WeCom notifier', () => {
     assert.doesNotMatch(contents[2]!, /下一步/);
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED' });
     assert.doesNotMatch(contents[3]!, /下一步|依据/);
+  });
+
+  it('puts recovery context before the historical diagnosis without repeating the title', async () => {
+    const contents: string[] = [];
+    const notifier = createWeComNotifier({
+      webhookUrl: URL, timeoutMs: 100, maxResponseBytes: 128,
+      fetch: async (_url, init) => {
+        contents.push(JSON.parse(init?.body as string).markdown.content);
+        return success();
+      },
+    });
+    for (const analysis of [undefined, {
+      investigationSessionId: 'session-1', reasoningResultId: 'result-1',
+      hypothesis: '服务可能已经不可用。', confidence: 0.8,
+      recommendation: '核对应用日志。',
+    }]) {
+      await notifier.send({
+        ...payload, type: 'INVESTIGATION_COMPLETED',
+        incident: { ...payload.incident, state: 'RECOVERED' },
+        ...(analysis ? { analysis } : {}),
+      });
+    }
+    for (const content of contents) {
+      assert.ok(content.startsWith('### pi-ops-drill 诊断完成（故障已恢复）\n故障已在诊断完成前恢复，以下是诊断时的判断。\n'));
+      assert.doesNotMatch(content, /诊断完成时故障已恢复|健康检查连续没有通过|18:01/);
+    }
+    assert.match(contents[1]!, /判断。\n\*\*服务可能已经不可用。\*\*/);
+  });
+
+  it('labels the recovered diagnosis time as the occurrence time only', async () => {
+    let content = '';
+    const notifier = createWeComNotifier({
+      webhookUrl: URL, timeoutMs: 100, maxResponseBytes: 128,
+      fetch: async (_url, init) => {
+        content = JSON.parse(init?.body as string).markdown.content;
+        return success();
+      },
+    });
+    for (const analysis of [undefined, {
+      investigationSessionId: 'session-1', reasoningResultId: 'result-1',
+      hypothesis: '服务可能已经不可用。', confidence: 0.8, recommendation: '核对应用日志。',
+    }]) {
+      await notifier.send({
+        ...payload, type: 'INVESTIGATION_COMPLETED',
+        incident: { ...payload.incident, state: 'RECOVERED' },
+        ...(analysis ? { analysis } : {}),
+      });
+      assert.match(content, /^发生时间：9月25日 18:00$/m);
+      assert.doesNotMatch(content, /^时间：|18:01/m);
+    }
+  });
+
+  it('omits internal identifiers from diagnosis prose but keeps the incident footer', async () => {
+    let content = '';
+    const notifier = createWeComNotifier({
+      webhookUrl: URL, timeoutMs: 100, maxResponseBytes: 128,
+      fetch: async (_url, init) => {
+        content = JSON.parse(init?.body as string).markdown.content;
+        return success();
+      },
+    });
+    const ids = ['evd', 'inc', 'isess', 'job-inc', 'inv-isess', 'inv', 'jfr']
+      .map((prefix) => `${prefix}-5f0a1c2e-1234-4567-890a-bcdef0123456`).join('、');
+    await notifier.send({
+      ...payload, type: 'INVESTIGATION_COMPLETED', analysis: {
+        investigationSessionId: 'session-1', reasoningResultId: 'result-1', confidence: 0.8,
+        hypothesis: `结论：应用请求处理失败（${ids}）。依据：日志记录异常（${ids}）。未知：触发条件（${ids}）。`,
+        recommendation: `核对应用日志（${ids}）。`,
+      },
+    });
+    assert.doesNotMatch(content.split('编号：')[0]!, /evd-|inc-|isess-|job-|inv-|jfr-/);
+    assert.ok(content.endsWith('编号：inc-1'));
   });
 
   it('keeps a long diagnosis inside 4000 bytes and shows the conclusion first', async () => {
