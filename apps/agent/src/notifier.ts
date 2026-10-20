@@ -1,5 +1,5 @@
 import type { NotificationPayload } from './notification.js';
-import { toOnCallBrief } from './on-call-brief.js';
+import { deterministicSteps, toOnCallBrief } from './on-call-brief.js';
 
 export interface Notifier {
   send(notification: NotificationPayload): Promise<void>;
@@ -143,7 +143,7 @@ const FAULT_COPY: Record<string, { name: string; open: string; recovered: string
   },
   'jvm.cpu_pressure': {
     name: 'Java CPU 过高',
-    open: 'Java 进程 CPU 占用持续过高。',
+    open: '检测到 Java 进程 CPU 压力，持续时间和当前状态需核对。',
     recovered: 'Java 进程 CPU 占用已回落。',
   },
   'jvm.gc_pressure': {
@@ -192,23 +192,29 @@ function formatWeComMarkdown(notification: NotificationPayload): string {
   const when = beijingTime(notification.type === 'INCIDENT_OPEN' || completedAfterRecovery ? incident.firstSeen : incident.lastSeen);
   const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
   const time = `${completedAfterRecovery ? '发生时间' : '时间'}：${when}`;
-  const lines = [`### ${title}`];
-  if (completedAfterRecovery) lines.push(body);
-  if (analysis) {
-    const brief = toOnCallBrief(analysis.hypothesis, analysis.recommendation);
-    lines.push(`**${brief.conclusion.replaceAll('*', '')}**`);
-    if (!completedAfterRecovery) lines.push(body);
-    lines.push(`机器：${incident.nodeId}`, time);
-    if (brief.evidence) lines.push('', '**依据**', brief.evidence);
-    if (brief.unknown) lines.push('', '**未知**', brief.unknown);
-    if (brief.steps.length > 0) lines.push('', '**下一步**', ...brief.steps.map((step, index) => `${index + 1}. ${step}`));
-    lines.push('', `<font color="comment">模型自评 ${Math.round(analysis.confidence * 100)}%，不是准确率</font>`);
-  } else {
-    if (!completedAfterRecovery) lines.push(body);
-    lines.push(`机器：${incident.nodeId}`, time);
-  }
-  lines.push('', `编号：${incident.id}`);
-  const content = lines.join('\n');
+  const brief = analysis ? toOnCallBrief(analysis.hypothesis, analysis.recommendation, analysis.diagnosis) : undefined;
+  const steps = brief?.steps.length ? brief.steps : deterministicSteps(incident, recovered || completedAfterRecovery);
+  let conclusion = brief ? `**${brief.conclusion.replaceAll('*', '')}**` : '';
+  let evidence = brief?.evidence ? `\n**依据**\n${brief.evidence}` : '';
+  let unknown = brief?.unknown ? `\n**未知**\n${brief.unknown}` : '';
+  let confidence = analysis ? `\n<font color="comment">模型自评 ${Math.round(analysis.confidence * 100)}%，不是准确率</font>` : '';
+  const compose = () => [
+    `### ${title}`,
+    ...(completedAfterRecovery ? [body] : []),
+    ...(conclusion ? [conclusion] : []),
+    ...(!completedAfterRecovery && !analysis?.diagnosis && !(analysis && incident.type === 'jvm.cpu_pressure') ? [body] : []),
+    `机器：${incident.nodeId}`, time,
+    ...(evidence ? [evidence] : []),
+    ...(unknown ? [unknown] : []),
+    '', '**下一步**', ...steps.map((step, index) => `${index + 1}. ${step}`),
+    ...(confidence ? [confidence] : []),
+    '', `编号：${incident.id}`,
+  ].join('\n');
+  // Keep actions atomic. Explanations yield space before commands, conditions or risks do.
+  let content = compose();
+  if (Buffer.byteLength(content) > 4000) { confidence = ''; unknown = ''; content = compose(); }
+  if (Buffer.byteLength(content) > 4000) { evidence = ''; content = compose(); }
+  if (Buffer.byteLength(content) > 4000) { conclusion = ''; content = compose(); }
   if (Buffer.byteLength(content) > 4000) throw new TerminalNotificationError('wecom notification facts exceed limit');
   return content;
 }

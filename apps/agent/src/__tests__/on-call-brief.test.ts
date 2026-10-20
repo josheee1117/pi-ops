@@ -45,7 +45,7 @@ describe('on-call brief', () => {
       evidence: 'POST /api/v1/tag/admin/tag-group/page，异常 RuntimeException，位置 TagAdminBizServiceImpl.pageTagGroup:106。请求 deptId=5,current=1,size=10，返回 502。',
       unknown: '异常根因与 cause、是否可复现或持续、影响范围、可见 SQL 与本次异常的关联。',
       steps: [
-        '拉取事件前后完整应用日志，补全异常 cause/Caused by 链、SQL/DAO 异常和线程信息，确认是否仅此一笔。',
+        '拉取 01:21:43 前后完整应用日志，补全异常 cause/Caused by 链、SQL/DAO 异常和线程信息，确认是否仅此一笔。',
         '阅读 TagAdminBizServiceImpl.java:106 及 pageTagGroup 调用链，确认抛出或包装逻辑、触发条件和返回码 502 的映射位置。',
         '用相同请求体 deptId=5,current=1,size=10 对 POST /api/v1/tag/admin/tag-group/page 做人工受控复现，记录是否稳定复现、耗时和错误响应。',
       ],

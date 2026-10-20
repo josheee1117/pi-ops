@@ -64,10 +64,13 @@ describe('WeCom notifier', () => {
     assert.match(contents[1]!, /\*\*下一步\*\*\n1\. 检查健康接口详情。\n2\. 核对同一时间的应用日志。/);
     assert.ok(contents[1]!.indexOf('**下一步**') < contents[1]!.indexOf('模型自评'));
     assert.doesNotMatch(contents[1]!, /Historical knowledge|Memory\/history|Absence of evidence/);
-    assert.doesNotMatch(contents[0]!, /下一步/);
-    assert.doesNotMatch(contents[2]!, /下一步/);
+    assert.match(contents[0]!, /下一步/);
+    assert.match(contents[0]!, /修复尚未确定/);
+    assert.match(contents[2]!, /下一步/);
+    assert.match(contents[2]!, /验证/);
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED' });
-    assert.doesNotMatch(contents[3]!, /下一步|依据/);
+    assert.match(contents[3]!, /下一步/);
+    assert.doesNotMatch(contents[3]!, /依据/);
   });
 
   it('puts recovery context before the historical diagnosis without repeating the title', async () => {
@@ -158,12 +161,12 @@ describe('WeCom notifier', () => {
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED', analysis });
     assert.ok(Buffer.byteLength(contents[0]!, 'utf8') <= 4000);
     assert.match(contents[0]!, /\*\*原因。\*\*/);
-    assert.doesNotMatch(contents[0]!, /修/);
+    assert.doesNotMatch(contents[0]!, /修{2,}/);
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED', analysis: {
       ...analysis, hypothesis: '因'.repeat(2000),
     } });
     assert.ok(Buffer.byteLength(contents[1]!, 'utf8') <= 4000);
-    assert.doesNotMatch(contents[1]!, /修/);
+    assert.doesNotMatch(contents[1]!, /修{2,}/);
     assert.ok((contents[1]!.match(/因/g) ?? []).length < 200);
   });
 
