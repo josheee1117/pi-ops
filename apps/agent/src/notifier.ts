@@ -1,5 +1,5 @@
 import type { NotificationPayload } from './notification.js';
-import { deterministicSteps, toOnCallBrief } from './on-call-brief.js';
+import { deterministicSteps, diagnosisSteps, renderBriefStep, shortenBriefField, toOnCallBrief } from './on-call-brief.js';
 
 export interface Notifier {
   send(notification: NotificationPayload): Promise<void>;
@@ -191,31 +191,52 @@ function formatWeComMarkdown(notification: NotificationPayload): string {
   const body = completedAfterRecovery ? '故障已在诊断完成前恢复，以下是诊断时的判断。' : described.body;
   const when = beijingTime(notification.type === 'INCIDENT_OPEN' || completedAfterRecovery ? incident.firstSeen : incident.lastSeen);
   const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
-  const time = `${completedAfterRecovery ? '发生时间' : '时间'}：${when}`;
+  const time = `${completedAfterRecovery ? '发生时间' : '时间'}：${when}（北京时间）`;
   const brief = analysis ? toOnCallBrief(analysis.hypothesis, analysis.recommendation, analysis.diagnosis) : undefined;
-  const steps = brief?.steps.length ? brief.steps : deterministicSteps(incident, recovered || completedAfterRecovery);
-  let conclusion = brief ? `**${brief.conclusion.replaceAll('*', '')}**` : '';
+  const repairUnknown = analysis?.diagnosis && !analysis.diagnosis.actions.some((action) => action.purpose === 'repair');
+  const steps = analysis?.diagnosis ? diagnosisSteps(analysis.diagnosis).filter((step) => step !== '修复尚未确定。')
+    : brief?.steps.length ? [...brief.steps] : deterministicSteps(incident, recovered || completedAfterRecovery);
+  const reference = analysis?.reasoningResultId ?? incident.id;
+  const marker = `已截断，完整内容见诊断编号 ${reference}`;
+  let operationBytes = Infinity;
+  let fieldBytes = Infinity;
+  let omitted = 0;
+  const field = (text: string) => shortenBriefField(text, fieldBytes, marker);
   let evidence = brief?.evidence ? `\n**依据**\n${brief.evidence}` : '';
   let unknown = brief?.unknown ? `\n**未知**\n${brief.unknown}` : '';
   let confidence = analysis ? `\n<font color="comment">模型自评 ${Math.round(analysis.confidence * 100)}%，不是准确率</font>` : '';
   const compose = () => [
-    `### ${title}`,
+    `### ${field(title)}`,
     ...(completedAfterRecovery ? [body] : []),
-    ...(conclusion ? [conclusion] : []),
+    ...(brief ? [`**${field(brief.conclusion.replaceAll('*', ''))}**`] : []),
     ...(!completedAfterRecovery && !analysis?.diagnosis && !(analysis && incident.type === 'jvm.cpu_pressure') ? [body] : []),
-    `机器：${incident.nodeId}`, time,
+    `机器：${field(incident.nodeId)}`, time,
+    ...(analysis ? ['诊断原文时间按 UTC 阅读；显式时区以原文为准。'] : []),
     ...(evidence ? [evidence] : []),
     ...(unknown ? [unknown] : []),
-    '', '**下一步**', ...steps.map((step, index) => `${index + 1}. ${step}`),
+    '', '**下一步**', ...(repairUnknown ? ['修复尚未确定。'] : []), ...steps.map((step, index) => `${index + 1}. ${renderBriefStep(step, { reference, operationBytes, fieldBytes })}`),
+    ...(omitted ? [`另有 ${omitted} 条动作见完整诊断（编号 ${reference}）`] : []),
     ...(confidence ? [confidence] : []),
     '', `编号：${incident.id}`,
   ].join('\n');
-  // Keep actions atomic. Explanations yield space before commands, conditions or risks do.
   let content = compose();
-  if (Buffer.byteLength(content) > 4000) { confidence = ''; unknown = ''; content = compose(); }
-  if (Buffer.byteLength(content) > 4000) { evidence = ''; content = compose(); }
-  if (Buffer.byteLength(content) > 4000) { conclusion = ''; content = compose(); }
-  if (Buffer.byteLength(content) > 4000) throw new TerminalNotificationError('wecom notification facts exceed limit');
+  if (Buffer.byteLength(content) > 4000) { confidence = ''; unknown = ''; evidence = ''; content = compose(); }
+  while (Buffer.byteLength(content) > 4000 && steps.length > 1) {
+    const removed = steps.pop();
+    if (typeof removed !== 'string' || !analysis?.diagnosis) omitted++;
+    content = compose();
+  }
+  // Shorten the operation only after whole lower-priority actions have yielded.
+  if (Buffer.byteLength(content) > 4000) {
+    const first = steps[0];
+    const operation = typeof first === 'string' ? first : first?.operation ?? '';
+    operationBytes = Math.max(32, Buffer.byteLength(operation) - (Buffer.byteLength(content) - 4000) - Buffer.byteLength(marker) - 20);
+    content = compose();
+  }
+  // Metadata and safety fields can themselves exceed the channel limit. Mark every shortened field.
+  for (fieldBytes = 512; Buffer.byteLength(content) > 4000; fieldBytes = Math.floor(fieldBytes / 2)) {
+    content = compose();
+  }
   return content;
 }
 

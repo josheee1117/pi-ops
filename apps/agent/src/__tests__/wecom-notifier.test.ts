@@ -118,7 +118,7 @@ describe('WeCom notifier', () => {
         incident: { ...payload.incident, state: 'RECOVERED' },
         ...(analysis ? { analysis } : {}),
       });
-      assert.match(content, /^发生时间：9月25日 18:00$/m);
+      assert.match(content, /^发生时间：9月25日 18:00（北京时间）$/m);
       assert.doesNotMatch(content, /^时间：|18:01/m);
     }
   });

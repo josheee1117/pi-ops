@@ -39,26 +39,55 @@ export function toOnCallBrief(hypothesis: string, recommendation: string, diagno
 }
 
 function diagnosisBrief(diagnosis: InvestigationDiagnosis): OnCallBrief {
-  const mitigation = diagnosis.actions.find((action) => action.purpose === 'mitigation');
-  const repair = diagnosis.actions.find((action) => action.purpose === 'repair');
-  const verification = diagnosis.actions.find((action) => action.purpose === 'verification');
-  const check = diagnosis.actions.find((action) => action.purpose === 'evidence_collection');
-  const steps = [
-    ...(mitigation ? [renderAction(mitigation)] : []),
-    ...(repair ? [renderAction(repair)] : ['修复尚未确定。', check ? renderAction(check) : '补证：对齐故障时间的日志、调用栈与有效配置，逐项核对候选原因的支持和反证，再决定修复。']),
-    ...(verification ? [renderAction(verification)] : ['验证：检查同一服务的健康响应和关键业务请求，确认错误、延迟与超时是否恢复。']),
-  ];
   return {
     conclusion: diagnosis.candidateCauses.map((item) => item.cause).join('\n'),
     evidence: diagnosis.observations.map((item) => item.statement).join('\n'),
     unknown: diagnosis.uncertainties.join('\n'),
-    steps,
+    steps: diagnosisSteps(diagnosis).map((step) => renderBriefStep(step)),
   };
 }
 
-function renderAction(action: InvestigationAction): string {
-  const label = { mitigation: '止损', repair: '修复', verification: '验证', evidence_collection: '补证' }[action.purpose];
-  return `${label}${action.requiresApproval ? '（需批准）' : ''}：${action.target}\n前提：${action.preconditions.join('；')}\n${action.operation}\n预期：${action.expectedResult}\n风险：${action.risk}`;
+export type BriefStep = string | InvestigationAction;
+
+export function diagnosisSteps(diagnosis: InvestigationDiagnosis): BriefStep[] {
+  const first = ['mitigation', 'repair', 'verification']
+    .flatMap((purpose) => diagnosis.actions.find((action) => action.purpose === purpose) ?? []);
+  const remaining = diagnosis.actions.filter((action) => !first.includes(action));
+  return [
+    ...first,
+    ...remaining,
+    ...(!first.some((action) => action.purpose === 'repair') ? ['修复尚未确定。'] : []),
+    ...(!first.some((action) => action.purpose === 'verification')
+      ? ['验证：检查同一服务的健康响应和关键业务请求，确认错误、延迟与超时是否恢复。'] : []),
+    ...(!first.some((action) => action.purpose === 'repair') && !remaining.some((action) => action.purpose === 'evidence_collection')
+      ? ['补证：对齐故障时间的日志、调用栈与有效配置，逐项核对候选原因的支持和反证，再决定修复。'] : []),
+  ];
+}
+
+export function shortenBriefField(text: string, maxBytes: number, marker: string): string {
+  if (Buffer.byteLength(text) <= maxBytes) return text;
+  let prefix = '';
+  let bytes = 0;
+  for (const char of text) {
+    bytes += Buffer.byteLength(char);
+    if (bytes > maxBytes) break;
+    prefix += char;
+  }
+  return `${prefix}（${marker}）`;
+}
+
+export function renderBriefStep(step: BriefStep, options?: {
+  reference: string;
+  operationBytes: number;
+  fieldBytes: number;
+}): string {
+  const field = (text: string) => options
+    ? shortenBriefField(text, options.fieldBytes, `已截断，完整内容见诊断编号 ${options.reference}`) : text;
+  if (typeof step === 'string') return field(step);
+  const label = { mitigation: '止损', repair: '修复', verification: '验证', evidence_collection: '补证' }[step.purpose];
+  const operation = options
+    ? shortenBriefField(step.operation, options.operationBytes, `已截断，完整操作见诊断编号 ${options.reference}`) : step.operation;
+  return `${label}${step.requiresApproval ? '（需批准）' : ''}：${field(step.target)}\n前提：${step.preconditions.map(field).join('；')}\n${operation}\n预期：${field(step.expectedResult)}\n风险：${field(step.risk)}`;
 }
 
 export function deterministicSteps(incident: NotificationPayload['incident'], recovered: boolean): string[] {
