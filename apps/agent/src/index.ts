@@ -72,7 +72,6 @@ const reasoningWorker = createReasoningJobWorker(
   createReasonerRegistry(reasoners),
   undefined,
   createMemoryRetriever(store),
-  runtimeClient,
 );
 reasoningWorker.start();
 const notificationWorker = config.notificationWebhookUrl

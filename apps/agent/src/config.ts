@@ -35,8 +35,6 @@ export interface AgentConfig {
   eventReplayBatchSize: number;
   /** Poll interval for durable reasoning jobs. */
   reasoningJobPollIntervalMs: number;
-  /** Maximum unexpected reasoning attempts recorded on a job. */
-  reasoningJobMaxAttempts: number;
   /** Timeout for one Reasoner invocation. */
   reasoningTimeoutMs: number;
   /** Maximum reasoning jobs processed in one drain. */
@@ -213,9 +211,6 @@ export function loadConfig(): AgentConfig {
     }),
     reasoningJobPollIntervalMs: integerEnv('PI_OPS_REASONING_JOB_POLL_INTERVAL_MS', 2000, {
       max: 60 * 60 * 1000,
-    }),
-    reasoningJobMaxAttempts: integerEnv('PI_OPS_REASONING_JOB_MAX_ATTEMPTS', 3, {
-      max: 100,
     }),
     reasoningTimeoutMs: integerEnv('PI_OPS_REASONING_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,

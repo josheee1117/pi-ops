@@ -44,6 +44,28 @@ function event(overrides: Partial<OpsEvent> = {}): OpsEvent {
 }
 
 describe('runtime evidence target resolver', () => {
+  it('allows supplemental readonly Docker evidence across Java/health types without guessing missing targets', () => {
+    for (const type of ['jvm.cpu_pressure', 'jvm.oom', 'business.error', 'health.failure']) {
+      for (const capability of ['docker.inspect', 'docker.stats', 'docker.logs'] as const) {
+        const target = incident({ type });
+        const trigger = event({ type, source: type === 'health.failure' ? 'health' : 'jfr', attributes: { containerName: 'dataease' } });
+        const query = resolveRuntimeEvidenceQuery(target, trigger, capability, LOGS_MAX_LINES);
+        assert.equal(query?.container, 'dataease');
+        assert.equal(query?.type, capability);
+        if (capability === 'docker.logs') {
+          assert.equal(query?.maxLines, LOGS_MAX_LINES);
+          assert.equal(query?.since, '2026-08-20T11:58:00.000Z');
+          assert.equal(query?.until, '2026-08-20T12:02:00.000Z');
+        }
+        assert.equal(resolveRuntimeEvidenceQuery(target, { ...trigger, attributes: {} }, capability, LOGS_MAX_LINES), undefined);
+      }
+    }
+    for (const type of ['container.oom', 'container.die']) {
+      assert.equal(resolveRuntimeEvidenceQuery(incident({ type, service: 'dataease' }), event({ type, source: 'docker' }), 'docker.inspect', LOGS_MAX_LINES)?.container, 'dataease');
+      assert.equal(resolveRuntimeEvidenceQuery(incident({ type, service: 'dataease' }), event({ type, source: 'application' }), 'docker.inspect', LOGS_MAX_LINES), undefined);
+    }
+  });
+
   it('keeps the runtime allowlist inside the node-agent capability set', () => {
     for (const type of RUNTIME_ALLOWED_EVIDENCE_TYPES) {
       assert.ok((EVIDENCE_QUERY_TYPES as readonly string[]).includes(type));

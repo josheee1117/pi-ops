@@ -1,0 +1,42 @@
+# Opt-in; use only through fault-drills.py. Existing databases and smoke are untouched.
+services:
+  jdk17-drill:
+    container_name: ${FAULT_CONTAINER:?}
+    cpus: 2
+    mem_limit: ${FAULT_MEMORY:-512m}
+    memswap_limit: ${FAULT_MEMORY:-512m}
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:18089:8088"
+    environment:
+      SERVICE_NAME: ${FAULT_SERVICE:?}
+      CONTAINER_NAME: ${FAULT_CONTAINER:?}
+      NODE_ID: local-dev
+      RUN_LABEL: ${PI_OPS_JDK17_RUN_ID:?}
+      SENDER_ENABLED: ${FAULT_SENDER:-true}
+      CPU_THRESHOLD: ${FAULT_THRESHOLD:-0.80}
+      CPU_SECONDS: "8"
+      CPU_THREADS: ${FAULT_THREADS:-2}
+    command: ["java", "-Xms32m", "-Xmx${FAULT_HEAP:-128m}", "-XX:ActiveProcessorCount=2", "--add-modules", "jdk.httpserver,jdk.jfr", "Drill"]
+  pi-ops-node-agent:
+    environment:
+      PI_OPS_ALLOWED_CONTAINERS: ${FAULT_CONTAINER:?}
+      PI_OPS_DOCKER_REPLAY_LOOKBACK_SECONDS: "1"
+      PI_OPS_DETECTOR_POLL_INTERVAL_MS: "10000"
+      PI_OPS_HEALTH_FAILURE_DURATION: "2"
+      PI_OPS_HEALTH_TARGETS: ${FAULT_HEALTH_TARGETS:?}
+    ports: !override
+      - "127.0.0.1:18081:8081"
+  pi-runtime:
+    environment:
+      PI_OPS_PI_RUNTIME_EXECUTION_TIMEOUT_MS: ${FAULT_RUNTIME_TIMEOUT:-30000}
+    ports: !override
+      - "127.0.0.1:18090:8090"
+  pi-ops:
+    environment:
+      PI_OPS_EVIDENCE_JOB_POLL_INTERVAL_MS: ${FAULT_EVIDENCE_POLL:-1000}
+      PI_OPS_INVESTIGATION_RETRY_MAX_ATTEMPTS: "1"
+      PI_OPS_NOTIFICATION_JOB_MAX_ATTEMPTS: "1"
+      PI_OPS_NOTIFICATION_JOB_BATCH_SIZE: "1"
+    ports: !override
+      - "127.0.0.1:18080:8080"

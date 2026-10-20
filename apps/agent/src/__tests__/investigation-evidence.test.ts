@@ -1,43 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../app.js';
-import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import { createIncidentEngine } from '../incident.js';
 import { createInvestigationEvidenceService } from '../investigation-evidence.js';
 import { createInvestigationLoopService } from '../investigation-loop.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 import type { EvidenceOrchestrator } from '../evidence-orchestrator.js';
 
-const CONFIG: AgentConfig = {
-  port: 0,
-  ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-  sqlitePath: ':memory:',
-  nodeId: 'test-node',
-  maxBodySize: 1024 * 1024,
-  aggregationWindowMs: 5 * 60 * 1000,
-  nodeAgents: new Map(),
-  evidenceTimeoutMs: 5000,
-  evidenceMaxResponseBytes: 1024 * 1024,
-  evidenceLogsMaxLines: 200,
-  evidenceJobPollIntervalMs: 1000,
-  evidenceJobMaxAttempts: 3,
-  evidenceJobBatchSize: 10,
-  eventReplayBatchSize: 100,
-  reasoningJobPollIntervalMs: 1000,
-  reasoningJobMaxAttempts: 3,
-  reasoningTimeoutMs: 5000,
-  reasoningJobBatchSize: 10,
-  reasonerType: 'fake',
-  reasoningMaxContextBytes: 32_768,
-  reasoningMaxEvidenceItems: 12,
-  reasoningMaxLogLines: 50,
-  piRuntimeToken: 'runtime-token',
-};
+const CONFIG = makeAgentConfig({ nodeId: 'test-node', evidenceTimeoutMs: 5000, piRuntimeToken: 'runtime-token' });
 
 function seed() {
   const store = createEventStore(':memory:');

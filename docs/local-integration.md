@@ -83,15 +83,24 @@ Does not require DataAsset. `pnpm smoke:pi` is optional and fails closed without
 
 ## JDK17 application + WeCom drill (opt-in)
 
-```bash
-bash deploy/local/smoke-jdk17.sh
-```
+**Channel correction:** the user confirmed the prior 39 DELIVERED fault-matrix
+jobs were sent to a production robot. They prove old-channel platform acceptance,
+not test-channel acceptance. Original evidence is retained; no remote messages
+were withdrawn/modified or sent to explain the mistake. The owner installed a new
+test robot in ignored configuration. No old/new URL is published here.
+
+The legacy `smoke-jdk17.sh` is preserved but **was not rerun** in this correction.
+The JDK17 overlay now explicitly supplies its expected service and real container
+identity; the fault overlay still overrides both with neutral run identities.
+Legacy smoke does not implement the runner's pinned-target preflight: do not run it
+without separately auditing its actual notification target and shell overrides.
 
 This separate Compose project (`pi-ops-jdk17-local`) runs a dependency-free JDK17
 workload instead of DataAsset. It uses a real `RecordingStream` `jdk.CPULoad`
-sample during a bounded 30-second CPU burst, a bounded queue, and a separate HTTP
-sender. It does not post fabricated CPU metrics or block the JFR callback on HTTP.
-The drill sender intentionally sends once; it does not replace DataAsset's production
+sample during bounded CPU work (demo default10s, configurable1..30s), a bounded
+queue, and a separate HTTP sender. It does not post fabricated CPU metrics or block the JFR callback on HTTP.
+The drill sender has no network retry and a bounded queue; CPU normalization is
+sample-based with a10s event interval. It does not replace DataAsset's production
 transport or prove its retries. `CPU_THRESHOLD` defaults to 0.01 for the local
 multi-core Docker VM and can be tuned through the environment.
 
@@ -114,7 +123,9 @@ Acceptance: JFR + Docker + Host Evidence and a report citing the JFR Evidence;
 then repeated health failure → one Incident / one investigation → recovery,
 with OPEN / COMPLETED / RECOVERED notification jobs DELIVERED. The two scenarios
 normally send five messages labelled by service `dataasset-jdk17-local-本地演练`.
-DELIVERED means WeCom returned `errcode=0`; a human still confirms group visibility.
+DELIVERED is an implementation-derived acceptance signal requiring HTTP success
+and `errcode=0`; original response bodies are not persisted. It does not establish
+the intended group identity or human visibility.
 
 Each run uses fresh SQLite directories under `deploy/local/data/jdk17/<run-id>/`,
 without deleting existing local data. Observation stops before container replacement;
@@ -125,7 +136,10 @@ available without continuing to forward unrelated Docker events to the group.
 Ports overlap the default local stack; do not run both projects simultaneously.
 This is **local chain validation**, not M5 remote acceptance or M7 real DataAsset acceptance.
 
-### Verified local run — 2026-10-02
+### Historical local run — 2026-10-02
+
+This is retained historical chain evidence, not acceptance of the new test
+channel. Notification target identity was not digest-pinned for that smoke.
 
 - Run directory: `deploy/local/data/jdk17/20261002-093410/` (ignored, evidence retained).
 - Runtime: REAL `cpa/gpt-5.6-sol`; JDK: Temurin 17.0.20.1.
@@ -145,9 +159,54 @@ This is **local chain validation**, not M5 remote acceptance or M7 real DataAsse
   by trusted target resolution for this simulated service name; this run does not
   claim that every enrichment capability succeeded.
 
+## Local fault matrix (opt-in)
+
+See [the factual drill report](local-fault-drills.md). `fault-drills.py` reuses this
+Compose project and the Java demo, with a third opt-in overlay. It stops observation
+before replacement, keeps separate run databases/ground truth, requires REAL model
+configuration, and sends real rate-controlled WeCom notifications. Do not run it
+alongside another local stack or the existing smoke.
+
+For the channel correction, only one real B4 was injected (new run
+`20261003-114406-bc1c66`); no full matrix, old queues or extra robot ping was sent.
+Its rendered and actual stopped-container target digest both matched the
+owner-confirmed test digest
+`6598344a5e775ded5efaf0455f05854f473409c159ec58dfcbb8fd40ee7876e1`.
+Three notification types were DELIVERED once each/attempts1; this is indirect
+platform acceptance, original receipt GAP, group human visibility NOT_VERIFIED.
+See the factual report for raw paths and independent diagnostic limits.
+
+The runner removes ambient PI_OPS variables, checks offline Compose rendering
+in memory, creates central with `up --no-start --no-deps --force-recreate`, checks
+its actual environment digest and fresh database mount while stopped, then starts
+that exact validated container ID. Neither expanded config nor environment is
+persisted. Digest/kind/budget/mount mismatch prevents start; unexpected B4 task
+counts/types stop observer/senders immediately. Notification maxAttempts1 and
+batchSize1 bound serial delivery. A CLI preflight failure before any fault/send
+is retained separately, not claimed as a successful drill.
+
+```sh
+# Requires separate owner consent: real model + at most three expected B4 sends.
+python3 deploy/local/fault-drills.py --execute --cases B4
+```
+
+The legacy overlay's explicit environment overrides env_file; shell PI_OPS values
+could otherwise win Compose interpolation. The runner excludes them and verifies
+the resulting value, not merely the filename or DELIVERED status. Its test digest
+is source-pinned, not replaceable from shell/CLI. This guard was absent during the
+production-channel mistake. Do not use raw compose/inspect output as proof of
+safe routing or save it with full environment.
+
+The new exact-name Docker discovery scope is `PI_OPS_ALLOWED_CONTAINERS`, the same
+as the evidence API. Empty means **no Docker discovery**, never all containers.
+Host and explicitly configured HTTP detectors remain independent. Normal exit/start
+restart classification is not changed; the fault report records that policy gap.
+Do not delete `deploy/local/data/` after a drill; it contains retained failure and
+historical evidence, including `jdk17/20261002-093410/`.
+
 ## Shutdown / cleanup
 
 ```bash
 docker compose -f deploy/local/docker-compose.yml --env-file deploy/local/compose.env down
-rm -rf deploy/local/data
+# Preserve deploy/local/data: it contains original, failed and corrected evidence.
 ```

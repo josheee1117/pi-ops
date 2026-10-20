@@ -6,6 +6,9 @@ import { createHealthDetector, type ProbeFn } from '../detectors/health.js';
 import { dockerEventToOpsEvent } from '../events/docker-events.js';
 import type { EventSender } from '../events/sender.js';
 import { makeNodeAgentConfig } from './test-config.js';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { createDiskDetector } from '../detectors/disk.js';
 
 function createCaptureSender(): EventSender & { events: OpsEvent[] } {
   const events: OpsEvent[] = [];
@@ -21,6 +24,42 @@ function createCaptureSender(): EventSender & { events: OpsEvent[] } {
     queueDepth: () => events.length,
   };
 }
+
+describe('disk detector', () => {
+  it('uses filesystem blocks for pressure and recovery and skips unavailable paths', (t) => {
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    let unavailable = false;
+    let free = 10;
+    t.mock.method(fs, 'statfsSync', () => {
+      if (unavailable) throw new Error('unavailable');
+      return { bsize: 4096, blocks: 100, bfree: free, bavail: free - 5 };
+    });
+    syncBuiltinESMExports();
+    t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+    const sender = createCaptureSender();
+    const detector = createDiskDetector(makeNodeAgentConfig({
+      diskPressureThreshold: 0.8, diskPressureDuration: 1, detectorPollIntervalMs: 10,
+    }), sender);
+    detector.start();
+    t.mock.timers.tick(10);
+    assert.equal(sender.events[0]?.type, 'host.disk_pressure');
+    assert.equal(sender.events[0]?.attributes.totalKb, 400);
+    assert.equal(sender.events[0]?.attributes.usedKb, 360);
+    assert.equal(sender.events[0]?.attributes.availableKb, 20);
+    assert.equal(sender.events[0]?.attributes.usagePercent, 90);
+    unavailable = true;
+    t.mock.timers.tick(10);
+    assert.equal(sender.events.length, 1);
+    unavailable = false;
+    free = 60;
+    t.mock.timers.tick(10);
+    assert.equal(sender.events[1]?.type, 'host.disk_recovered');
+    assert.equal(sender.events[1]?.attributes.usagePercent, 40);
+    detector.stop();
+    t.mock.timers.tick(100);
+    assert.equal(sender.events.length, 2);
+  });
+});
 
 // ── Hysteresis ───────────────────────────────────────────────────────────────
 

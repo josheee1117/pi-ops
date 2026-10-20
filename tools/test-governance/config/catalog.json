@@ -1557,6 +1557,21 @@
       ]
     },
     {
+      "id": "jfr-exception-projection",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "location": {
+        "file": "apps/agent/src/__tests__/jfr-evidence.test.ts",
+        "testName": "projects bounded real exception fields into the model-safe context without naming an allocation cause"
+      },
+      "proofs": [
+        { "invariantId": "INV-JFR-02", "level": "C" },
+        { "invariantId": "INV-JFR-05", "level": "C" }
+      ]
+    },
+    {
       "id": "jfr-typed-attributes",
       "featureId": "evidence.jfr-semantic",
       "status": "ACTIVE",

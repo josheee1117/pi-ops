@@ -9,40 +9,19 @@ import { createReasoningJobWorker } from '../reasoning-worker.js';
 import { createIncidentEngine } from '../incident.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import type { OpsEvent } from '@pi-ops/protocol';
 
 const BOUNDS = { maxEvidenceItems: 8, maxContextBytes: 8192, maxLogLines: 20 };
 
 function makeConfig(): AgentConfig {
-  return {
-    port: 0,
-    ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-    sqlitePath: ':memory:',
-    nodeId: 'central',
-    maxBodySize: 1024 * 1024,
-    aggregationWindowMs: 5 * 60 * 1000,
-    nodeAgents: new Map(),
-    evidenceTimeoutMs: 1000,
-    evidenceMaxResponseBytes: 1024 * 1024,
-    evidenceLogsMaxLines: 200,
+  return makeAgentConfig({
     evidenceJobPollIntervalMs: 60_000,
-    evidenceJobMaxAttempts: 3,
-    evidenceJobBatchSize: 10,
-    eventReplayBatchSize: 100,
     reasoningJobPollIntervalMs: 60_000,
-    reasoningJobMaxAttempts: 3,
-    reasoningTimeoutMs: 5000,
-    reasoningJobBatchSize: 10,
-    reasonerType: 'fake',
     reasoningMaxContextBytes: 8192,
     reasoningMaxEvidenceItems: 8,
     reasoningMaxLogLines: 20,
-  };
+  });
 }
 
 function seedCandidate(

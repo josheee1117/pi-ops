@@ -528,6 +528,29 @@ describe('Docker log evidence', () => {
     assert.doesNotMatch(JSON.stringify(data), /TOKEN|secret/);
   });
 
+  it('preserves actual CPU intervals and quota fields, without fabricated percent or environment', async () => {
+    const raw = {
+      read: '2026-10-03T11:00:01Z', preread: '2026-10-03T11:00:00Z',
+      cpu_stats: { cpu_usage: { total_usage: 200 }, system_cpu_usage: 1000, online_cpus: 10 },
+      precpu_stats: { cpu_usage: { total_usage: 100 }, system_cpu_usage: 500, online_cpus: 10 },
+      HostConfig: { Memory: 512, MemorySwap: 512, NanoCpus: 2_000_000_000, CpuQuota: 200000, CpuPeriod: 100000, CpusetCpus: '0-1', Binds: ['secret'] },
+      Config: { Env: ['TOKEN=secret'] },
+    };
+    const provider = createDockerEvidenceProvider(async () => raw);
+    const stats = (await provider.query({ type: 'docker.stats', incidentId: 'inc-1', container: 'dataease' }, makeConfig())).data as Record<string, unknown>;
+    assert.equal(stats.read, raw.read);
+    assert.equal(stats.preread, raw.preread);
+    assert.deepEqual(stats.cpu_stats, raw.cpu_stats);
+    assert.deepEqual(stats.precpu_stats, raw.precpu_stats);
+    assert.equal(stats.cpuPercent, undefined);
+    assert.doesNotMatch(JSON.stringify(stats), /TOKEN|secret/);
+    const inspect = (await provider.query({ type: 'docker.inspect', incidentId: 'inc-1', container: 'dataease' }, makeConfig())).data as { HostConfig: Record<string, unknown> };
+    for (const field of ['Memory', 'MemorySwap', 'NanoCpus', 'CpuQuota', 'CpuPeriod', 'CpusetCpus'] as const) {
+      assert.equal(inspect.HostConfig[field], raw.HostConfig[field]);
+    }
+    assert.doesNotMatch(JSON.stringify(inspect), /TOKEN|secret|Binds/);
+  });
+
   it('applies bounded tail, bytes, and since options at the Docker provider', async () => {
     let capturedOptions: DockerLogOptions | undefined;
     let capturedRawLimit: number | undefined;

@@ -2,11 +2,9 @@ import { createHash } from 'node:crypto';
 import type { AgentConfig } from './config.js';
 import { buildIncidentContext } from './incident-context.js';
 import type { MemoryRetriever } from './memory-retriever.js';
-import { buildDelegationTask } from './delegation-task.js';
-import { createNoopPiRuntimeClient, type PiRuntimeClient } from './pi-runtime-client.js';
+import { createPollingWorker } from './polling-worker.js';
 import type { ReasonerRegistry, ReasoningResult } from './reasoner.js';
 import {
-  buildInvestigationPlan,
   createDefaultReasoningStrategies,
   strategyNameFor,
   type ReasoningStrategyRegistry,
@@ -48,11 +46,7 @@ export function createReasoningJobWorker(
   registry: ReasonerRegistry,
   strategies: ReasoningStrategyRegistry = createDefaultReasoningStrategies(),
   retriever?: MemoryRetriever,
-  runtime: PiRuntimeClient = createNoopPiRuntimeClient(),
 ): ReasoningJobWorker {
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let activeRun: Promise<void> | undefined;
-  let wakeQueued = false;
   const stats: ReasoningWorkerMetrics = {
     created: 0,
     completed: 0,
@@ -78,25 +72,7 @@ export function createReasoningJobWorker(
         return;
       }
       if (strategy.name === 'delegated_analysis') {
-        const plan = buildInvestigationPlan(job.id, incident, strategy.name);
-        if (!store.getInvestigationPlan(plan.id)) store.insertInvestigationPlan(plan);
-        const existingTask = store.getDelegationTaskByPlanId(plan.id);
-        const task = existingTask ?? buildDelegationTask(plan);
-        if (!existingTask) store.insertDelegationTask(task);
-        try {
-          const ack = await runtime.submit(plan);
-          store.markDelegationTaskSubmitted(
-            task.id,
-            new Date().toISOString(),
-            ack && 'runtimeTaskId' in ack ? ack.runtimeTaskId : undefined,
-          );
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          store.markDelegationTaskFailed(task.id, message);
-        }
-        store.markReasoningJobWaitingDelegation(job.id);
-        stats.lastDurationMs = Date.now() - started;
-        return;
+        throw new Error('legacy delegated job retired; use external Pi Runtime InvestigationSession');
       }
       const reasoner = registry.get(job.reasonerType);
       if (!reasoner) throw new Error(`unknown reasoner type ${job.reasonerType}`);
@@ -142,41 +118,13 @@ export function createReasoningJobWorker(
     }
   }
 
-  async function runOnce(): Promise<void> {
-    if (activeRun) return activeRun;
-    activeRun = drain().finally(() => {
-      activeRun = undefined;
-    });
-    return activeRun;
-  }
-
-  function wake(): void {
-    if (wakeQueued) return;
-    wakeQueued = true;
-    queueMicrotask(() => {
-      wakeQueued = false;
-      void runOnce().catch((err) => {
-        console.error(`[agent] reasoning worker error: ${err instanceof Error ? err.message : String(err)}`);
-      });
-    });
-  }
-
   return {
-    start(): void {
-      const reset = store.resetRunningReasoningJobs();
-      if (reset > 0) {
-        console.log(`[agent] reset ${reset} interrupted reasoning job(s)`);
-      }
-      wake();
-      timer = setInterval(wake, config.reasoningJobPollIntervalMs);
-    },
-    async stop(): Promise<void> {
-      if (timer) clearInterval(timer);
-      timer = undefined;
-      if (activeRun) await activeRun;
-    },
-    wake,
-    runOnce,
+    ...createPollingWorker({
+      name: 'reasoning',
+      intervalMs: config.reasoningJobPollIntervalMs,
+      reset: () => store.resetRunningReasoningJobs(),
+      drain,
+    }),
     metrics(): ReasoningWorkerMetrics {
       return { ...stats };
     },

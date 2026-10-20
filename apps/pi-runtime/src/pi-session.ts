@@ -109,6 +109,3 @@ export async function createPiSdkRuntimeModel(
     },
   };
 }
-
-/** @deprecated use createPiSdkRuntimeModel */
-export const createPiRuntimeModel = createPiSdkRuntimeModel;

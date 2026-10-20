@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import {
   buildIncidentContext,
   MODEL_SAFE_MAX_LOG_LINES,
@@ -11,36 +11,7 @@ import { createInvestigationLoopService } from '../investigation-loop.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 import type { EvidenceOrchestrator } from '../evidence-orchestrator.js';
 
-const CONFIG: AgentConfig = {
-  port: 0,
-  ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-  sqlitePath: ':memory:',
-  nodeId: 'test-node',
-  maxBodySize: 1024 * 1024,
-  aggregationWindowMs: 5 * 60 * 1000,
-  nodeAgents: new Map(),
-  evidenceTimeoutMs: 5000,
-  evidenceMaxResponseBytes: 1024 * 1024,
-  evidenceLogsMaxLines: 200,
-  evidenceJobPollIntervalMs: 1000,
-  evidenceJobMaxAttempts: 3,
-  evidenceJobBatchSize: 10,
-  eventReplayBatchSize: 100,
-  reasoningJobPollIntervalMs: 1000,
-  reasoningJobMaxAttempts: 3,
-  reasoningTimeoutMs: 5000,
-  reasoningJobBatchSize: 10,
-  reasonerType: 'fake',
-  reasoningMaxContextBytes: 32_768,
-  reasoningMaxEvidenceItems: 12,
-  reasoningMaxLogLines: 50,
-  piRuntimeToken: 'runtime-token',
-};
+const CONFIG = makeAgentConfig({ nodeId: 'test-node', evidenceTimeoutMs: 5000, piRuntimeToken: 'runtime-token' });
 
 const SECRET_DATA = {
   Config: {
@@ -67,6 +38,18 @@ function incidentRow(): Omit<IncidentRow, 'id'> {
     event_count: 1,
     severity: 'error',
   };
+}
+
+function trustedDockerIncident(store: ReturnType<typeof createEventStore>) {
+  // Durable triggering event, not a synthetic Incident alone, authorizes the service-name fallback.
+  const row = incidentRow();
+  const event = {
+    schemaVersion: 1 as const, id: 'evt-safe', source: 'docker' as const,
+    nodeId: row.node_id, service: row.service, time: row.last_seen,
+    type: 'container.die', severity: 'error' as const, message: 'process exited', attributes: {},
+  };
+  store.insertBatch({ producer: { id: 'node', type: 'node-agent', version: '1' }, events: [event] }, row.last_seen);
+  return store.createIncidentFromEvent(row, event, null);
 }
 
 async function preparedSession(store: ReturnType<typeof createEventStore>, incidentId: string) {
@@ -110,7 +93,7 @@ function collecting(store: ReturnType<typeof createEventStore>, data: unknown, k
 describe('model-safe evidence transport', () => {
   it('redacts docker.inspect secrets in runtime Evidence without mutating the store', async () => {
     const store = createEventStore(':memory:');
-    const incident = store.createIncident(incidentRow());
+    const incident = trustedDockerIncident(store);
     const session = await preparedSession(store, incident.id);
     const service = createInvestigationEvidenceService(store, CONFIG, collecting(store, SECRET_DATA));
     const response = await service.handle({
@@ -138,7 +121,7 @@ describe('model-safe evidence transport', () => {
 
   it('bounds and redacts dynamic docker.logs without rewriting stored rows', async () => {
     const store = createEventStore(':memory:');
-    const incident = store.createIncident({ ...incidentRow(), type: 'container.die' });
+    const incident = trustedDockerIncident(store);
     const session = await preparedSession(store, incident.id);
     const lines = Array.from({ length: 40 }, (_, index) => `log-line-${index}`);
     const service = createInvestigationEvidenceService(

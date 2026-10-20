@@ -16,14 +16,27 @@ export interface DockerInspectResult {
     Health?: { Status?: string };
   };
   Config?: { Image?: string };
-  HostConfig?: { Memory?: number };
+  HostConfig?: {
+    Memory?: number;
+    MemorySwap?: number;
+    NanoCpus?: number;
+    CpuQuota?: number;
+    CpuPeriod?: number;
+    CpusetCpus?: string;
+  };
+}
+
+interface DockerCpuStats {
+  cpu_usage?: { total_usage?: number };
+  system_cpu_usage?: number;
+  online_cpus?: number;
 }
 
 export interface DockerStatsResult {
-  cpu_stats?: {
-    cpu_usage?: { total_usage?: number };
-    system_cpu_usage?: number;
-  };
+  read?: string;
+  preread?: string;
+  cpu_stats?: DockerCpuStats;
+  precpu_stats?: DockerCpuStats;
   memory_stats?: { usage?: number; limit?: number };
   pids_stats?: unknown;
 }
@@ -272,6 +285,11 @@ export function createDockerEvidenceProvider(
             RestartCount: inspect.RestartCount,
             HostConfig: {
               Memory: inspect.HostConfig?.Memory,
+              MemorySwap: inspect.HostConfig?.MemorySwap,
+              NanoCpus: inspect.HostConfig?.NanoCpus,
+              CpuQuota: inspect.HostConfig?.CpuQuota,
+              CpuPeriod: inspect.HostConfig?.CpuPeriod,
+              CpusetCpus: inspect.HostConfig?.CpusetCpus,
             },
             Config: {
               Image: inspect.Config?.Image,
@@ -308,15 +326,16 @@ export function createDockerEvidenceProvider(
             `/containers/${encodeURIComponent(containerName)}/stats?stream=0`,
             config.maxResponseBytes,
           ) as DockerStatsResult;
+          const cpu = (sample: DockerCpuStats | undefined) => sample ? {
+            cpu_usage: { total_usage: sample.cpu_usage?.total_usage },
+            system_cpu_usage: sample.system_cpu_usage,
+            online_cpus: sample.online_cpus,
+          } : undefined;
           data = {
-            cpu_stats: stats.cpu_stats
-              ? {
-                  cpu_usage: {
-                    total_usage: stats.cpu_stats.cpu_usage?.total_usage,
-                    system_cpu_usage: stats.cpu_stats.system_cpu_usage,
-                  },
-                }
-              : undefined,
+            read: stats.read,
+            preread: stats.preread,
+            cpu_stats: cpu(stats.cpu_stats),
+            precpu_stats: cpu(stats.precpu_stats),
             memory_stats: stats.memory_stats
               ? {
                   usage: stats.memory_stats.usage,

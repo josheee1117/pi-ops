@@ -500,11 +500,66 @@ function historicalDieEvent(): DockerEvent {
 }
 
 describe('Docker watcher reconnect', () => {
+  it('reads split UTF-8 and an unterminated final event, skips malformed lines and reconnects after errors', async () => {
+    const streams: PassThrough[] = [];
+    const sender = recordingSender();
+    const watcher = createDockerWatcher(makeConfig({ allowedContainers: new Set(['中文容器']) }), sender, {
+      initialBackoffMs: 10,
+      connect: async () => {
+        const stream = new PassThrough();
+        streams.push(stream);
+        return stream;
+      },
+    });
+    await watcher.start();
+    try {
+      await waitFor(() => streams.length === 1);
+      const event = historicalDieEvent();
+      event.Actor.Attributes.name = '中文容器';
+      const bytes = Buffer.from(JSON.stringify(event));
+      const split = bytes.indexOf(Buffer.from('中')) + 1;
+      streams[0]!.write('invalid\n\n');
+      streams[0]!.write(bytes.subarray(0, split));
+      streams[0]!.end(bytes.subarray(split));
+      await waitFor(() => streams.length === 2);
+      assert.equal(sender.events[0]?.service, '中文容器');
+      streams[1]!.destroy(new Error('disconnected'));
+      await waitFor(() => streams.length === 3);
+      streams[2]!.write(`${JSON.stringify(event)}\n`);
+      await waitFor(() => sender.events.length === 2);
+      watcher.stop();
+      await wait(30);
+      assert.equal(streams.length, 3);
+    } finally {
+      watcher.stop();
+    }
+  });
+
+  it('discovers only exact allowed names and denies empty allowlists', async () => {
+    for (const names of [new Set(['dataease']), new Set<string>()]) {
+      const stream = new PassThrough();
+      const sender = recordingSender();
+      const watcher = createDockerWatcher(makeConfig({ allowedContainers: names }), sender, {
+        connect: async () => stream,
+      });
+      await watcher.start();
+      await wait(20);
+      for (const name of ['dataease-other', '', 'dataease']) {
+        const event = historicalDieEvent();
+        event.Actor.Attributes.name = name;
+        stream.write(`${JSON.stringify(event)}\n`);
+      }
+      await wait(20);
+      watcher.stop();
+      stream.end();
+      assert.deepEqual(sender.events.map(event => event.service), names.size ? ['dataease'] : []);
+    }
+  });
   it('reconnect overlap produces the same OpsEvent id for the same Docker event', async () => {
     const streams: PassThrough[] = [];
     const connectOptions: Array<{ since: number }> = [];
     const sender = recordingSender();
-    const watcher = createDockerWatcher(makeConfig(), sender, {
+    const watcher = createDockerWatcher(makeConfig({ allowedContainers: new Set(['dataease']) }), sender, {
       initialBackoffMs: 20,
       maxBackoffMs: 80,
       connect: async (options) => {
@@ -571,7 +626,7 @@ describe('Docker watcher reconnect', () => {
     const connectOptions: Array<{ since: number }> = [];
     const sender = recordingSender();
     const watcher = createDockerWatcher(
-      makeConfig({ dockerReplayLookbackSeconds: lookback }),
+      makeConfig({ dockerReplayLookbackSeconds: lookback, allowedContainers: new Set(['dataease']) }),
       sender,
       {
         initialBackoffMs: 20,

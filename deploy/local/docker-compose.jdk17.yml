@@ -8,6 +8,8 @@ services:
     environment:
       PI_OPS_ENDPOINT: http://pi-ops:8080
       PI_OPS_INGEST_TOKEN: local-ingest-token
+      SERVICE_NAME: dataasset-jdk17-local-本地演练
+      CONTAINER_NAME: pi-ops-jdk17-drill
       CPU_THRESHOLD: ${CPU_THRESHOLD:-0.01}
     ports:
       - "18089:8088"

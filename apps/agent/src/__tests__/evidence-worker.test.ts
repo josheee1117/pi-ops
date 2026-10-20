@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import {
   createEvidenceOrchestrator,
   type EvidenceOrchestrator,
@@ -18,36 +19,12 @@ function makeConfig(
   sqlitePath = ':memory:',
   overrides: Partial<AgentConfig> = {},
 ): AgentConfig {
-  return {
-    port: 0,
-    ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
+  return makeAgentConfig({
     sqlitePath,
-    nodeId: 'central',
-    maxBodySize: 1024 * 1024,
-    aggregationWindowMs: 5 * 60 * 1000,
-    nodeAgents: new Map(),
-    evidenceTimeoutMs: 1000,
-    evidenceMaxResponseBytes: 1024 * 1024,
-    evidenceLogsMaxLines: 200,
     evidenceJobPollIntervalMs: 60_000,
-    evidenceJobMaxAttempts: 3,
-    evidenceJobBatchSize: 10,
-    eventReplayBatchSize: 100,
     reasoningJobPollIntervalMs: 60_000,
-    reasoningJobMaxAttempts: 3,
-    reasoningTimeoutMs: 5000,
-    reasoningJobBatchSize: 10,
-    reasonerType: 'fake',
-    reasoningMaxContextBytes: 32_768,
-    reasoningMaxEvidenceItems: 12,
-    reasoningMaxLogLines: 50,
     ...overrides,
-  };
+  });
 }
 
 function makeEvent(): OpsEvent {

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import { createIncidentEngine } from '../incident.js';
 import {
   createFakeReasoner,
@@ -9,41 +10,15 @@ import {
   HYPOTHESIS_DATABASE_INVESTIGATION,
   type Reasoner,
 } from '../reasoner.js';
-import type { PiRuntimeClient } from '../pi-runtime-client.js';
 import { createReasoningJobWorker, hashEvidenceSnapshot } from '../reasoning-worker.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 
 function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
-  return {
-    port: 0,
-    ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-    sqlitePath: ':memory:',
-    nodeId: 'central',
-    maxBodySize: 1024 * 1024,
-    aggregationWindowMs: 5 * 60 * 1000,
-    nodeAgents: new Map(),
-    evidenceTimeoutMs: 1000,
-    evidenceMaxResponseBytes: 1024 * 1024,
-    evidenceLogsMaxLines: 200,
+  return makeAgentConfig({
     evidenceJobPollIntervalMs: 60_000,
-    evidenceJobMaxAttempts: 3,
-    evidenceJobBatchSize: 10,
-    eventReplayBatchSize: 100,
     reasoningJobPollIntervalMs: 60_000,
-    reasoningJobMaxAttempts: 3,
-    reasoningTimeoutMs: 5000,
-    reasoningJobBatchSize: 10,
-    reasonerType: 'fake',
-    reasoningMaxContextBytes: 32_768,
-    reasoningMaxEvidenceItems: 12,
-    reasoningMaxLogLines: 50,
     ...overrides,
-  };
+  });
 }
 
 function makeEvent(overrides: Partial<OpsEvent> = {}): OpsEvent {
@@ -276,7 +251,7 @@ describe('ReasoningJob worker', () => {
     store.close();
   });
 
-  it('creates only an InvestigationPlan for delegated_analysis and does not execute a reasoner', async () => {
+  it('rejects a retired delegated job without submitting or executing a reasoner', async () => {
     const store = createEventStore(':memory:');
     const incident = store.createIncident({
       service: 'data-asset-service',
@@ -306,37 +281,13 @@ describe('ReasoningJob worker', () => {
       reasonerVersion: '1',
       createdAt: incident.last_seen,
     });
-    const submitted: string[] = [];
-    const runtime: PiRuntimeClient = {
-      async submit(plan) {
-        submitted.push(plan.id);
-      },
-      async poll() {
-        return undefined;
-      },
-      async submitInvestigation() {
-        return undefined;
-      },
-    };
-    const worker = createReasoningJobWorker(
-      makeConfig(),
-      store,
-      createReasonerRegistry([spy]),
-      undefined,
-      undefined,
-      runtime,
-    );
+    const worker = createReasoningJobWorker(makeConfig(), store, createReasonerRegistry([spy]));
     await worker.runOnce();
-    const plans = store.listInvestigationPlansByJob(`rj-${incident.id}`);
-    assert.equal(plans.length, 1);
-    assert.equal(plans[0]?.strategy, 'delegated_analysis');
-    assert.deepEqual(plans[0]?.requestedCapabilities, ['pi.runtime.delegated_analysis']);
-    assert.deepEqual(submitted, [plans[0]?.id]);
-    assert.equal(await runtime.poll(plans[0]!.id), undefined);
+    assert.equal(store.listInvestigationPlansByJob(`rj-${incident.id}`).length, 0);
     assert.equal(executed, 0);
     assert.equal(store.listReasoningResults(incident.id).length, 0);
-    assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'WAITING_DELEGATION');
-    assert.equal(store.getDelegationTaskByPlanId(plans[0]!.id)?.status, 'SUBMITTED');
+    assert.equal(store.getReasoningJob(`rj-${incident.id}`)?.status, 'FAILED');
+    assert.match(store.getReasoningJob(`rj-${incident.id}`)?.lastError ?? '', /external Pi Runtime/);
     assert.equal(store.listPendingReasoningJobs(10).length, 0);
     store.close();
   });
