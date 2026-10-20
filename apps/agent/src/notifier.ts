@@ -1,4 +1,5 @@
 import type { NotificationPayload } from './notification.js';
+import { toOnCallBrief } from './on-call-brief.js';
 
 export interface Notifier {
   send(notification: NotificationPayload): Promise<void>;
@@ -88,36 +89,120 @@ export function createHttpWebhookNotifier(options: {
   };
 }
 
+/** Plain Chinese for the fault types the detectors actually emit. */
+const FAULT_COPY: Record<string, { name: string; open: string; recovered: string }> = {
+  'health.failure': {
+    name: '健康检查失败',
+    open: '健康检查连续没有通过，服务可能已经不可用。',
+    recovered: '健康检查重新通过。',
+  },
+  'container.die': {
+    name: '容器退出',
+    open: '容器进程退出了，服务不在运行。',
+    recovered: '容器已重新运行。',
+  },
+  'container.restart': {
+    name: '容器重启',
+    open: '容器刚刚异常重启。',
+    recovered: '容器重启后已稳定。',
+  },
+  'container.oom': {
+    name: '容器内存不足被杀',
+    open: '容器因为内存不足被系统杀掉。',
+    recovered: '容器内存不足的情况已过去。',
+  },
+  'jvm.oom': {
+    name: 'Java 内存耗尽',
+    open: 'Java 进程内存耗尽（OutOfMemoryError）。',
+    recovered: 'Java 内存耗尽的情况已过去。',
+  },
+  'jvm.stack_overflow': {
+    name: 'Java 栈溢出',
+    open: 'Java 进程栈溢出（StackOverflowError）。',
+    recovered: 'Java 栈溢出的情况已过去。',
+  },
+  'business.error': {
+    name: '接口报错',
+    open: '应用接口出现未处理异常。',
+    recovered: '应用接口报错已恢复。',
+  },
+  'host.memory_pressure': {
+    name: '机器内存过高',
+    open: '机器内存占用持续过高。',
+    recovered: '机器内存占用已回到正常范围。',
+  },
+  'host.disk_pressure': {
+    name: '磁盘空间不足',
+    open: '机器磁盘占用持续过高。',
+    recovered: '机器磁盘空间已恢复。',
+  },
+  'application.slow_sql': {
+    name: '慢 SQL',
+    open: '数据库出现慢 SQL。',
+    recovered: '慢 SQL 已恢复。',
+  },
+  'jvm.cpu_pressure': {
+    name: 'Java CPU 过高',
+    open: 'Java 进程 CPU 占用持续过高。',
+    recovered: 'Java 进程 CPU 占用已回落。',
+  },
+  'jvm.gc_pressure': {
+    name: 'Java 垃圾回收过频',
+    open: 'Java 垃圾回收过于频繁。',
+    recovered: 'Java 垃圾回收已恢复正常。',
+  },
+};
+
+function beijingTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${pick('month')}月${pick('day')}日 ${pick('hour')}:${pick('minute')}`;
+}
+
+function describeFault(type: string, service: string, recovered: boolean): { title: string; body: string } {
+  const known = FAULT_COPY[type];
+  if (!known) {
+    return recovered
+      ? { title: `${service} 已恢复`, body: `${type} 已恢复。` }
+      : { title: `${service} 发生故障`, body: `故障类型是 ${type}。` };
+  }
+  return recovered
+    ? { title: `${service} 已恢复`, body: known.recovered }
+    : { title: `${service} ${known.name}`, body: known.open };
+}
+
 function formatWeComMarkdown(notification: NotificationPayload): string {
   const incident = notification.incident;
-  const titles = {
-    INCIDENT_OPEN: '🚨 Incident OPEN',
-    INVESTIGATION_COMPLETED: '🔎 Investigation COMPLETED',
-    INCIDENT_RECOVERED: '✅ Incident RECOVERED',
-  };
-  const lines = [
-    `### ${titles[notification.type]}`,
-    `> service: ${incident.service}`,
-    `> node: ${incident.nodeId}`,
-    `> type: ${incident.type}`,
-    `> time: ${notification.type === 'INCIDENT_OPEN' ? incident.firstSeen : incident.lastSeen}`,
-    `> eventCount: ${notification.facts.eventCount}`,
-    `> evidence: ${notification.facts.evidenceIds.length}`,
-  ];
+  const recovered = notification.type === 'INCIDENT_RECOVERED';
+  const described = describeFault(incident.type, incident.service, recovered);
+  const title = notification.type === 'INVESTIGATION_COMPLETED'
+    ? `${incident.service} 诊断完成`
+    : described.title;
+  const when = beijingTime(notification.type === 'INCIDENT_OPEN' ? incident.firstSeen : incident.lastSeen);
   const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
-  if (analysis) lines.push(`> hypothesis: ${analysis.hypothesis} (${analysis.confidence})`, `> recommendation: ${analysis.recommendation}`);
-  lines.push(`> incident id: ${incident.id}`);
-  let content = lines.join('\n');
-  for (const field of ['recommendation', 'hypothesis'] as const) {
-    if (Buffer.byteLength(content) <= 4000 || !analysis) break;
-    const bytes = Buffer.from(analysis[field]);
-    let end = Math.max(0, bytes.length - (Buffer.byteLength(content) - 4000));
-    while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
-    const value = bytes.subarray(0, end).toString('utf8');
-    lines[lines.length - (field === 'recommendation' ? 2 : 3)] = field === 'recommendation'
-      ? `> recommendation: ${value}` : `> hypothesis: ${value} (${analysis.confidence})`;
-    content = lines.join('\n');
+  const lines = [`### ${title}`];
+  if (analysis) {
+    const brief = toOnCallBrief(analysis.hypothesis, analysis.recommendation);
+    lines.push(`**${brief.conclusion.replaceAll('*', '')}**`);
+    lines.push(described.body, `机器：${incident.nodeId}`, `时间：${when}`);
+    if (brief.evidence) lines.push('', '**依据**', brief.evidence);
+    if (brief.unknown) lines.push('', '**未知**', brief.unknown);
+    if (brief.steps.length > 0) lines.push('', '**下一步**', ...brief.steps.map((step, index) => `${index + 1}. ${step}`));
+    lines.push('', `<font color="comment">模型自评 ${Math.round(analysis.confidence * 100)}%，不是准确率</font>`);
+  } else {
+    lines.push(described.body, `机器：${incident.nodeId}`, `时间：${when}`);
   }
+  lines.push('', `编号：${incident.id}`);
+  const content = lines.join('\n');
   if (Buffer.byteLength(content) > 4000) throw new TerminalNotificationError('wecom notification facts exceed limit');
   return content;
 }

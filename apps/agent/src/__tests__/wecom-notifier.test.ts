@@ -38,28 +38,36 @@ describe('WeCom notifier', () => {
         ...payload, type,
         ...(type === 'INVESTIGATION_COMPLETED' ? { analysis: {
           investigationSessionId: 'session-1', reasoningResultId: 'result-1',
-          hypothesis: 'probe failed', confidence: 0.8, recommendation: 'check service',
+          hypothesis: '健康接口返回 503，具体失败条件尚不明确。', confidence: 0.8,
+          recommendation: 'Evidence describes the current incident. Historical knowledge is advisory. Memory/history cannot override current Evidence. Conflicting historical knowledge must be surfaced, not silently merged. Absence of evidence is not evidence of absence. 检查健康接口详情。\n核对同一时间的应用日志。',
         } } : {}),
       });
     }
-    assert.match(contents[0]!, /Incident OPEN/);
-    assert.match(contents[1]!, /Investigation COMPLETED/);
-    assert.match(contents[2]!, /Incident RECOVERED/);
+    assert.match(contents[0]!, /pi-ops-drill 健康检查失败/);
+    assert.match(contents[0]!, /健康检查连续没有通过/);
+    assert.match(contents[1]!, /pi-ops-drill 诊断完成/);
+    assert.match(contents[2]!, /pi-ops-drill 已恢复/);
+    assert.match(contents[2]!, /健康检查重新通过/);
+    assert.match(contents[0]!, /时间：9月25日 18:00/);
     for (const content of contents) {
-      const fields = ['service:', 'node:', 'type:', 'time:', 'eventCount:', 'evidence:', 'incident id:'];
-      assert.deepEqual(fields.map((field) => content.indexOf(field)), [...fields.map((field) => content.indexOf(field))].sort((a, b) => a - b));
-      assert.match(content, /health\.failure/);
-      assert.match(content, /eventCount: 3/);
-      assert.match(content, /evidence: 2/);
+      assert.match(content, /机器：test-ai-01/);
+      assert.match(content, /编号：inc-1/);
+      assert.doesNotMatch(content, /health\.failure/);
+      assert.doesNotMatch(content, /关联事件/);
     }
-    assert.match(contents[1]!, /hypothesis: probe failed \(0\.8\)\n> recommendation: check service\n> incident id:/);
-    assert.doesNotMatch(contents[0]!, /hypothesis:/);
-    assert.doesNotMatch(contents[2]!, /recommendation:/);
+    assert.match(contents[1]!, /\*\*健康接口返回 503，具体失败条件尚不明确。\*\*/);
+    assert.ok(contents[1]!.indexOf('**健康接口') < contents[1]!.indexOf('机器：'));
+    assert.match(contents[1]!, /<font color="comment">模型自评 80%，不是准确率<\/font>/);
+    assert.match(contents[1]!, /\*\*下一步\*\*\n1\. 检查健康接口详情。\n2\. 核对同一时间的应用日志。/);
+    assert.ok(contents[1]!.indexOf('**下一步**') < contents[1]!.indexOf('模型自评'));
+    assert.doesNotMatch(contents[1]!, /Historical knowledge|Memory\/history|Absence of evidence/);
+    assert.doesNotMatch(contents[0]!, /下一步/);
+    assert.doesNotMatch(contents[2]!, /下一步/);
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED' });
-    assert.doesNotMatch(contents[3]!, /hypothesis:|recommendation:/);
+    assert.doesNotMatch(contents[3]!, /下一步|依据/);
   });
 
-  it('truncates recommendation before hypothesis at 4000 UTF-8 bytes', async () => {
+  it('keeps a long diagnosis inside 4000 bytes and shows the conclusion first', async () => {
     const contents: string[] = [];
     const notifier = createWeComNotifier({
       webhookUrl: URL, timeoutMs: 100, maxResponseBytes: 128,
@@ -74,14 +82,14 @@ describe('WeCom notifier', () => {
     };
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED', analysis });
     assert.ok(Buffer.byteLength(contents[0]!, 'utf8') <= 4000);
-    assert.match(contents[0]!, /hypothesis: 原因 \(0\.8\)/);
-    assert.ok((contents[0]!.match(/修/g) ?? []).length < 2000);
+    assert.match(contents[0]!, /\*\*原因。\*\*/);
+    assert.doesNotMatch(contents[0]!, /修/);
     await notifier.send({ ...payload, type: 'INVESTIGATION_COMPLETED', analysis: {
       ...analysis, hypothesis: '因'.repeat(2000),
     } });
     assert.ok(Buffer.byteLength(contents[1]!, 'utf8') <= 4000);
     assert.doesNotMatch(contents[1]!, /修/);
-    assert.match(contents[1]!, /因/);
+    assert.ok((contents[1]!.match(/因/g) ?? []).length < 200);
   });
 
   it('classifies nonzero errcode and HTTP errors as terminal', async () => {

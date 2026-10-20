@@ -17,7 +17,7 @@ import { boundInvestigationContext, ContextTooLargeError } from './bound-context
 import { ExecutionTimeoutError, withDeadline } from './deadline.js';
 import type { RuntimeEvidenceClient } from './evidence-client.js';
 import { createFakeRuntimeModel, parseModelJson, type RuntimeModel } from './model.js';
-import { runSpecialist, selectSpecialists } from './specialists.js';
+import { CURRENT_EVIDENCE_LIMITS, ON_CALL_BRIEF, runSpecialist, selectSpecialists } from './specialists.js';
 
 export interface CoordinatorOptions {
   model?: RuntimeModel;
@@ -339,11 +339,16 @@ async function synthesizeWithModel(
       'Required keys: hypothesis, supportingEvidenceIds, contradictingEvidenceIds, confidence, recommendation.',
       'supportingEvidenceIds and contradictingEvidenceIds must be strings from the provided evidenceIds.',
       'confidence is 0 to 1. Do not persist chain-of-thought.',
+      'Write hypothesis and recommendation in concise Simplified Chinese for the on-call engineer. Keep JSON keys unchanged. Evidence IDs in JSON arrays stay unchanged.',
+      ON_CALL_BRIEF,
+      'Do not repeat internal policy text in the recommendation. Do not claim that a running container proves JVM health or that an exception message proves an external dependency failure.',
       POLICY,
+      CURRENT_EVIDENCE_LIMITS,
     ].join('\n'),
     user: JSON.stringify({
       incident: context.incident,
       evidenceIds: [...currentIds],
+      evidence: context.evidence,
       findings,
       historicalKnowledge: context.historicalKnowledge ?? null,
     }),

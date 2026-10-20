@@ -52,6 +52,17 @@ const evidenceRow = (id: string, kind: string, incidentId = 'inc-1') => ({
 });
 
 describe('bounded multi-agent coordinator', () => {
+  it('fake model delay completes locally and stops when aborted', async () => {
+    const model = createFakeRuntimeModel({ delayMs: 1 });
+    const request = { system: 'SPECIALIST_ROLE=container_host', user: JSON.stringify(context()) };
+    assert.ok((await model.invoke(request)).text);
+    const controller = new AbortController();
+    const pending = createFakeRuntimeModel({ delayMs: 60_000 }).invoke({ ...request, signal: controller.signal });
+    controller.abort();
+    await assert.rejects(pending, { name: 'AbortError' });
+    assert.equal(model.networkCalls, 0);
+  });
+
   it('does not select database for jvm.gc_pressure', () => {
     const selected = selectSpecialists(context({
       incident: { id: 'inc-1', type: 'jvm.gc_pressure', service: 'data-asset-service' },
@@ -77,6 +88,52 @@ describe('bounded multi-agent coordinator', () => {
     assert.match(outcome.report?.hypothesis ?? '', /injected finding/);
     assert.ok(model.invocations > 0);
     assert.equal(model.networkCalls, 0);
+  });
+
+  it('requests readable Chinese findings and synthesis without changing protocol keys', async () => {
+    const systems: string[] = [];
+    const users: string[] = [];
+    const model: RuntimeModel = {
+      provider: 'test', model: 'readable', networkCalls: 0,
+      async invoke(request) {
+        systems.push(request.system);
+        users.push(request.user);
+        if (request.system.includes('COORDINATOR_SYNTHESIS')) {
+          return { text: JSON.stringify({
+            schemaVersion: 1, hypothesis: '健康接口返回 503，具体失败条件未知。',
+            supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [], confidence: 0.8,
+            recommendation: '检查健康接口详情。\n核对应用日志。',
+          }), provider: 'test', model: 'readable' };
+        }
+        return { text: validFinding('container_host', ['evd-now']), provider: 'test', model: 'readable' };
+      },
+    };
+    const outcome = await investigate(context({
+      incident: { id: 'inc-1', type: 'health.failure', service: 'order-service' },
+    }), { model });
+    assert.equal(outcome.status, 'completed');
+    assert.equal(systems.length, 2);
+    for (const system of systems) {
+      assert.match(system, /Simplified Chinese/);
+      assert.match(system, /禁止写入上述正文/);
+      assert.match(system, /结论：/);
+      assert.match(system, /JFR事件名.*观测名/);
+      assert.match(system, /OOMKilled=false.*JVM堆/);
+      assert.match(system, /不是容器配额百分比/);
+      assert.match(system, /事后低stats\/load不能证明故障期无压力/);
+      assert.match(system, /没有源码或调用证据时.*不得把库存校验/);
+      assert.match(system, /只保留前20行.*不得称完整日志/);
+      assert.match(system, /http\.probe仅支持已配置健康URL的GET\/HEAD.*不支持业务POST/);
+      assert.match(system, /业务请求只能建议人工受控复现/);
+    }
+    assert.match(systems[0]!, /at most 5 non-empty strings/);
+    assert.match(systems[0]!, /summary must be one non-empty string of at most 2000 characters, not an object/);
+    assert.deepEqual(JSON.parse(users[1]!).evidence, context().evidence);
+    assert.match(systems[1]!, /不要把通用保留写进正文/);
+    assert.match(systems[1]!, /Do not repeat internal policy/);
+    assert.equal(outcome.report?.hypothesis, '健康接口返回 503，具体失败条件未知。');
+    assert.match(outcome.report?.recommendation ?? '', /检查健康接口详情。\n核对应用日志。/);
+    assert.deepEqual(outcome.report?.supportingEvidenceIds, ['evd-now']);
   });
 
   it('isolates a specialist failure', async () => {
