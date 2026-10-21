@@ -117,7 +117,7 @@ describe('diagnosis and action contract', () => {
     }
   });
 
-  it('requires diagnosis from both live model boundaries while accepting legacy report input', async () => {
+  it('degrades missing diagnosis at both live boundaries while accepting legacy report input', async () => {
     for (const layer of ['specialist', 'coordinator']) {
       const base = scriptedModel(diagnosis());
       const model: RuntimeModel = {
@@ -133,8 +133,9 @@ describe('diagnosis and action contract', () => {
         },
       };
       const outcome = await investigate(context, { model });
-      assert.equal(outcome.status, 'failed', layer);
-      assert.equal(outcome.report, undefined);
+      assert.equal(outcome.status, 'completed', layer);
+      assert.equal(outcome.report?.diagnosis, undefined);
+      assert.match(outcome.report?.hypothesis ?? '', /诊断不完整/);
     }
     assert.equal(investigationReportInputSchema.safeParse({
       hypothesis: '旧报告', supportingEvidenceIds: [], contradictingEvidenceIds: [],

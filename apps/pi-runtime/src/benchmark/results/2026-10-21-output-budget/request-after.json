@@ -1,0 +1,30 @@
+{
+  "transport": "fake fetch; no network",
+  "request": {
+    "model": "deepseek-v4.1-flash",
+    "max_completion_tokens": 16384,
+    "thinking": {
+      "type": "disabled"
+    },
+    "reasoning_effort": null,
+    "stream": true,
+    "messageCount": 2
+  },
+  "effectiveThinking": "off",
+  "response": {
+    "text": "ok",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "inputTokens": 1,
+    "outputTokens": 1,
+    "stopReason": "stop",
+    "thinkingChars": 0,
+    "requestParameters": {
+      "maxTokens": 16384,
+      "thinking": {
+        "type": "disabled"
+      },
+      "reasoningEffort": null
+    }
+  }
+}

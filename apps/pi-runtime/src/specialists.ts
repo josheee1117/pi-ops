@@ -8,12 +8,16 @@ import {
   type SpecialistFinding,
   type SpecialistRole,
 } from '@pi-ops/protocol';
-import { parseModelJson, type RuntimeModel } from './model.js';
+import type { RuntimeModel } from './model.js';
+import { structuredOutput } from './structured-output.js';
 
 export { MAX_SPECIALISTS_PER_INVESTIGATION, SPECIALIST_ROLES };
 
 export const DIAGNOSIS_CONTRACT = [
   '输出完整的诊断结论和处置依据，不按手机通知长度压缩。hypothesis、recommendation、summary、hypotheses 保持兼容旧读取方。',
+  '长度纪律：完整 JSON 目标不超过6000字符。只写要点，正文不重复结构化条目。hypothesis、summary各不超过300字符，recommendation不超过500字符；hypotheses最多2条。',
+  'observations最多3项，candidateCauses最多2项，uncertainties最多3条；actions最多4项，优先一条止损、一条条件修复或关键补证、一条验证。不要罗列同义候选。',
+  '每个动作只写必要对象、前提、操作、成功判据和风险。target建议80字符内，preconditions最多2条，每条80字符内，operation建议200字符内，expectedResult与risk各80字符内。不可为缩短而删审批、回滚或重要前提。',
   'Evidence ID、哈希和 job id 只放 JSON 引用数组，禁止写入上述正文。',
   'hypothesis 与 summary 写清结论、依据和未知项，每项最多 2000 字符；recommendation 最多 2000 字符，保留动作前提、时间和验证方法。',
   'diagnosis 必须包含 observations、candidateCauses、uncertainties、actions。只保存结论和引用，不保存思维链。',
@@ -87,7 +91,7 @@ export async function runSpecialist(
   signal?: AbortSignal,
 ): Promise<{ finding: SpecialistFinding; inputTokens: number; outputTokens: number }> {
   const currentIds = new Set(context.evidence.map((item) => item.id));
-  const response = await model.invoke({
+  const response = await structuredOutput(model, {
     system: [
       `SPECIALIST_ROLE=${role}`,
       'Return ONLY one JSON object. No markdown. No extra text.',
@@ -113,27 +117,21 @@ export async function runSpecialist(
       historicalKnowledgeStatus: context.historicalKnowledgeStatus,
     }),
     signal,
+  }, (value) => {
+    const parsed = validateSpecialistFinding(normalizeSpecialistPayload(value));
+    if (!parsed.success) throw new Error(`invalid specialist output: ${parsed.message}`);
+    if (parsed.value.role !== role) throw new Error('specialist role mismatch');
+    if (!parsed.value.diagnosis && model.provider !== 'fake') throw new Error('invalid specialist output: diagnosis is required');
+    return parsed.value;
   });
-  let parsedJson: unknown;
-  try {
-    parsedJson = parseModelJson(response.text);
-  } catch (error) {
-    throw new Error(`invalid specialist json: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const parsed = validateSpecialistFinding(normalizeSpecialistPayload(parsedJson));
-  if (!parsed.success) throw new Error(`invalid specialist output: ${parsed.message}`);
-  const finding = parsed.value;
-  if (finding.role !== role) throw new Error('specialist role mismatch');
-  if (!finding.diagnosis && model.provider !== 'fake') {
-    throw new Error('invalid specialist output: diagnosis is required');
-  }
+  const finding = response.value;
   const ids = [...finding.supportingEvidenceIds, ...finding.contradictingEvidenceIds, ...diagnosisEvidenceIds(finding.diagnosis)];
   if (ids.some((id) => !currentIds.has(id))) {
     throw new Error('specialist cited evidence that does not belong to the current incident');
   }
   return {
     finding,
-    inputTokens: response.inputTokens ?? 0,
-    outputTokens: response.outputTokens ?? 0,
+    inputTokens: response.inputTokens,
+    outputTokens: response.outputTokens,
   };
 }

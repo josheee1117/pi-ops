@@ -37,9 +37,22 @@ async function main() {
   const out = resolve(root, value('--out') ?? `artifacts/on-call-messages/${new Date().toISOString().replace(/[:.]/g, '-')}`);
   console.log(JSON.stringify({ mode, configPath, provider: config.provider, model: config.model, thinking: config.thinkingLevel, cases: cases.map((item) => item.id), estimatedTokens: estimate, budget }));
   if (args.includes('--dry-run')) return;
-  const model = mode === 'live'
+  const underlying = mode === 'live'
     ? (await createLiveBenchmarkModel({ ...config })).model
     : createFakeRuntimeModel();
+  let inCaseSpent = 0;
+  const model = {
+    provider: underlying.provider, model: underlying.model,
+    get networkCalls() { return underlying.networkCalls; },
+    get effectiveThinkingLevel() { return underlying.effectiveThinkingLevel; },
+    async invoke(request: Parameters<typeof underlying.invoke>[0]) {
+      const reserve = Buffer.byteLength(request.system + request.user) + 16_384;
+      if (mode === 'live' && spent + inCaseSpent + reserve > budget) throw new Error('token budget prevents another model call');
+      const response = await underlying.invoke(request);
+      inCaseSpent += (response.inputTokens ?? 0) + (response.outputTokens ?? 0);
+      return response;
+    },
+  };
   const codeHashes = Object.fromEntries([
     'apps/agent/src/incident-context.ts', 'apps/agent/src/on-call-brief.ts', 'apps/agent/src/notifier.ts',
     'apps/agent/src/notification.ts', 'apps/pi-runtime/src/specialists.ts', 'apps/pi-runtime/src/coordinator.ts',
@@ -73,6 +86,7 @@ async function main() {
     }
     if (existsSync(casePath)) throw new Error(`refuse to overwrite ${item.id}; use --resume or a new --out directory`);
     if (spent + estimateCaseTokens(item) > budget) throw new Error(`token budget reached before ${item.id}; spent=${spent}`);
+    inCaseSpent = 0;
     const result = await runCase(item, { model, mode, thinkingLevel: config.thinkingLevel, executionTimeoutMs: 300_000, maxContextBytes: 65_536 });
     results.push(result);
     spent += result.modelCalls.reduce((sum, call) => sum + (call.inputTokens ?? 0) + (call.outputTokens ?? 0), 0);

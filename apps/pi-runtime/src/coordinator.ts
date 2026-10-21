@@ -18,7 +18,8 @@ import {
 import { boundInvestigationContext, ContextTooLargeError } from './bound-context.js';
 import { ExecutionTimeoutError, withDeadline } from './deadline.js';
 import type { RuntimeEvidenceClient } from './evidence-client.js';
-import { createFakeRuntimeModel, parseModelJson, type RuntimeModel } from './model.js';
+import { createFakeRuntimeModel, type RuntimeModel } from './model.js';
+import { structuredOutput, IncompleteModelOutputError, incompleteLegacy } from './structured-output.js';
 import { CURRENT_EVIDENCE_LIMITS, DIAGNOSIS_CONTRACT, runSpecialist, selectSpecialists } from './specialists.js';
 
 export interface CoordinatorOptions {
@@ -121,9 +122,12 @@ export async function investigate(
     }
 
     const currentIds = new Set(working.evidence.map((item) => item.id));
-    const report = model.provider === 'fake'
-      ? synthesizeDeterministic(working, completed, currentIds)
-      : await synthesizeWithModel(model, working, completed, currentIds, signal, usage);
+    const degraded = completed.find((finding) => finding.summary.startsWith('诊断不完整'));
+    const report = degraded && !completed.some((finding) => finding.diagnosis)
+      ? { hypothesis: degraded.hypotheses[0]!, recommendation: degraded.summary, confidence: Math.min(0.3, degraded.confidence), supportingEvidenceIds: [], contradictingEvidenceIds: [] }
+      : model.provider === 'fake'
+        ? synthesizeDeterministic(working, completed, currentIds)
+        : await synthesizeWithModel(model, working, completed, currentIds, signal, usage);
     return {
       status: 'completed',
       report,
@@ -177,6 +181,16 @@ async function runRound(
       findingsByRole.set(role, result.finding);
       specialistStatus[role] = 'completed';
     } catch (error) {
+      if (error instanceof IncompleteModelOutputError) {
+        usage.inputTokens += error.inputTokens;
+        usage.outputTokens += error.outputTokens;
+        const legacy = incompleteLegacy(error, {
+          hypothesis: `${context.incident.service} 收到 ${context.incident.type}，模型未能完成结构化分析，根因未知。`,
+          recommendation: '人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。',
+        });
+        findingsByRole.set(role, { role, hypotheses: [legacy.hypothesis], summary: legacy.recommendation,
+          supportingEvidenceIds: [], contradictingEvidenceIds: [], missingEvidence: [], confidence: 0.2, status: 'completed' });
+      }
       specialistStatus[role] = 'failed';
       const message = error instanceof Error ? error.message : String(error);
       console.log(`[pi-runtime] specialist ${role} failed: ${message}`);
@@ -348,7 +362,9 @@ async function synthesizeWithModel(
   signal: AbortSignal,
   usage: { inputTokens: number; outputTokens: number },
 ): Promise<RuntimeInvestigationReportInput> {
-  const response = await model.invoke({
+  let response;
+  try {
+    response = await structuredOutput(model, {
     system: [
       'COORDINATOR_SYNTHESIS',
       'Return ONLY one JSON object. No markdown. No extra text.',
@@ -369,11 +385,23 @@ async function synthesizeWithModel(
       historicalKnowledge: context.historicalKnowledge ?? null,
     }),
     signal,
-  });
-  usage.inputTokens += response.inputTokens ?? 0;
-  usage.outputTokens += response.outputTokens ?? 0;
-  const parsed = investigationReportInputSchema.extend({ diagnosis: investigationDiagnosisSchema }).safeParse(normalizeReportPayload(parseModelJson(response.text)));
-  if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
+    }, (value) => {
+      const parsed = investigationReportInputSchema.extend({ diagnosis: investigationDiagnosisSchema }).safeParse(normalizeReportPayload(value));
+      if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
+      return parsed.data;
+    });
+  } catch (error) {
+    if (!(error instanceof IncompleteModelOutputError)) throw error;
+    usage.inputTokens += error.inputTokens;
+    usage.outputTokens += error.outputTokens;
+    const best = [...findings].sort((a, b) => b.confidence - a.confidence)[0]!;
+    return { ...incompleteLegacy(error, { hypothesis: best.hypotheses[0] ?? best.summary, recommendation: best.summary }),
+      supportingEvidenceIds: best.supportingEvidenceIds, contradictingEvidenceIds: best.contradictingEvidenceIds,
+      confidence: Math.min(best.confidence, 0.3) };
+  }
+  usage.inputTokens += response.inputTokens;
+  usage.outputTokens += response.outputTokens;
+  const parsed = { data: response.value };
   const supporting = parsed.data.supportingEvidenceIds.filter((id) => currentIds.has(id));
   const contradicting = parsed.data.contradictingEvidenceIds.filter((id) => currentIds.has(id));
   if (

@@ -30,6 +30,9 @@ export interface ModelCall {
   outputTokens?: number;
   provider?: string;
   model?: string;
+  stopReason?: string;
+  thinkingChars?: number;
+  requestParameters?: import('../model.js').RuntimeModelResponse['requestParameters'];
 }
 
 export interface CaseResult {
@@ -162,6 +165,9 @@ function withCallCapture(model: RuntimeModel, calls: ModelCall[]): RuntimeModel 
           outputTokens: response.outputTokens,
           provider: response.provider ?? model.provider,
           model: response.model ?? model.model,
+          stopReason: response.stopReason,
+          thinkingChars: response.thinkingChars,
+          requestParameters: response.requestParameters,
           text: response.text.length > MAX_CALL_TEXT_CHARS
             ? `${response.text.slice(0, MAX_CALL_TEXT_CHARS)}…[truncated]`
             : response.text,

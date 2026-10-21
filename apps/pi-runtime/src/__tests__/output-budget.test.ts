@@ -49,7 +49,34 @@ it('still generates a labeled legacy report when both attempts return truncated 
   assert.equal(result.report?.diagnosis, undefined);
   assert.match(result.report?.hypothesis ?? '', /诊断不完整/);
   assert.match(result.report?.recommendation ?? '', /Orders.java:9/);
-  assert.ok(calls >= 2 && calls <= 4);
+  assert.equal(calls, 2);
+});
+
+it('keeps a labeled legacy report when coordinator truncates twice after a valid specialist', async () => {
+  let calls = 0;
+  const model: RuntimeModel = { provider: 'scripted', model: 'output', networkCalls: 0, async invoke(request) {
+    calls++;
+    return { text: request.system.includes('COORDINATOR_SYNTHESIS') ? '{"diagnosis":' : valid(request.system), inputTokens: 10, outputTokens: 20 };
+  } };
+  const result = await investigate(context, { model });
+  assert.equal(result.status, 'completed');
+  assert.equal(calls, 3);
+  assert.equal(result.report?.diagnosis, undefined);
+  assert.match(result.report?.hypothesis ?? '', /诊断不完整.*日志有异常/);
+  assert.equal(result.inputTokens, 30);
+});
+
+it('does not use length-terminated JSON as a complete diagnosis even if it parses', async () => {
+  let calls = 0;
+  const model: RuntimeModel = { provider: 'scripted', model: 'output', networkCalls: 0, async invoke(request) {
+    calls++;
+    return { text: valid(request.system), stopReason: 'length' };
+  } };
+  const result = await investigate(context, { model });
+  assert.equal(calls, 2);
+  assert.equal(result.status, 'completed');
+  assert.equal(result.report?.diagnosis, undefined);
+  assert.match(result.report?.hypothesis ?? '', /诊断不完整/);
 });
 
 it('retries schema-oversized output then degrades, while valid output needs no retry', async () => {

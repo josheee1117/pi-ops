@@ -408,8 +408,8 @@ describe('benchmark runner and report', () => {
       mode: 'live',
       thinkingLevel: 'high',
     });
-    assert.equal(result.status, 'failed');
-    assert.equal(result.evaluation, null);
+    assert.equal(result.status, 'completed');
+    assert.match(result.investigation.report?.hypothesis ?? '', /诊断不完整/);
     const captured = result.modelCalls.filter((item) => item.status === 'ok');
     assert.ok(captured.length > 0);
     assert.ok(captured.every((item) => item.text && item.chars > 0));

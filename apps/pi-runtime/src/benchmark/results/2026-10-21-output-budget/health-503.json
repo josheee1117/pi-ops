@@ -1,0 +1,466 @@
+{
+  "provenance": "apps/agent/src/__tests__/notification-stored-facts.check.ts health 503；apps/node-agent/src/evidence/probe.ts 响应字段。合成固定输入，不声称真实演练。",
+  "oracle": {
+    "expectedFacts": [
+      "健康 URL 返回 503",
+      "无响应体、组件状态或线程池指标"
+    ],
+    "allowedRepairs": [
+      "先确认健康详情及流量影响，再按故障组件处置；验证同一健康目标和业务"
+    ],
+    "forbiddenAttributions": [
+      "直接断言线程池或数据库连接池耗尽",
+      "把本地健康失败说成下游整体故障"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|根因是|由于)(?:应用)?线程池耗尽",
+      "(?:确认|根因是)数据库连接池耗尽"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "12ac6201de621bf64b6bc4d1378c018066ea3901a960c2af6aa7d3253d9d357f",
+    "apps/agent/src/notification.ts": "214f83c48caa26b6a12f828671944c9bda92d096da67090aa06acaf764ecb6d1",
+    "apps/pi-runtime/src/specialists.ts": "2abcceb7d5938a5de02cc80e084d4fd4dbb4d1510f1eca56de30867e544198c3",
+    "apps/pi-runtime/src/coordinator.ts": "3f625259a9618a38e4ae612700da0c13ab9400fea6055bce7e9e8a98b1e6f19b"
+  },
+  "caseId": "health-503",
+  "description": "健康 URL 返回 503；无响应体、组件状态或线程池指标",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "completed",
+  "latencyMs": 21458,
+  "tokenUsage": {
+    "input": 3781,
+    "output": 2060,
+    "total": 5841
+  },
+  "selectedSpecialists": [
+    "container_host"
+  ],
+  "specialistStatus": {
+    "container_host": "completed"
+  },
+  "modelCalls": [
+    {
+      "role": "container_host",
+      "status": "ok",
+      "chars": 2170,
+      "inputChars": 4078,
+      "inputTokens": 1493,
+      "outputTokens": 858,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"role\":\"container_host\",\"hypotheses\":[\"健康检查 URL 返回 503，说明该端点不可用或依赖未就绪，但根因未确认。\",\"服务内部或下游组件异常导致健康检查被判失败；缺少容器、日志与统计证据，无法定位。\"],\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.inspect\",\"docker.logs\",\"docker.stats\",\"host.memory\",\"host.load\"],\"confidence\":0.3,\"summary\":\"观测事实：对 https://svc.example/health 的 GET 健康探测返回 HTTP 503，延迟 30ms，healthy=false，说明该端点当前判定为不健康且响应较快。当前仅有这一条 http.probe 证据，没有容器状态、日志、资源统计或宿主指标，无法判断是应用未就绪、依赖不可用还是容器层问题。因此结论为服务健康检查失败已确认，根因未知，需补证。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"健康探测 GET https://svc.example/health 返回 503，healthy=false，延迟 30ms，说明该健康端点当前报告不健康且响应迅速。\",\"evidenceIds\":[\"evd-health-503-http.probe\"]}],\"candidateCauses\":[{\"cause\":\"服务实例或容器未就绪/异常退出，导致健康端点返回 503；缺少容器状态与日志证据，尚未确认。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"应用内部依赖或启动检查未通过，健康端点主动返回 503；缺少应用日志与配置证据，触发逻辑未知。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"503 由应用代码主动返回还是由代理/入口生成，未知。\",\"容器运行状态、重启次数与退出码未知。\",\"是否伴随资源压力（CPU/内存）或依赖超时未知。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"节点 test-svc-02 上承载 data-asset-service 的容器\",\"preconditions\":[\"确认该节点上容器标识与运行实例\"],\"operation\":\"采集 docker.inspect（容器状态、重启次数、退出码、健康检查配置）、docker.logs 近期片段、docker.stats 与 host.memory/host.load，按事件时间点对齐分析。\",\"expectedResult\":\"获取容器状态与资源基线，区分容器未就绪、重启循环与资源压力。\",\"risk\":\"采集为只读操作，风险低；日志可能含敏感信息，仅限内部使用。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 健康检查实现与日志\",\"preconditions\":[\"具备代码与日志访问权限\"],\"operation\":\"阅读健康端点实现，确认返回 503 的条件（启动检查、依赖探活等），并对照 docker.logs 中同期异常与栈，确定触发分支。\",\"expectedResult\":\"确定 503 是由哪段逻辑或哪项依赖产生。\",\"risk\":\"只读分析，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"verification\",\"target\":\"健康端点 https://svc.example/health\",\"preconditions\":[\"已完成上述补证且服务状态已知\"],\"operation\":\"在受控条件下人工复现一次健康 GET 并记录状态码、延迟与日志时间戳，必要时在修复或重启后再次探测确认恢复。\",\"expectedResult\":\"确认 503 是否持续以及修复后是否恢复为健康。\",\"risk\":\"业务流量极小，风险低；若涉及重启需按审批流程执行。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]}]}}"
+    },
+    {
+      "role": "coordinator",
+      "status": "ok",
+      "chars": 2733,
+      "inputChars": 5929,
+      "inputTokens": 2288,
+      "outputTokens": 1202,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"hypothesis\":\"健康探测 GET https://svc.example/health 返回 503（延迟 30ms、healthy=false），确认 data-asset-service 健康检查失败，但根因未确认。当前仅有该 http.probe 证据，缺少容器状态、日志、资源统计与宿主指标，无法区分容器未就绪、应用内部依赖或健康检查逻辑主动返回 503、以及代理/入口生成 503。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[],\"confidence\":0.3,\"recommendation\":\"先只读补证再修复：1) 采集 test-svc-02 上 data-asset-service 容器的 docker.inspect（状态、重启次数、退出码、健康检查配置）、docker.logs 实际可见片段、docker.stats 与 host.memory/host.load，按事件时间 2026-10-20T02:00:00Z 对齐；2) 阅读健康端点实现，确认返回 503 的条件分支，并与日志同期异常对照。若日志显示依赖探活失败则走依赖侧检查；若容器重启循环则查退出码；若健康检查配置与实际端口/路径不符则修正配置。任何重启、发布或配置写入需人工审批并准备回滚。修复后在受控条件下再次 GET /health 确认状态码恢复 200。\",\"diagnosis\":{\"observations\":[{\"statement\":\"健康探测 GET https://svc.example/health 返回 503，healthy=false，延迟 30ms，说明该健康端点当前判定为不健康且响应迅速；同一时刻无其他证据。\",\"evidenceIds\":[\"evd-health-503-http.probe\"]}],\"candidateCauses\":[{\"cause\":\"服务实例或容器未就绪/异常退出或重启循环，导致健康端点返回 503；缺少容器状态与日志证据，尚未确认。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"健康端点内部检查（启动检查或依赖探活）未通过并主动返回 503，或由代理/入口生成 503；触发逻辑未知，需读代码与日志确认。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"503 由应用代码主动返回还是由代理/入口生成，未知。\",\"容器运行状态、重启次数与退出码未知；运行中容器不能证明 JVM 健康。\",\"是否伴随 CPU/内存压力或依赖超时未知；未知峰值与持续性需补采。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"节点 test-svc-02 上承载 data-asset-service 的容器\",\"preconditions\":[\"确认该节点上容器标识与运行实例\"],\"operation\":\"只读采集 docker.inspect（状态、重启次数、退出码、健康检查配置）、docker.logs 实际可见片段、docker.stats 与 host.memory/host.load，按事件时间 02:00:00Z 对齐分析。\",\"expectedResult\":\"获取容器状态与资源基线，区分容器未就绪、重启循环与资源压力。\",\"risk\":\"只读操作风险低；日志可能含敏感信息，仅限内部使用。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 健康端点实现与同期日志\",\"preconditions\":[\"具备代码与日志访问权限\"],\"operation\":\"阅读健康端点源码，列出返回 503 的所有条件分支（启动检查、依赖探活等），并与 docker.logs 中同期异常类、文本及抛出位置对照，确定实际触发分支。\",\"expectedResult\":\"确定 503 由哪段逻辑或哪项依赖产生；若代码分支与日志不一致则回到容器层排查。\",\"risk\":\"只读分析，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"verification\",\"target\":\"健康端点 https://svc.example/health\",\"preconditions\":[\"补证完成且已确定候选原因\",\"如需重启/发布已获人工审批并有回滚方案\"],\"operation\":\"在受控条件下再执行一次 GET /health 并记录状态码、延迟与日志时间戳；若做了修复或重启，恢复后同样复测一次。\",\"expectedResult\":\"确认 503 是否持续，以及修复后端点是否恢复为健康。\",\"risk\":\"单次探测流量极小；若涉及重启或发布存在短时不可用风险。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-health-503-http.probe\"]}]},\"summary\":\"已确认：健康探测 /health 返回 503、healthy=false、延迟 30ms，服务健康检查失败，事件时间 2026-10-20T02:00:00Z。未知：仅有一条 http.probe 证据，容器状态、日志、资源统计与宿主指标均缺失，503 来源（应用、依赖或代理）及触发逻辑未确认。因此置信度低，需先只读补证再决定修复。\",\"hypotheses\":[\"健康端点返回 503 确认服务不健康，但根因未知，需容器状态、日志与资源证据区分未就绪、重启循环、依赖探活失败或代理返回。\",\"健康端点可能因内部启动或依赖检查未通过而主动返回 503，触发分支需读源码与日志确认，不能凭异常文本推断外部依赖故障。\"]}"
+    }
+  ],
+  "evidenceIds": [
+    "evd-health-503-http.probe"
+  ],
+  "evaluation": {
+    "checks": {
+      "evidenceIdsValid": {
+        "status": "pass"
+      },
+      "requiredKindsCited": {
+        "status": "pass"
+      },
+      "conflictPreserved": {
+        "status": "not_applicable"
+      },
+      "missingEvidenceValid": {
+        "status": "pass"
+      },
+      "capabilityBoundary": {
+        "status": "pass"
+      },
+      "uncertaintyDiscipline": {
+        "status": "not_applicable"
+      }
+    },
+    "machineScore": 100,
+    "dimensions": [
+      {
+        "name": "evidence_grounding",
+        "points": 30,
+        "earned": 30,
+        "status": "scored"
+      },
+      {
+        "name": "citation_validity",
+        "points": 20,
+        "earned": 20,
+        "status": "scored"
+      },
+      {
+        "name": "conflict_handling",
+        "points": 20,
+        "earned": null,
+        "status": "not_machine_scorable"
+      },
+      {
+        "name": "missing_evidence_discipline",
+        "points": 15,
+        "earned": 15,
+        "status": "scored"
+      },
+      {
+        "name": "uncertainty_discipline",
+        "points": 15,
+        "earned": null,
+        "status": "not_machine_scorable"
+      }
+    ],
+    "notMachineScorable": [
+      "conflict_handling",
+      "uncertainty_discipline"
+    ],
+    "citedEvidenceIds": [
+      "evd-health-503-http.probe"
+    ],
+    "citedKinds": [
+      "http.probe"
+    ],
+    "missingEvidenceRequested": [
+      "docker.inspect",
+      "docker.logs",
+      "docker.stats",
+      "host.memory",
+      "host.load"
+    ],
+    "advisoryRemediationMentions": [],
+    "hardPass": true
+  },
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-health-503",
+      "type": "health.failure",
+      "service": "data-asset-service",
+      "nodeId": "test-svc-02",
+      "severity": "error",
+      "state": "OPEN",
+      "firstSeen": "2026-10-20T02:00:00.000Z",
+      "lastSeen": "2026-10-20T02:00:00.000Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "evd-health-503-http.probe",
+        "kind": "http.probe",
+        "incidentId": "inc-health-503",
+        "nodeId": "test-svc-02",
+        "source": "http",
+        "collectedAt": "2026-10-20T02:00:00.000Z",
+        "status": "succeeded",
+        "data": {
+          "url": "https://svc.example/health",
+          "method": "GET",
+          "healthy": false,
+          "status": 503,
+          "latencyMs": 30
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": []
+  },
+  "supplementalResponses": [
+    {
+      "schemaVersion": 1,
+      "runtimeRequestId": "request-health-503",
+      "results": [
+        {
+          "requestId": "ereq-health-503-docker.inspect",
+          "type": "docker.inspect",
+          "status": "unavailable",
+          "error": "No recorded supplemental evidence for this capability."
+        },
+        {
+          "requestId": "ereq-health-503-docker.logs",
+          "type": "docker.logs",
+          "status": "unavailable",
+          "error": "No recorded supplemental evidence for this capability."
+        }
+      ]
+    }
+  ],
+  "message": {
+    "content": "### data-asset-service 诊断完成\n**服务实例或容器未就绪/异常退出或重启循环，导致健康端点返回 503；缺少容器状态与日志证据，尚未确认。\n健康端点内部检查（启动检查或依赖探活）未通过并主动返回 503，或由代理/入口生成 503；触发逻辑未知，需读代码与日志确认。**\n机器：test-svc-02\n时间：10月20日 10:00（北京时间）\n诊断原文时间按 UTC 阅读；显式时区以原文为准。\n\n**依据**\n健康探测 GET https://svc.example/health 返回 503，healthy=false，延迟 30ms，说明该健康端点当前判定为不健康且响应迅速；同一时刻无其他证据。\n\n**未知**\n503 由应用代码主动返回还是由代理/入口生成，未知。\n容器运行状态、重启次数与退出码未知；运行中容器不能证明 JVM 健康。\n是否伴随 CPU/内存压力或依赖超时未知；未知峰值与持续性需补采。\n\n**下一步**\n修复尚未确定。\n1. 验证（需批准）：健康端点 https://svc.example/health\n前提：补证完成且已确定候选原因；如需重启/发布已获人工审批并有回滚方案\n在受控条件下再执行一次 GET /health 并记录状态码、延迟与日志时间戳；若做了修复或重启，恢复后同样复测一次。\n预期：确认 503 是否持续，以及修复后端点是否恢复为健康。\n风险：单次探测流量极小；若涉及重启或发布存在短时不可用风险。\n2. 补证：节点 test-svc-02 上承载 data-asset-service 的容器\n前提：确认该节点上容器标识与运行实例\n只读采集 docker.inspect（状态、重启次数、退出码、健康检查配置）、docker.logs 实际可见片段、docker.stats 与 host.memory/host.load，按事件时间 02:00:00Z 对齐分析。\n预期：获取容器状态与资源基线，区分容器未就绪、重启循环与资源压力。\n风险：只读操作风险低；日志可能含敏感信息，仅限内部使用。\n3. 补证：data-asset-service 健康端点实现与同期日志\n前提：具备代码与日志访问权限\n阅读健康端点源码，列出返回 503 的所有条件分支（启动检查、依赖探活等），并与 docker.logs 中同期异常类、文本及抛出位置对照，确定实际触发分支。\n预期：确定 503 由哪段逻辑或哪项依赖产生；若代码分支与日志不一致则回到容器层排查。\n风险：只读分析，风险低。\n\n<font color=\"comment\">模型自评 30%，不是准确率</font>\n\n编号：inc-health-503",
+    "bytes": 2554,
+    "fetchCalls": 1
+  },
+  "messageEvaluation": {
+    "checks": {
+      "structuredDiagnosis": {
+        "status": "pass"
+      },
+      "actionsComplete": {
+        "status": "pass"
+      },
+      "citationsExist": {
+        "status": "pass"
+      },
+      "forbiddenAttributionScreen": {
+        "status": "pass",
+        "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+      },
+      "messageWithinLimit": {
+        "status": "pass",
+        "detail": "2554 bytes"
+      },
+      "mitigationVisible": {
+        "status": "fail"
+      },
+      "repairOrUnknownVisible": {
+        "status": "pass"
+      },
+      "verificationVisible": {
+        "status": "pass"
+      }
+    },
+    "purposes": {
+      "mitigation": {
+        "inDiagnosis": false,
+        "inMessage": false
+      },
+      "repair": {
+        "inDiagnosis": false,
+        "inMessage": false
+      },
+      "verification": {
+        "inDiagnosis": true,
+        "inMessage": true
+      }
+    },
+    "forbiddenMatches": [],
+    "hardPass": false
+  },
+  "investigation": {
+    "report": {
+      "hypothesis": "健康探测 GET https://svc.example/health 返回 503（延迟 30ms、healthy=false），确认 data-asset-service 健康检查失败，但根因未确认。当前仅有该 http.probe 证据，缺少容器状态、日志、资源统计与宿主指标，无法区分容器未就绪、应用内部依赖或健康检查逻辑主动返回 503、以及代理/入口生成 503。",
+      "supportingEvidenceIds": [
+        "evd-health-503-http.probe"
+      ],
+      "contradictingEvidenceIds": [],
+      "confidence": 0.3,
+      "recommendation": "先只读补证再修复：1) 采集 test-svc-02 上 data-asset-service 容器的 docker.inspect（状态、重启次数、退出码、健康检查配置）、docker.logs 实际可见片段、docker.stats 与 host.memory/host.load，按事件时间 2026-10-20T02:00:00Z 对齐；2) 阅读健康端点实现，确认返回 503 的条件分支，并与日志同期异常对照。若日志显示依赖探活失败则走依赖侧检查；若容器重启循环则查退出码；若健康检查配置与实际端口/路径不符则修正配置。任何重启、发布或配置写入需人工审批并准备回滚。修复后在受控条件下再次 GET /health 确认状态码恢复 200。",
+      "diagnosis": {
+        "observations": [
+          {
+            "statement": "健康探测 GET https://svc.example/health 返回 503，healthy=false，延迟 30ms，说明该健康端点当前判定为不健康且响应迅速；同一时刻无其他证据。",
+            "evidenceIds": [
+              "evd-health-503-http.probe"
+            ]
+          }
+        ],
+        "candidateCauses": [
+          {
+            "cause": "服务实例或容器未就绪/异常退出或重启循环，导致健康端点返回 503；缺少容器状态与日志证据，尚未确认。",
+            "supportingEvidenceIds": [
+              "evd-health-503-http.probe"
+            ],
+            "contradictingEvidenceIds": []
+          },
+          {
+            "cause": "健康端点内部检查（启动检查或依赖探活）未通过并主动返回 503，或由代理/入口生成 503；触发逻辑未知，需读代码与日志确认。",
+            "supportingEvidenceIds": [
+              "evd-health-503-http.probe"
+            ],
+            "contradictingEvidenceIds": []
+          }
+        ],
+        "uncertainties": [
+          "503 由应用代码主动返回还是由代理/入口生成，未知。",
+          "容器运行状态、重启次数与退出码未知；运行中容器不能证明 JVM 健康。",
+          "是否伴随 CPU/内存压力或依赖超时未知；未知峰值与持续性需补采。"
+        ],
+        "actions": [
+          {
+            "purpose": "evidence_collection",
+            "target": "节点 test-svc-02 上承载 data-asset-service 的容器",
+            "preconditions": [
+              "确认该节点上容器标识与运行实例"
+            ],
+            "operation": "只读采集 docker.inspect（状态、重启次数、退出码、健康检查配置）、docker.logs 实际可见片段、docker.stats 与 host.memory/host.load，按事件时间 02:00:00Z 对齐分析。",
+            "expectedResult": "获取容器状态与资源基线，区分容器未就绪、重启循环与资源压力。",
+            "risk": "只读操作风险低；日志可能含敏感信息，仅限内部使用。",
+            "requiresApproval": false,
+            "evidenceIds": [
+              "evd-health-503-http.probe"
+            ]
+          },
+          {
+            "purpose": "evidence_collection",
+            "target": "data-asset-service 健康端点实现与同期日志",
+            "preconditions": [
+              "具备代码与日志访问权限"
+            ],
+            "operation": "阅读健康端点源码，列出返回 503 的所有条件分支（启动检查、依赖探活等），并与 docker.logs 中同期异常类、文本及抛出位置对照，确定实际触发分支。",
+            "expectedResult": "确定 503 由哪段逻辑或哪项依赖产生；若代码分支与日志不一致则回到容器层排查。",
+            "risk": "只读分析，风险低。",
+            "requiresApproval": false,
+            "evidenceIds": [
+              "evd-health-503-http.probe"
+            ]
+          },
+          {
+            "purpose": "verification",
+            "target": "健康端点 https://svc.example/health",
+            "preconditions": [
+              "补证完成且已确定候选原因",
+              "如需重启/发布已获人工审批并有回滚方案"
+            ],
+            "operation": "在受控条件下再执行一次 GET /health 并记录状态码、延迟与日志时间戳；若做了修复或重启，恢复后同样复测一次。",
+            "expectedResult": "确认 503 是否持续，以及修复后端点是否恢复为健康。",
+            "risk": "单次探测流量极小；若涉及重启或发布存在短时不可用风险。",
+            "requiresApproval": true,
+            "evidenceIds": [
+              "evd-health-503-http.probe"
+            ]
+          }
+        ]
+      }
+    },
+    "findings": [
+      {
+        "role": "container_host",
+        "hypotheses": [
+          "健康检查 URL 返回 503，说明该端点不可用或依赖未就绪，但根因未确认。",
+          "服务内部或下游组件异常导致健康检查被判失败；缺少容器、日志与统计证据，无法定位。"
+        ],
+        "supportingEvidenceIds": [
+          "evd-health-503-http.probe"
+        ],
+        "contradictingEvidenceIds": [],
+        "missingEvidence": [
+          "docker.inspect",
+          "docker.logs",
+          "docker.stats",
+          "host.memory",
+          "host.load"
+        ],
+        "confidence": 0.3,
+        "summary": "观测事实：对 https://svc.example/health 的 GET 健康探测返回 HTTP 503，延迟 30ms，healthy=false，说明该端点当前判定为不健康且响应较快。当前仅有这一条 http.probe 证据，没有容器状态、日志、资源统计或宿主指标，无法判断是应用未就绪、依赖不可用还是容器层问题。因此结论为服务健康检查失败已确认，根因未知，需补证。",
+        "diagnosis": {
+          "observations": [
+            {
+              "statement": "健康探测 GET https://svc.example/health 返回 503，healthy=false，延迟 30ms，说明该健康端点当前报告不健康且响应迅速。",
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "服务实例或容器未就绪/异常退出，导致健康端点返回 503；缺少容器状态与日志证据，尚未确认。",
+              "supportingEvidenceIds": [
+                "evd-health-503-http.probe"
+              ],
+              "contradictingEvidenceIds": []
+            },
+            {
+              "cause": "应用内部依赖或启动检查未通过，健康端点主动返回 503；缺少应用日志与配置证据，触发逻辑未知。",
+              "supportingEvidenceIds": [
+                "evd-health-503-http.probe"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "503 由应用代码主动返回还是由代理/入口生成，未知。",
+            "容器运行状态、重启次数与退出码未知。",
+            "是否伴随资源压力（CPU/内存）或依赖超时未知。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "节点 test-svc-02 上承载 data-asset-service 的容器",
+              "preconditions": [
+                "确认该节点上容器标识与运行实例"
+              ],
+              "operation": "采集 docker.inspect（容器状态、重启次数、退出码、健康检查配置）、docker.logs 近期片段、docker.stats 与 host.memory/host.load，按事件时间点对齐分析。",
+              "expectedResult": "获取容器状态与资源基线，区分容器未就绪、重启循环与资源压力。",
+              "risk": "采集为只读操作，风险低；日志可能含敏感信息，仅限内部使用。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "data-asset-service 健康检查实现与日志",
+              "preconditions": [
+                "具备代码与日志访问权限"
+              ],
+              "operation": "阅读健康端点实现，确认返回 503 的条件（启动检查、依赖探活等），并对照 docker.logs 中同期异常与栈，确定触发分支。",
+              "expectedResult": "确定 503 是由哪段逻辑或哪项依赖产生。",
+              "risk": "只读分析，风险低。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "健康端点 https://svc.example/health",
+              "preconditions": [
+                "已完成上述补证且服务状态已知"
+              ],
+              "operation": "在受控条件下人工复现一次健康 GET 并记录状态码、延迟与日志时间戳，必要时在修复或重启后再次探测确认恢复。",
+              "expectedResult": "确认 503 是否持续以及修复后是否恢复为健康。",
+              "risk": "业务流量极小，风险低；若涉及重启需按审批流程执行。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            }
+          ]
+        },
+        "status": "completed"
+      }
+    ]
+  }
+}

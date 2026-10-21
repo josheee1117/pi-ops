@@ -101,7 +101,10 @@ it('records billed usage from a rejected specialist and stops before a run above
   const fake = createFakeRuntimeModel();
   const model = { ...fake, async invoke() { return { text: '{}', inputTokens: 12, outputTokens: 34 }; } };
   const result = await runCase(MESSAGE_CASES[3]!, { model, mode: 'live', thinkingLevel: 'off' });
-  assert.equal(result.status, 'failed');
-  assert.deepEqual(result.tokenUsage, { input: 12, output: 34, total: 46 });
+  assert.equal(result.status, 'completed');
+  assert.match(result.investigation.report?.hypothesis ?? '', /诊断不完整/);
+  assert.match(result.message?.content ?? '', /诊断不完整/);
+  assert.equal(result.message?.fetchCalls, 1);
+  assert.deepEqual(result.tokenUsage, { input: 24, output: 68, total: 92 });
   await assert.rejects(runBenchmark({ cases: [MESSAGE_CASES[3]!], model: fake, mode: 'fake', thinkingLevel: 'off', tokenBudget: 1 }), /token budget/);
 });

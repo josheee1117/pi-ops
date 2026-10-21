@@ -119,6 +119,20 @@ pnpm --filter @pi-ops/pi-runtime test
 pnpm --filter @pi-ops/pi-runtime typecheck
 ```
 
+## 输出预算回归评测
+
+2026-10-21 修复后的模型目录与生产 `deploy/docker/models.json` 一致，输出预算为 16384，off 时显式发送 `thinking.type=disabled`。使用新目录复跑，不沿用旧 lab 的 8192 配置。
+
+```bash
+PI_CODING_AGENT_DIR="$PWD/apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent" \
+  pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/message-cli.ts --live \
+  --out artifacts/on-call-messages/output-budget-next
+```
+
+完整结果与根因证据见 `results/2026-10-21-output-budget/review.md`，7 条消息原文见同目录 `messages.md`。初轮完整诊断为 1/7，修复后为 7/7，但内容检查只有 2/7 全过。不能把输出预算修复当成语义质量验收。
+
+运行 `capture-request.ts <输出路径>` 可用 fake fetch 捕获 SDK 的白名单请求字段，不调用上游。`probe-budget.ts` 会实际调用上游两次，对照默认思考与显式关闭，单次最大128 token。两者都不保存 key 或思维链正文。适配器结果新增 stopReason、thinkingChars 及白名单 requestParameters，旧结果不存在这些字段。
+
 ## 边界
 
 - fake 模式只证明 harness / fixtures / evaluator 稳定，**不能证明诊断质量**

@@ -18,6 +18,9 @@ export interface RuntimeModelResponse {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  stopReason?: string;
+  thinkingChars?: number;
+  requestParameters?: { maxTokens?: number; thinking?: unknown; reasoningEffort?: unknown };
 }
 
 export interface RuntimeModel {

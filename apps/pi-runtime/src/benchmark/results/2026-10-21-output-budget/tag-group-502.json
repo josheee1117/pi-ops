@@ -1,0 +1,504 @@
+{
+  "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts tagGroup。仅重建已观测字段，不把旧诊断作为输入；无原始完整日志。",
+  "oracle": {
+    "expectedFacts": [
+      "pageTagGroup:106 抛出 RuntimeException",
+      "业务响应 code=502，不等价于 HTTP 网关 502",
+      "底层 cause、持续性和影响未知"
+    ],
+    "allowedRepairs": [
+      "读对应版本第 106 行及 cause，按实际分支修复；人工受控复现相同请求"
+    ],
+    "forbiddenAttributions": [
+      "凭异常断言库存、SQL、依赖或网关故障",
+      "伪造源码逻辑或配置值"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|根因是|由于)库存(?:不足|校验)",
+      "(?:确认|根因是)数据库故障",
+      "(?:确认|根因是)网关故障"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "12ac6201de621bf64b6bc4d1378c018066ea3901a960c2af6aa7d3253d9d357f",
+    "apps/agent/src/notification.ts": "214f83c48caa26b6a12f828671944c9bda92d096da67090aa06acaf764ecb6d1",
+    "apps/pi-runtime/src/specialists.ts": "2abcceb7d5938a5de02cc80e084d4fd4dbb4d1510f1eca56de30867e544198c3",
+    "apps/pi-runtime/src/coordinator.ts": "3f625259a9618a38e4ae612700da0c13ab9400fea6055bce7e9e8a98b1e6f19b"
+  },
+  "caseId": "tag-group-502",
+  "description": "pageTagGroup:106 抛出 RuntimeException；业务响应 code=502，不等价于 HTTP 网关 502；底层 cause、持续性和影响未知",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "completed",
+  "latencyMs": 12414,
+  "tokenUsage": {
+    "input": 4616,
+    "output": 2311,
+    "total": 6927
+  },
+  "selectedSpecialists": [
+    "application_business"
+  ],
+  "specialistStatus": {
+    "application_business": "completed"
+  },
+  "modelCalls": [
+    {
+      "role": "application_business",
+      "status": "ok",
+      "chars": 2739,
+      "inputChars": 5056,
+      "inputTokens": 1798,
+      "outputTokens": 1070,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"role\":\"application_business\",\"hypotheses\":[\"TagAdminBizServiceImpl.pageTagGroup 第106行抛出未捕获 RuntimeException，导致接口返回502系统异常；具体触发条件（参数校验、数据映射或依赖调用）未知，需读源码确认。\",\"deptId=5 的分页查询路径上存在未处理异常分支，但异常根因与外部依赖状态未见证据支持，无法确认。\"],\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\"],\"confidence\":0.45,\"summary\":\"业务接口 POST /api/v1/tag/admin/tag-group/page 同一时刻在 JFR 与容器日志中出现 RuntimeException，栈定位到 TagAdminBizServiceImpl.pageTagGroup 第106行，日志记录 code=502、elapsed=25ms、success=false，仅1次事件。可确认应用层抛出未处理异常并返回系统异常；但日志为截断片段（仅4行，无异常 message 与 cause 详情），无源码，无法判定第106行的校验、映射或调用逻辑，也不能推断真实库存或外部依赖故障。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"同一时间点 JFR 记录 business.error，exceptionClass=java.lang.RuntimeException，message 为 Unhandled request exception，栈首帧为 TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。\",\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\"]},{\"statement\":\"容器日志显示同一时刻该 POST 请求 deptId=5,current=1,size=10 返回 code=502、msg=系统异常、success=false，耗时25ms，且日志标记 truncated=true，仅保留4行，未包含异常 message 与 cause 细节。\",\"evidenceIds\":[\"evd-tag-group-502-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"应用层 pageTagGroup 第106行存在未捕获的运行时异常（具体触发逻辑未知，需读源码或调用链证据确认）。\",\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"第106行的具体代码逻辑与异常 message 未获取，无法区分是参数校验、结果映射还是下游调用失败。\",\"日志被截断，缺失完整异常 cause 链，无法判断是否为包装后的依赖异常。\",\"仅1次事件、耗时25ms，是否为稳定复现或偶发数据相关异常未知。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service / test-svc-02 容器日志与异常完整栈\",\"preconditions\":[\"需具备主机或容器日志读取权限，且确认当前日志轮转未覆盖该时间窗口\"],\"operation\":\"拉取 2026-10-20T01:21:43 前后该容器的完整日志（非模型截断视图），获取 RuntimeException 的 message 与全部 Caused by 链，并记录是否有重复出现及涉及 deptId。\",\"expectedResult\":\"获得完整异常原因链与出现次数，能区分数据相关异常与依赖异常。\",\"risk\":\"读取日志为只读操作，风险低；若日志已轮转则无法回溯。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-tag-group-502-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"TagAdminBizServiceImpl.java 第106行附近源码与调用链\",\"preconditions\":[\"需具备代码仓库读取权限且确认部署版本与代码分支一致\"],\"operation\":\"查看 pageTagGroup 第106行实现及其调用的条件判断、结果映射和外部依赖，确认哪类输入会走到抛异常分支，并与完整栈对照。\",\"expectedResult\":\"明确具体触发条件及是否需修复代码或仅需数据修正。\",\"risk\":\"只读查阅，风险低；若版本不一致结论可能失真。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\"]},{\"purpose\":\"verification\",\"target\":\"POST /api/v1/tag/admin/tag-group/page，参数 deptId=5,current=1,size=10\",\"preconditions\":[\"已完成日志与源码补证\",\"在测试环境、非生产流量窗口内执行\"],\"operation\":\"由人工在受控环境复现该请求并记录响应码与异常栈，对比补证结论；确认修复后同样参数返回 success=true。\",\"expectedResult\":\"复现或排除该参数组合触发异常，验证修复有效。\",\"risk\":\"可能再次触发异常并产生错误日志，需限定在测试节点执行。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-tag-group-502-docker.logs\",\"evd-tag-group-502-jfr.signal\"]}]}}"
+    },
+    {
+      "role": "coordinator",
+      "status": "ok",
+      "chars": 3054,
+      "inputChars": 7505,
+      "inputTokens": 2818,
+      "outputTokens": 1241,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"hypothesis\":\"应用接口POST /api/v1/tag/admin/tag-group/page在TagAdminBizServiceImpl.pageTagGroup第106行抛出未捕获RuntimeException，同一时刻JFR与容器日志均记录该异常，请求返回code=502、耗时25ms、success=false。当前证据可确认应用层未处理异常，但日志为仅4行的截断片段，缺少异常message与Caused by链，且无源码，第106行具体触发逻辑（参数校验、结果映射或依赖调用）未知，不能推断外部依赖或数据故障。\",\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.45,\"recommendation\":\"先补证再修复：1) 拉取2026-10-20T01:21:43前后该容器的完整日志（非截断视图），获取RuntimeException的message与全部Caused by链及重复次数；2) 查阅TagAdminBizServiceImpl.java第106行及调用链，确认会抛异常的分支，并核对部署版本与代码分支一致。两者结果分支：若完整栈指向下游调用异常，排查对应依赖；若指向数据/映射问题，按代码确认修正输入或修复映射。修复后由人工在测试环境受控复现deptId=5,current=1,size=10请求，确认返回success=true且无异常栈。需人工批准测试环境复现动作。\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR记录business.error，exceptionClass=java.lang.RuntimeException，message为Unhandled request exception，栈首帧为TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。\",\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\"]},{\"statement\":\"容器日志显示同一时刻该POST请求deptId=5,current=1,size=10返回code=502、msg=系统异常、success=false，耗时25ms；日志truncated=true，仅保留4行，未见异常message与cause。\",\"evidenceIds\":[\"evd-tag-group-502-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"应用层pageTagGroup第106行存在未捕获运行时异常，具体触发逻辑未知，需源码或完整调用链证据确认，不能据此认定依赖或数据故障。\",\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"第106行具体代码逻辑与异常message缺失，无法区分参数校验、结果映射或下游调用失败。\",\"日志截断，缺失完整cause链，无法判断是否为包装后的依赖异常。\",\"仅1次事件、耗时25ms，是否稳定复现或与特定deptId数据相关未知。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service / test-svc-02 该时间窗口完整容器日志\",\"preconditions\":[\"具备主机或容器日志读取权限\",\"确认日志轮转未覆盖2026-10-20T01:21:43窗口\"],\"operation\":\"拉取01:21:43前后完整日志（非模型截断视图），提取RuntimeException的message与全部Caused by链，统计重复出现次数及涉及参数。\",\"expectedResult\":\"获得完整异常原因链与出现次数，可区分数据相关异常与依赖异常。\",\"risk\":\"只读操作风险低；若日志已轮转则无法回溯。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-tag-group-502-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"TagAdminBizServiceImpl.java 第106行及调用链\",\"preconditions\":[\"具备代码仓库读取权限\",\"确认部署版本与所查分支一致\"],\"operation\":\"查看pageTagGroup第106行实现及其条件判断、结果映射和外部调用，确定哪类输入走到抛异常分支，并与完整栈对照。\",\"expectedResult\":\"明确触发条件及应修复代码还是修正数据。\",\"risk\":\"只读查阅风险低；版本不一致结论可能失真。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\"]},{\"purpose\":\"verification\",\"target\":\"POST /api/v1/tag/admin/tag-group/page，参数deptId=5,current=1,size=10\",\"preconditions\":[\"已完成日志与源码补证\",\"在测试环境非生产流量窗口执行\"],\"operation\":\"由人工在受控环境复现该请求，记录响应码与异常栈并与补证结论对比；修复后同参数复测，确认success=true且无异常栈。\",\"expectedResult\":\"复现或排除该参数触发异常，验证修复有效。\",\"risk\":\"可能再次触发异常并产生错误日志，须限测试节点。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-tag-group-502-docker.logs\",\"evd-tag-group-502-jfr.signal\"]}]},\"summary\":\"接口POST /api/v1/tag/admin/tag-group/page在TagAdminBizServiceImpl.pageTagGroup第106行抛出未捕获RuntimeException并返回502系统异常，JFR与容器日志时间一致。可确认应用层异常，但日志仅4行截断、缺message与cause链，无源码，触发逻辑未知；无法判定依赖或数据故障，仅1次事件。\",\"hypotheses\":[\"TagAdminBizServiceImpl.pageTagGroup第106行未捕获RuntimeException导致502，具体触发条件未知，需读源码确认。\",\"deptId=5分页路径可能存在未处理异常分支，但根因与外部依赖状态缺乏证据支持。\"]}"
+    }
+  ],
+  "evidenceIds": [
+    "evd-tag-group-502-jfr.signal",
+    "evd-tag-group-502-docker.logs"
+  ],
+  "evaluation": {
+    "checks": {
+      "evidenceIdsValid": {
+        "status": "pass"
+      },
+      "requiredKindsCited": {
+        "status": "pass"
+      },
+      "conflictPreserved": {
+        "status": "not_applicable"
+      },
+      "missingEvidenceValid": {
+        "status": "pass"
+      },
+      "capabilityBoundary": {
+        "status": "pass"
+      },
+      "uncertaintyDiscipline": {
+        "status": "not_applicable"
+      }
+    },
+    "machineScore": 100,
+    "dimensions": [
+      {
+        "name": "evidence_grounding",
+        "points": 30,
+        "earned": 30,
+        "status": "scored"
+      },
+      {
+        "name": "citation_validity",
+        "points": 20,
+        "earned": 20,
+        "status": "scored"
+      },
+      {
+        "name": "conflict_handling",
+        "points": 20,
+        "earned": null,
+        "status": "not_machine_scorable"
+      },
+      {
+        "name": "missing_evidence_discipline",
+        "points": 15,
+        "earned": 15,
+        "status": "scored"
+      },
+      {
+        "name": "uncertainty_discipline",
+        "points": 15,
+        "earned": null,
+        "status": "not_machine_scorable"
+      }
+    ],
+    "notMachineScorable": [
+      "conflict_handling",
+      "uncertainty_discipline"
+    ],
+    "citedEvidenceIds": [
+      "evd-tag-group-502-jfr.signal",
+      "evd-tag-group-502-docker.logs"
+    ],
+    "citedKinds": [
+      "jfr.signal",
+      "docker.logs"
+    ],
+    "missingEvidenceRequested": [
+      "docker.logs"
+    ],
+    "advisoryRemediationMentions": [],
+    "hardPass": true
+  },
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-tag-group-502",
+      "type": "business.error",
+      "service": "data-asset-service",
+      "nodeId": "test-svc-02",
+      "severity": "error",
+      "state": "OPEN",
+      "firstSeen": "2026-10-20T01:21:43.948Z",
+      "lastSeen": "2026-10-20T01:21:43.948Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "evd-tag-group-502-jfr.signal",
+        "kind": "jfr.signal",
+        "incidentId": "inc-tag-group-502",
+        "nodeId": "test-svc-02",
+        "source": "jfr",
+        "collectedAt": "2026-10-20T01:21:43.948Z",
+        "status": "succeeded",
+        "data": {
+          "eventId": "evt-tag-group-502",
+          "eventType": "business.error",
+          "semanticType": "business.error",
+          "observedAt": "2026-10-20T01:21:43.948Z",
+          "message": "Unhandled request exception",
+          "attributes": {
+            "exceptionClass": "java.lang.RuntimeException",
+            "operation": "POST /api/v1/tag/admin/tag-group/page",
+            "exceptionStackTrace": "at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)"
+          }
+        }
+      },
+      {
+        "id": "evd-tag-group-502-docker.logs",
+        "kind": "docker.logs",
+        "incidentId": "inc-tag-group-502",
+        "nodeId": "test-svc-02",
+        "source": "docker",
+        "collectedAt": "2026-10-20T01:21:43.948Z",
+        "status": "succeeded",
+        "data": {
+          "truncated": true,
+          "lines": [
+            "2026-10-20T01:21:43.948Z java.lang.RuntimeException",
+            "Caused by: java.lang.RuntimeException",
+            "at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)",
+            "2026-10-20T01:21:43.949Z POST /api/v1/tag/admin/tag-group/page deptId=5,current=1,size=10 code=502 msg=系统异常 success=false elapsed=25ms"
+          ],
+          "logProjection": {
+            "lines": {
+              "originalLineCount": 4,
+              "retainedRanges": [
+                {
+                  "startLine": 1,
+                  "endLine": 4
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": [],
+    "truncation": {
+      "droppedEvidenceIds": [],
+      "truncatedItems": [
+        "evd-tag-group-502-docker.logs"
+      ]
+    }
+  },
+  "supplementalResponses": [
+    {
+      "schemaVersion": 1,
+      "runtimeRequestId": "request-tag-group-502",
+      "results": [
+        {
+          "requestId": "ereq-tag-group-502-docker.logs",
+          "type": "docker.logs",
+          "status": "unavailable",
+          "error": "No recorded supplemental evidence for this capability."
+        }
+      ]
+    }
+  ],
+  "message": {
+    "content": "### data-asset-service 诊断完成\n**应用层pageTagGroup第106行存在未捕获运行时异常，具体触发逻辑未知，需源码或完整调用链证据确认，不能据此认定依赖或数据故障。**\n机器：test-svc-02\n时间：10月20日 09:21（北京时间）\n诊断原文时间按 UTC 阅读；显式时区以原文为准。\n\n**依据**\nJFR记录business.error，exceptionClass=java.lang.RuntimeException，message为Unhandled request exception，栈首帧为TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。\n容器日志显示同一时刻该POST请求deptId=5,current=1,size=10返回code=502、msg=系统异常、success=false，耗时25ms；日志truncated=true，仅保留4行，未见异常message与cause。\n\n**未知**\n第106行具体代码逻辑与异常message缺失，无法区分参数校验、结果映射或下游调用失败。\n日志截断，缺失完整cause链，无法判断是否为包装后的依赖异常。\n仅1次事件、耗时25ms，是否稳定复现或与特定deptId数据相关未知。\n\n**下一步**\n修复尚未确定。\n1. 验证（需批准）：POST /api/v1/tag/admin/tag-group/page，参数deptId=5,current=1,size=10\n前提：已完成日志与源码补证；在测试环境非生产流量窗口执行\n由人工在受控环境复现该请求，记录响应码与异常栈并与补证结论对比；修复后同参数复测，确认success=true且无异常栈。\n预期：复现或排除该参数触发异常，验证修复有效。\n风险：可能再次触发异常并产生错误日志，须限测试节点。\n2. 补证：data-asset-service / test-svc-02 该时间窗口完整容器日志\n前提：具备主机或容器日志读取权限；确认日志轮转未覆盖2026-10-20T01:21:43窗口\n拉取01:21:43前后完整日志（非模型截断视图），提取RuntimeException的message与全部Caused by链，统计重复出现次数及涉及参数。\n预期：获得完整异常原因链与出现次数，可区分数据相关异常与依赖异常。\n风险：只读操作风险低；若日志已轮转则无法回溯。\n3. 补证：TagAdminBizServiceImpl.java 第106行及调用链\n前提：具备代码仓库读取权限；确认部署版本与所查分支一致\n查看pageTagGroup第106行实现及其条件判断、结果映射和外部调用，确定哪类输入走到抛异常分支，并与完整栈对照。\n预期：明确触发条件及应修复代码还是修正数据。\n风险：只读查阅风险低；版本不一致结论可能失真。\n\n<font color=\"comment\">模型自评 45%，不是准确率</font>\n\n编号：inc-tag-group-502",
+    "bytes": 2627,
+    "fetchCalls": 1
+  },
+  "messageEvaluation": {
+    "checks": {
+      "structuredDiagnosis": {
+        "status": "pass"
+      },
+      "actionsComplete": {
+        "status": "pass"
+      },
+      "citationsExist": {
+        "status": "pass"
+      },
+      "forbiddenAttributionScreen": {
+        "status": "pass",
+        "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+      },
+      "messageWithinLimit": {
+        "status": "pass",
+        "detail": "2627 bytes"
+      },
+      "mitigationVisible": {
+        "status": "fail"
+      },
+      "repairOrUnknownVisible": {
+        "status": "pass"
+      },
+      "verificationVisible": {
+        "status": "pass"
+      }
+    },
+    "purposes": {
+      "mitigation": {
+        "inDiagnosis": false,
+        "inMessage": false
+      },
+      "repair": {
+        "inDiagnosis": false,
+        "inMessage": false
+      },
+      "verification": {
+        "inDiagnosis": true,
+        "inMessage": true
+      }
+    },
+    "forbiddenMatches": [],
+    "hardPass": false
+  },
+  "investigation": {
+    "report": {
+      "hypothesis": "应用接口POST /api/v1/tag/admin/tag-group/page在TagAdminBizServiceImpl.pageTagGroup第106行抛出未捕获RuntimeException，同一时刻JFR与容器日志均记录该异常，请求返回code=502、耗时25ms、success=false。当前证据可确认应用层未处理异常，但日志为仅4行的截断片段，缺少异常message与Caused by链，且无源码，第106行具体触发逻辑（参数校验、结果映射或依赖调用）未知，不能推断外部依赖或数据故障。",
+      "supportingEvidenceIds": [
+        "evd-tag-group-502-jfr.signal",
+        "evd-tag-group-502-docker.logs"
+      ],
+      "contradictingEvidenceIds": [],
+      "confidence": 0.45,
+      "recommendation": "先补证再修复：1) 拉取2026-10-20T01:21:43前后该容器的完整日志（非截断视图），获取RuntimeException的message与全部Caused by链及重复次数；2) 查阅TagAdminBizServiceImpl.java第106行及调用链，确认会抛异常的分支，并核对部署版本与代码分支一致。两者结果分支：若完整栈指向下游调用异常，排查对应依赖；若指向数据/映射问题，按代码确认修正输入或修复映射。修复后由人工在测试环境受控复现deptId=5,current=1,size=10请求，确认返回success=true且无异常栈。需人工批准测试环境复现动作。",
+      "diagnosis": {
+        "observations": [
+          {
+            "statement": "JFR记录business.error，exceptionClass=java.lang.RuntimeException，message为Unhandled request exception，栈首帧为TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。",
+            "evidenceIds": [
+              "evd-tag-group-502-jfr.signal"
+            ]
+          },
+          {
+            "statement": "容器日志显示同一时刻该POST请求deptId=5,current=1,size=10返回code=502、msg=系统异常、success=false，耗时25ms；日志truncated=true，仅保留4行，未见异常message与cause。",
+            "evidenceIds": [
+              "evd-tag-group-502-docker.logs"
+            ]
+          }
+        ],
+        "candidateCauses": [
+          {
+            "cause": "应用层pageTagGroup第106行存在未捕获运行时异常，具体触发逻辑未知，需源码或完整调用链证据确认，不能据此认定依赖或数据故障。",
+            "supportingEvidenceIds": [
+              "evd-tag-group-502-jfr.signal",
+              "evd-tag-group-502-docker.logs"
+            ],
+            "contradictingEvidenceIds": []
+          }
+        ],
+        "uncertainties": [
+          "第106行具体代码逻辑与异常message缺失，无法区分参数校验、结果映射或下游调用失败。",
+          "日志截断，缺失完整cause链，无法判断是否为包装后的依赖异常。",
+          "仅1次事件、耗时25ms，是否稳定复现或与特定deptId数据相关未知。"
+        ],
+        "actions": [
+          {
+            "purpose": "evidence_collection",
+            "target": "data-asset-service / test-svc-02 该时间窗口完整容器日志",
+            "preconditions": [
+              "具备主机或容器日志读取权限",
+              "确认日志轮转未覆盖2026-10-20T01:21:43窗口"
+            ],
+            "operation": "拉取01:21:43前后完整日志（非模型截断视图），提取RuntimeException的message与全部Caused by链，统计重复出现次数及涉及参数。",
+            "expectedResult": "获得完整异常原因链与出现次数，可区分数据相关异常与依赖异常。",
+            "risk": "只读操作风险低；若日志已轮转则无法回溯。",
+            "requiresApproval": false,
+            "evidenceIds": [
+              "evd-tag-group-502-docker.logs"
+            ]
+          },
+          {
+            "purpose": "evidence_collection",
+            "target": "TagAdminBizServiceImpl.java 第106行及调用链",
+            "preconditions": [
+              "具备代码仓库读取权限",
+              "确认部署版本与所查分支一致"
+            ],
+            "operation": "查看pageTagGroup第106行实现及其条件判断、结果映射和外部调用，确定哪类输入走到抛异常分支，并与完整栈对照。",
+            "expectedResult": "明确触发条件及应修复代码还是修正数据。",
+            "risk": "只读查阅风险低；版本不一致结论可能失真。",
+            "requiresApproval": false,
+            "evidenceIds": [
+              "evd-tag-group-502-jfr.signal"
+            ]
+          },
+          {
+            "purpose": "verification",
+            "target": "POST /api/v1/tag/admin/tag-group/page，参数deptId=5,current=1,size=10",
+            "preconditions": [
+              "已完成日志与源码补证",
+              "在测试环境非生产流量窗口执行"
+            ],
+            "operation": "由人工在受控环境复现该请求，记录响应码与异常栈并与补证结论对比；修复后同参数复测，确认success=true且无异常栈。",
+            "expectedResult": "复现或排除该参数触发异常，验证修复有效。",
+            "risk": "可能再次触发异常并产生错误日志，须限测试节点。",
+            "requiresApproval": true,
+            "evidenceIds": [
+              "evd-tag-group-502-docker.logs",
+              "evd-tag-group-502-jfr.signal"
+            ]
+          }
+        ]
+      }
+    },
+    "findings": [
+      {
+        "role": "application_business",
+        "hypotheses": [
+          "TagAdminBizServiceImpl.pageTagGroup 第106行抛出未捕获 RuntimeException，导致接口返回502系统异常；具体触发条件（参数校验、数据映射或依赖调用）未知，需读源码确认。",
+          "deptId=5 的分页查询路径上存在未处理异常分支，但异常根因与外部依赖状态未见证据支持，无法确认。"
+        ],
+        "supportingEvidenceIds": [
+          "evd-tag-group-502-jfr.signal",
+          "evd-tag-group-502-docker.logs"
+        ],
+        "contradictingEvidenceIds": [],
+        "missingEvidence": [
+          "docker.logs"
+        ],
+        "confidence": 0.45,
+        "summary": "业务接口 POST /api/v1/tag/admin/tag-group/page 同一时刻在 JFR 与容器日志中出现 RuntimeException，栈定位到 TagAdminBizServiceImpl.pageTagGroup 第106行，日志记录 code=502、elapsed=25ms、success=false，仅1次事件。可确认应用层抛出未处理异常并返回系统异常；但日志为截断片段（仅4行，无异常 message 与 cause 详情），无源码，无法判定第106行的校验、映射或调用逻辑，也不能推断真实库存或外部依赖故障。",
+        "diagnosis": {
+          "observations": [
+            {
+              "statement": "同一时间点 JFR 记录 business.error，exceptionClass=java.lang.RuntimeException，message 为 Unhandled request exception，栈首帧为 TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。",
+              "evidenceIds": [
+                "evd-tag-group-502-jfr.signal"
+              ]
+            },
+            {
+              "statement": "容器日志显示同一时刻该 POST 请求 deptId=5,current=1,size=10 返回 code=502、msg=系统异常、success=false，耗时25ms，且日志标记 truncated=true，仅保留4行，未包含异常 message 与 cause 细节。",
+              "evidenceIds": [
+                "evd-tag-group-502-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "应用层 pageTagGroup 第106行存在未捕获的运行时异常（具体触发逻辑未知，需读源码或调用链证据确认）。",
+              "supportingEvidenceIds": [
+                "evd-tag-group-502-jfr.signal",
+                "evd-tag-group-502-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "第106行的具体代码逻辑与异常 message 未获取，无法区分是参数校验、结果映射还是下游调用失败。",
+            "日志被截断，缺失完整异常 cause 链，无法判断是否为包装后的依赖异常。",
+            "仅1次事件、耗时25ms，是否为稳定复现或偶发数据相关异常未知。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "data-asset-service / test-svc-02 容器日志与异常完整栈",
+              "preconditions": [
+                "需具备主机或容器日志读取权限，且确认当前日志轮转未覆盖该时间窗口"
+              ],
+              "operation": "拉取 2026-10-20T01:21:43 前后该容器的完整日志（非模型截断视图），获取 RuntimeException 的 message 与全部 Caused by 链，并记录是否有重复出现及涉及 deptId。",
+              "expectedResult": "获得完整异常原因链与出现次数，能区分数据相关异常与依赖异常。",
+              "risk": "读取日志为只读操作，风险低；若日志已轮转则无法回溯。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-tag-group-502-docker.logs"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "TagAdminBizServiceImpl.java 第106行附近源码与调用链",
+              "preconditions": [
+                "需具备代码仓库读取权限且确认部署版本与代码分支一致"
+              ],
+              "operation": "查看 pageTagGroup 第106行实现及其调用的条件判断、结果映射和外部依赖，确认哪类输入会走到抛异常分支，并与完整栈对照。",
+              "expectedResult": "明确具体触发条件及是否需修复代码或仅需数据修正。",
+              "risk": "只读查阅，风险低；若版本不一致结论可能失真。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-tag-group-502-jfr.signal"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "POST /api/v1/tag/admin/tag-group/page，参数 deptId=5,current=1,size=10",
+              "preconditions": [
+                "已完成日志与源码补证",
+                "在测试环境、非生产流量窗口内执行"
+              ],
+              "operation": "由人工在受控环境复现该请求并记录响应码与异常栈，对比补证结论；确认修复后同样参数返回 success=true。",
+              "expectedResult": "复现或排除该参数组合触发异常，验证修复有效。",
+              "risk": "可能再次触发异常并产生错误日志，需限定在测试节点执行。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-tag-group-502-docker.logs",
+                "evd-tag-group-502-jfr.signal"
+              ]
+            }
+          ]
+        },
+        "status": "completed"
+      }
+    ]
+  }
+}
