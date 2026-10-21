@@ -2556,7 +2556,8 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     ): IncidentRow | undefined {
       const eventTime = new Date(timestamp).getTime();
       const rows = listIncidentsByFingerprintStmt.all({ fingerprint }) as IncidentRow[];
-      if (rows.length === 0) {
+      if (!rows.some((incident) => ['OPEN', 'INVESTIGATING', 'NOTIFIED'].includes(incident.state)
+        || (incident.state === 'RECOVERED' && eventTime <= Date.parse(incident.last_seen)))) {
         const active = db.prepare("SELECT * FROM incidents WHERE fingerprint_version = 2 AND type = 'business.error' AND state IN ('OPEN', 'INVESTIGATING', 'NOTIFIED')").all() as IncidentRow[];
         for (const incident of active) {
           const eventId = store.listIncidentEventIds(incident.id)[0];

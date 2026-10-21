@@ -30,6 +30,28 @@ it('does not rewrite new episode fingerprints when the configured operation list
   } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
+it('ignores recovered history when configuration changes back during an active fault', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'notify-history-'));
+  const path = join(directory, 'agent.sqlite');
+  const unbound = { defaultUnknownImpactWaitMs: 1000, defaultObservationMaxGapMs: 1000, services: {}, healthRules: [] };
+  let store = createEventStore(path, unbound);
+  const event: OpsEvent = { schemaVersion: 1, id: 'history-a', time: '2026-10-21T02:00:00.000Z', source: 'application', nodeId: 'node', service: 'dataasset', type: 'business.error', severity: 'error', message: 'failed', attributes: { operation: 'GET /auth/authClientInfo', module: '/auth/authClientInfo', exceptionClass: 'java.lang.IllegalStateException' } };
+  const receive = (item: OpsEvent) => store.processBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [item] }, item.time, (value) => createIncidentEngine(store, { aggregationWindowMs: 300_000 }).processEvent(value, value.time));
+  try {
+    receive(event);
+    const historical = store.listIncidents()[0]!;
+    store.updateIncident(historical.id, { first_seen: historical.first_seen, last_seen: '2026-10-21T02:00:01.000Z', event_count: 1, severity: 'error', state: 'RECOVERED' });
+    store.close(); store = createEventStore(path);
+    receive({ ...event, id: 'active-b', time: '2026-10-21T02:01:00.000Z' });
+    const active = store.findIncidentByEventId('active-b')!;
+    assert.notEqual(active.id, historical.id);
+    store.close(); store = createEventStore(path, unbound);
+    receive({ ...event, id: 'active-b-again', time: '2026-10-21T02:02:00.000Z' });
+    assert.equal(store.findIncidentByEventId('active-b-again')?.id, active.id);
+    assert.equal(store.incidentCount(), 2);
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 it('adds legacy markers without reevaluating old incidents or changing old queue payloads', () => {
   const directory = mkdtempSync(join(tmpdir(), 'notify-legacy-'));
   const path = join(directory, 'agent.sqlite');

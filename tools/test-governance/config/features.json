@@ -557,7 +557,9 @@
         "apps/agent/src/polling-worker.ts",
         "apps/agent/src/notifier.ts",
         "apps/agent/src/notification-policy.ts",
-        "apps/agent/src/notification-stored-facts.ts"
+        "apps/agent/src/notification-stored-facts.ts",
+        "apps/agent/src/notification-config.ts",
+        "apps/agent/src/notification-decision.ts"
       ],
       "invariants": [
         {
