@@ -5,6 +5,8 @@ export interface HealthTarget {
   url: string;
   method?: string;
   intervalMs?: number;
+  ruleId?: string;
+  ruleVersion?: number;
   /** Optional container mapping used for deterministic follow-up evidence. */
   container?: string;
 }
@@ -150,6 +152,8 @@ function parseHealthTargets(): HealthTarget[] {
     const method = candidate['method'] ?? 'GET';
     const intervalMs = candidate['intervalMs'];
     const container = candidate['container'];
+    const ruleId = candidate['ruleId'];
+    const ruleVersion = candidate['ruleVersion'];
     if (typeof name !== 'string' || !name || typeof url !== 'string' || !url) {
       throw new Error('Each health target requires name and url');
     }
@@ -177,12 +181,23 @@ function parseHealthTargets(): HealthTarget[] {
     if (container !== undefined && (typeof container !== 'string' || !container)) {
       throw new Error(`Health target container must be a non-empty string: ${name}`);
     }
+    if (ruleId !== undefined && (typeof ruleId !== 'string' || !ruleId.trim())) {
+      throw new Error(`Health target ruleId must be a non-empty string: ${name}`);
+    }
+    if (
+      ruleVersion !== undefined &&
+      (typeof ruleVersion !== 'number' || !Number.isSafeInteger(ruleVersion) || ruleVersion <= 0)
+    ) {
+      throw new Error(`Health target ruleVersion must be a positive integer: ${name}`);
+    }
     return {
       name,
       url: parsedUrl.toString(),
       method: method.toUpperCase(),
       ...(intervalMs !== undefined ? { intervalMs } : {}),
       ...(container !== undefined ? { container } : {}),
+      ...(ruleId !== undefined ? { ruleId } : {}),
+      ...(ruleVersion !== undefined ? { ruleVersion } : {}),
     };
   });
 }

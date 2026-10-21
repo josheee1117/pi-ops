@@ -119,7 +119,8 @@ describe('hysteresis', () => {
 // ── HTTP health transitions ──────────────────────────────────────────────────
 
 describe('health detector', () => {
-  it('emits one failure then one recovery for 200 → fail → 200 (no flood)', async () => {
+  it('emits one bound failure then one bound recovery with sample and transition metadata', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-21T02:00:00Z') });
     const statuses: number[] = [];
     const probe: ProbeFn = async () => {
       const status = statuses.shift() ?? 200;
@@ -134,6 +135,9 @@ describe('health detector', () => {
           name: 'dataease',
           url: 'http://127.0.0.1:18080/health',
           container: 'dataease',
+          ruleId: 'dataease-http-health',
+          ruleVersion: 3,
+          intervalMs: 7500,
         }],
       }),
       sender,
@@ -150,6 +154,7 @@ describe('health detector', () => {
     statuses.push(500, 500);
     await detector.pollOnce();
     assert.equal(sender.events.length, 0);
+    t.mock.timers.tick(7500);
     await detector.pollOnce();
     assert.equal(sender.events.length, 1);
     assert.equal(sender.events[0]!.type, 'health.failure');
@@ -157,6 +162,21 @@ describe('health detector', () => {
     assert.equal(sender.events[0]!.service, 'dataease');
     assert.equal(sender.events[0]!.attributes.containerName, 'dataease');
     assert.equal(sender.events[0]!.attributes.detector, 'http.health');
+    assert.equal(sender.events[0]!.time, '2026-10-21T02:00:07.500Z');
+    assert.deepEqual(sender.events[0]!.attributes, {
+      detector: 'http.health',
+      target: 'dataease',
+      url: 'http://127.0.0.1:18080/health',
+      method: 'GET',
+      containerName: 'dataease',
+      status: 500,
+      error: undefined,
+      ruleId: 'dataease-http-health',
+      ruleVersion: 3,
+      failureSamples: 2,
+      intervalMs: 7500,
+      transitionTime: sender.events[0]!.time,
+    });
 
     // Flood of failures — still one event
     for (let i = 0; i < 10; i++) {
@@ -170,10 +190,25 @@ describe('health detector', () => {
     await detector.pollOnce();
     assert.equal(sender.events.length, 1);
     statuses.push(200);
+    t.mock.timers.tick(7500);
     await detector.pollOnce();
     assert.equal(sender.events.length, 2);
     assert.equal(sender.events[1]!.type, 'health.recovered');
     assert.equal(sender.events[1]!.severity, 'info');
+    assert.equal(sender.events[1]!.time, '2026-10-21T02:00:15.000Z');
+    assert.deepEqual(sender.events[1]!.attributes, {
+      detector: 'http.health',
+      target: 'dataease',
+      url: 'http://127.0.0.1:18080/health',
+      method: 'GET',
+      containerName: 'dataease',
+      status: 200,
+      ruleId: 'dataease-http-health',
+      ruleVersion: 3,
+      failureSamples: 2,
+      intervalMs: 7500,
+      transitionTime: sender.events[1]!.time,
+    });
 
     // Healthy flood — no extra events
     for (let i = 0; i < 10; i++) {
@@ -184,6 +219,96 @@ describe('health detector', () => {
 
     detector.stop();
   });
+
+  it('keeps legacy events unbound and counts consecutive samples rather than seconds', async () => {
+    let ok = false;
+    const sender = createCaptureSender();
+    const detector = createHealthDetector(makeNodeAgentConfig({
+      healthFailureDuration: 3,
+      detectorPollIntervalMs: 4200,
+      healthTargets: [{ name: 'legacy', url: 'http://localhost/health' }],
+    }), sender, async () => ok ? { ok, status: 200 } : { ok, error: 'offline' });
+
+    await detector.pollOnce();
+    await detector.pollOnce();
+    ok = true;
+    await detector.pollOnce();
+    ok = false;
+    await detector.pollOnce();
+    await detector.pollOnce();
+    assert.equal(sender.events.length, 0);
+    await detector.pollOnce();
+    assert.equal(sender.events[0]?.type, 'health.failure');
+    assert.equal(sender.events[0]?.attributes.error, 'offline');
+
+    ok = true;
+    await detector.pollOnce();
+    await detector.pollOnce();
+    ok = false;
+    await detector.pollOnce();
+    ok = true;
+    await detector.pollOnce();
+    await detector.pollOnce();
+    assert.equal(sender.events.length, 1);
+    await detector.pollOnce();
+    assert.equal(sender.events[1]?.type, 'health.recovered');
+
+    for (const event of sender.events) {
+      assert.equal(Object.hasOwn(event.attributes, 'ruleId'), false);
+      assert.equal(Object.hasOwn(event.attributes, 'ruleVersion'), false);
+      assert.equal(event.attributes.failureSamples, 3);
+      assert.equal(event.attributes.intervalMs, 4200);
+      assert.equal(event.attributes.transitionTime, event.time);
+    }
+    detector.stop();
+  });
+
+  const sharedTarget = {
+    name: 'shared', url: 'http://localhost/health', method: 'GET', container: 'api',
+  };
+  for (const [field, value] of Object.entries({
+    name: 'other', url: 'http://localhost/other', method: 'HEAD', container: 'other',
+  })) {
+    it(`isolates failure and recovery state by target ${field}`, async () => {
+      const targets = [sharedTarget, { ...sharedTarget, [field]: value }];
+      const healthy = [false, false];
+      let calls = 0;
+      const sender = createCaptureSender();
+      const detector = createHealthDetector(makeNodeAgentConfig({
+        healthFailureDuration: 2,
+        healthTargets: targets,
+      }), sender, async () => ({ ok: healthy[calls++ % 2]! }));
+
+      await detector.pollOnce();
+      assert.equal(sender.events.length, 0);
+      await detector.pollOnce();
+      assert.equal(sender.events.length, 2);
+      assert.ok(sender.events.every((event) => event.type === 'health.failure'));
+      healthy[0] = true;
+      await detector.pollOnce();
+      assert.equal(sender.events.length, 2);
+      await detector.pollOnce();
+      assert.equal(sender.events.length, 3);
+      healthy[1] = true;
+      await detector.pollOnce();
+      assert.equal(sender.events.length, 3);
+      await detector.pollOnce();
+      assert.equal(sender.events.length, 4);
+
+      for (const [index, target] of targets.entries()) {
+        const failure = sender.events[index]!;
+        const recovery = sender.events[index + 2]!;
+        assert.equal(recovery.type, 'health.recovered');
+        for (const event of [failure, recovery]) {
+          assert.equal(event.service, target.name);
+          assert.equal(event.attributes.url, target.url);
+          assert.equal(event.attributes.method, target.method);
+          assert.equal(event.attributes.containerName, target.container);
+        }
+      }
+      detector.stop();
+    });
+  }
 
   it('does not treat a single failed probe as a transition', async () => {
     const probe: ProbeFn = async () => ({ ok: false, status: 503 });
