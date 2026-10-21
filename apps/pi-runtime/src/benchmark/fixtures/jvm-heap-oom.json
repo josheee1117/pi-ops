@@ -1,0 +1,256 @@
+{
+  "id": "jvm-heap-oom",
+  "source": "deploy/local/data/jdk17/20261004-053012-36c038/artifacts/after-stop-pi-ops-tables.json",
+  "sha256": "5b579c1f469701ee02ef652e26b1e42e1771cc3fcece34383f8c9682ff136ed3",
+  "incident": {
+    "id": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+    "service": "order-service-本地演练-20261004-053012-36c038",
+    "node_id": "local-dev",
+    "type": "jvm.oom",
+    "state": "OPEN",
+    "fingerprint": "[\"jfr\",\"local-dev\",\"order-service-本地演练-20261004-053012-36c038\",\"jvm.oom\"]",
+    "first_seen": "2026-10-04T05:30:25.213503029Z",
+    "last_seen": "2026-10-04T05:30:25.213503029Z",
+    "event_count": 1,
+    "severity": "critical"
+  },
+  "initial": [
+    {
+      "id": "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+      "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "nodeId": "local-dev",
+      "source": "jfr",
+      "kind": "jfr.signal",
+      "collectedAt": "2026-10-04T05:30:25.213503029Z",
+      "status": "succeeded",
+      "data": {
+        "eventId": "7756319e-ebdc-4c1d-996a-c1737569dac1",
+        "eventType": "jvm.oom",
+        "observedAt": "2026-10-04T05:30:25.213503029Z",
+        "message": "com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space",
+        "attributes": {
+          "containerName": "order-local-drill-20261004-053012-36c038",
+          "jfrEventName": "com.example.MemoryFailure",
+          "jfrStartTime": "2026-10-04T05:30:25.213503029Z",
+          "jfrEndTime": "2026-10-04T05:30:25.213503029Z",
+          "exceptionClass": "java.lang.OutOfMemoryError",
+          "exceptionMessage": "Java heap space",
+          "stackTrace": "java.lang.OutOfMemoryError: Java heap space\n\tat Drill.exhaustHeap(Drill.java:285)\n\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\n\tat java.base/java.lang.Thread.run(Thread.java:840)",
+          "jfrStackTrace": "{\n  truncated = false\n  frames = [\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\n}\n"
+        },
+        "semanticType": "jvm.oom"
+      }
+    },
+    {
+      "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+      "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "nodeId": "local-dev",
+      "source": "host",
+      "kind": "host.memory",
+      "collectedAt": "2026-10-04T05:30:25.318Z",
+      "status": "succeeded",
+      "data": {
+        "total": 12601012224,
+        "free": 11419987968,
+        "used": 1181024256,
+        "usedPercent": 9.37245544251287,
+        "usagePercent": "9.37",
+        "uptime": 49221.48
+      }
+    },
+    {
+      "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+      "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.inspect",
+      "collectedAt": "2026-10-04T05:30:25.320Z",
+      "status": "succeeded",
+      "data": {
+        "Id": "a03aa12d7ee3b7996bf8fb4abdbacf00bad271707afeb9d7f7f3814364695bf7",
+        "Name": "/order-local-drill-20261004-053012-36c038",
+        "State": {
+          "Status": "running",
+          "Running": true,
+          "StartedAt": "2026-10-04T05:30:13.873953679Z",
+          "OOMKilled": false,
+          "ExitCode": 0,
+          "Health": {}
+        },
+        "RestartCount": 0,
+        "HostConfig": {
+          "Memory": 536870912,
+          "MemorySwap": 536870912,
+          "NanoCpus": 2000000000,
+          "CpuQuota": 0,
+          "CpuPeriod": 0,
+          "CpusetCpus": ""
+        },
+        "Config": {
+          "Image": "pi-ops-jdk17-local-jdk17-drill"
+        }
+      }
+    },
+    {
+      "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+      "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.logs",
+      "collectedAt": "2026-10-04T05:30:25.321Z",
+      "status": "succeeded",
+      "data": {
+        "lines": [
+          "JDK17 ready; RecordingStream active; sender=true",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:15.183466153Z\",\"jfrEndTime\":\"2026-10-04T05:30:15.183466153Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.0}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:16.193073265Z\",\"jfrEndTime\":\"2026-10-04T05:30:16.193073265Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.010891089215874672,\"jvmSystem\":0.0,\"machineTotal\":0.014851485379040241}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:17.205233643Z\",\"jfrEndTime\":\"2026-10-04T05:30:17.205233643Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.004945598542690277,\"jvmSystem\":0.0,\"machineTotal\":0.004945598542690277}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:18.214267510Z\",\"jfrEndTime\":\"2026-10-04T05:30:18.214267510Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.047571852803230286}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:19.224778780Z\",\"jfrEndTime\":\"2026-10-04T05:30:19.224778780Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.011881188489496708,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.05247524753212929}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:20.228579156Z\",\"jfrEndTime\":\"2026-10-04T05:30:20.228579156Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.016949152573943138}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:21.231030961Z\",\"jfrEndTime\":\"2026-10-04T05:30:21.231030961Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0020000000949949026,\"jvmSystem\":0.0,\"machineTotal\":0.0020000000949949026}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:22.238108222Z\",\"jfrEndTime\":\"2026-10-04T05:30:22.238108222Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.930486558005214E-4,\"jvmSystem\":0.0,\"machineTotal\":0.003968254197388887}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:23.248863781Z\",\"jfrEndTime\":\"2026-10-04T05:30:23.248863781Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":9.910803055390716E-4,\"machineTotal\":0.02777777798473835}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:24.259390925Z\",\"jfrEndTime\":\"2026-10-04T05:30:24.259390925Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.020812686532735825}",
+          "java.lang.OutOfMemoryError: Java heap space",
+          "\tat Drill.exhaustHeap(Drill.java:285)",
+          "\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)",
+          "\tat java.base/java.lang.Thread.run(Thread.java:840)",
+          "Allocation work completed; retained memory released",
+          "JFR_EVENT {\"producer\":{\"id\":\"order-service-本地演练-20261004-053012-36c038-jfr\",\"version\":\"0.2.0\",\"type\":\"application\"},\"events\":[{\"schemaVersion\":1,\"id\":\"7756319e-ebdc-4c1d-996a-c1737569dac1\",\"time\":\"2026-10-04T05:30:25.213503029Z\",\"source\":\"jfr\",\"nodeId\":\"local-dev\",\"service\":\"order-service-本地演练-20261004-053012-36c038\",\"type\":\"jvm.oom\",\"severity\":\"critical\",\"message\":\"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\",\"attributes\":{\"jfrEventName\":\"com.example.MemoryFailure\",\"jfrStartTime\":\"2026-10-04T05:30:25.213503029Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.213503029Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"exceptionClass\":\"java.lang.OutOfMemoryError\",\"exceptionMessage\":\"Java heap space\",\"stackTrace\":\"java.lang.OutOfMemoryError: Java heap space\\n\\tat Drill.exhaustHeap(Drill.java:285)\\n\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\n\\tat java.base/java.lang.Thread.run(Thread.java:840)\",\"jfrStackTrace\":\"{\\n  truncated = false\\n  frames = [\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\n}\\n\"}}]}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:25.270812561Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.270812561Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.013847675174474716,\"jvmSystem\":0.0019782392773777246,\"machineTotal\":0.02571711130440235}",
+          "EventBatch HTTP 200"
+        ],
+        "truncated": false
+      }
+    }
+  ],
+  "supplemental": [
+    {
+      "id": "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.logs",
+      "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.logs",
+      "collectedAt": "2026-10-04T05:31:24.076Z",
+      "status": "succeeded",
+      "data": {
+        "lines": [
+          "JDK17 ready; RecordingStream active; sender=true",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:15.183466153Z\",\"jfrEndTime\":\"2026-10-04T05:30:15.183466153Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.0}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:16.193073265Z\",\"jfrEndTime\":\"2026-10-04T05:30:16.193073265Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.010891089215874672,\"jvmSystem\":0.0,\"machineTotal\":0.014851485379040241}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:17.205233643Z\",\"jfrEndTime\":\"2026-10-04T05:30:17.205233643Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.004945598542690277,\"jvmSystem\":0.0,\"machineTotal\":0.004945598542690277}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:18.214267510Z\",\"jfrEndTime\":\"2026-10-04T05:30:18.214267510Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.047571852803230286}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:19.224778780Z\",\"jfrEndTime\":\"2026-10-04T05:30:19.224778780Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.011881188489496708,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.05247524753212929}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:20.228579156Z\",\"jfrEndTime\":\"2026-10-04T05:30:20.228579156Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.016949152573943138}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:21.231030961Z\",\"jfrEndTime\":\"2026-10-04T05:30:21.231030961Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0020000000949949026,\"jvmSystem\":0.0,\"machineTotal\":0.0020000000949949026}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:22.238108222Z\",\"jfrEndTime\":\"2026-10-04T05:30:22.238108222Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.930486558005214E-4,\"jvmSystem\":0.0,\"machineTotal\":0.003968254197388887}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:23.248863781Z\",\"jfrEndTime\":\"2026-10-04T05:30:23.248863781Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":9.910803055390716E-4,\"machineTotal\":0.02777777798473835}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:24.259390925Z\",\"jfrEndTime\":\"2026-10-04T05:30:24.259390925Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.020812686532735825}",
+          "java.lang.OutOfMemoryError: Java heap space",
+          "\tat Drill.exhaustHeap(Drill.java:285)",
+          "\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)",
+          "\tat java.base/java.lang.Thread.run(Thread.java:840)",
+          "Allocation work completed; retained memory released",
+          "JFR_EVENT {\"producer\":{\"id\":\"order-service-本地演练-20261004-053012-36c038-jfr\",\"version\":\"0.2.0\",\"type\":\"application\"},\"events\":[{\"schemaVersion\":1,\"id\":\"7756319e-ebdc-4c1d-996a-c1737569dac1\",\"time\":\"2026-10-04T05:30:25.213503029Z\",\"source\":\"jfr\",\"nodeId\":\"local-dev\",\"service\":\"order-service-本地演练-20261004-053012-36c038\",\"type\":\"jvm.oom\",\"severity\":\"critical\",\"message\":\"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\",\"attributes\":{\"jfrEventName\":\"com.example.MemoryFailure\",\"jfrStartTime\":\"2026-10-04T05:30:25.213503029Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.213503029Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"exceptionClass\":\"java.lang.OutOfMemoryError\",\"exceptionMessage\":\"Java heap space\",\"stackTrace\":\"java.lang.OutOfMemoryError: Java heap space\\n\\tat Drill.exhaustHeap(Drill.java:285)\\n\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\n\\tat java.base/java.lang.Thread.run(Thread.java:840)\",\"jfrStackTrace\":\"{\\n  truncated = false\\n  frames = [\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\n}\\n\"}}]}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:25.270812561Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.270812561Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.013847675174474716,\"jvmSystem\":0.0019782392773777246,\"machineTotal\":0.02571711130440235}",
+          "EventBatch HTTP 200",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:26.275332971Z\",\"jfrEndTime\":\"2026-10-04T05:30:26.275332971Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.01593625545501709,\"jvmSystem\":0.0,\"machineTotal\":0.03585657477378845}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:27.279499635Z\",\"jfrEndTime\":\"2026-10-04T05:30:27.279499635Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.011952191591262817,\"jvmSystem\":0.0,\"machineTotal\":0.014940239489078522}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:28.282600768Z\",\"jfrEndTime\":\"2026-10-04T05:30:28.282600768Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0019960079807788134,\"jvmSystem\":9.980039903894067E-4,\"machineTotal\":0.009970089420676231}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:29.293304744Z\",\"jfrEndTime\":\"2026-10-04T05:30:29.293304744Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.0178217813372612}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:30.301711700Z\",\"jfrEndTime\":\"2026-10-04T05:30:30.301711700Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0019841270986944437,\"jvmSystem\":0.0,\"machineTotal\":0.010912698693573475}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:31.303081350Z\",\"jfrEndTime\":\"2026-10-04T05:30:31.303081350Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010010009864345193,\"jvmSystem\":0.0,\"machineTotal\":0.0010010009864345193}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:32.312018843Z\",\"jfrEndTime\":\"2026-10-04T05:30:32.312018843Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":9.920635493472219E-4,\"machineTotal\":0.0019841270986944437}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:33.314405107Z\",\"jfrEndTime\":\"2026-10-04T05:30:33.314405107Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":0.0,\"machineTotal\":0.008991008624434471}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:34.317418699Z\",\"jfrEndTime\":\"2026-10-04T05:30:34.317418699Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.017946161329746246}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:35.318027897Z\",\"jfrEndTime\":\"2026-10-04T05:30:35.318027897Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.01601601578295231}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:36.326587727Z\",\"jfrEndTime\":\"2026-10-04T05:30:36.326587727Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0019860973116010427,\"jvmSystem\":0.0,\"machineTotal\":0.0039721946232020855}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:37.328079583Z\",\"jfrEndTime\":\"2026-10-04T05:30:37.328079583Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.006000000052154064}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:38.337580821Z\",\"jfrEndTime\":\"2026-10-04T05:30:38.337580821Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.012884043157100677}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:39.338592515Z\",\"jfrEndTime\":\"2026-10-04T05:30:39.338592515Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.01899999938905239}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:40.348108503Z\",\"jfrEndTime\":\"2026-10-04T05:30:40.348108503Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.015841584652662277}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:41.349950897Z\",\"jfrEndTime\":\"2026-10-04T05:30:41.349950897Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.001998001942411065,\"jvmSystem\":0.0,\"machineTotal\":0.004995005205273628}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:42.358888057Z\",\"jfrEndTime\":\"2026-10-04T05:30:42.358888057Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.94035741314292E-4,\"jvmSystem\":0.0,\"machineTotal\":0.0029821074567735195}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:43.362283895Z\",\"jfrEndTime\":\"2026-10-04T05:30:43.362283895Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":0.0,\"machineTotal\":0.013930348679423332}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:44.366943262Z\",\"jfrEndTime\":\"2026-10-04T05:30:44.366943262Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":9.950249223038554E-4,\"machineTotal\":0.020895522087812424}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:45.367241964Z\",\"jfrEndTime\":\"2026-10-04T05:30:45.367241964Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0020040080416947603,\"jvmSystem\":0.0,\"machineTotal\":0.012024047784507275}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:46.374741846Z\",\"jfrEndTime\":\"2026-10-04T05:30:46.374741846Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.011904762126505375,\"jvmSystem\":0.0,\"machineTotal\":0.01587301678955555}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:47.379880292Z\",\"jfrEndTime\":\"2026-10-04T05:30:47.379880292Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.94035741314292E-4,\"jvmSystem\":0.0,\"machineTotal\":0.004970178939402103}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:48.387955876Z\",\"jfrEndTime\":\"2026-10-04T05:30:48.387955876Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":9.920635493472219E-4,\"machineTotal\":0.01587301678955555}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:49.394299936Z\",\"jfrEndTime\":\"2026-10-04T05:30:49.394299936Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":0.0,\"machineTotal\":0.019900497049093246}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:50.404257544Z\",\"jfrEndTime\":\"2026-10-04T05:30:50.404257544Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":0.0178217813372612}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:51.405925024Z\",\"jfrEndTime\":\"2026-10-04T05:30:51.405925024Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0020000000949949026,\"jvmSystem\":0.0,\"machineTotal\":0.004999999888241291}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:52.414815851Z\",\"jfrEndTime\":\"2026-10-04T05:30:52.414815851Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":0.0,\"machineTotal\":0.003968254197388887}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:53.423009809Z\",\"jfrEndTime\":\"2026-10-04T05:30:53.423009809Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.009920635260641575}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:54.424822996Z\",\"jfrEndTime\":\"2026-10-04T05:30:54.424822996Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0020000000949949026,\"jvmSystem\":0.0,\"machineTotal\":0.017999999225139618}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:55.429521030Z\",\"jfrEndTime\":\"2026-10-04T05:30:55.429521030Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":9.950249223038554E-4,\"machineTotal\":0.011940298601984978}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:56.432276999Z\",\"jfrEndTime\":\"2026-10-04T05:30:56.432276999Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0019960079807788134,\"jvmSystem\":0.0,\"machineTotal\":0.005988024175167084}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:57.440513207Z\",\"jfrEndTime\":\"2026-10-04T05:30:57.440513207Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":9.94035741314292E-4}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:58.441281362Z\",\"jfrEndTime\":\"2026-10-04T05:30:58.441281362Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.010989011265337467}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:59.442146641Z\",\"jfrEndTime\":\"2026-10-04T05:30:59.442146641Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.013000000268220901}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:00.446861675Z\",\"jfrEndTime\":\"2026-10-04T05:31:00.446861675Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":9.950249223038554E-4,\"machineTotal\":0.022885572165250778}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:01.448998316Z\",\"jfrEndTime\":\"2026-10-04T05:31:01.448998316Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":9.990009712055326E-4}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:02.450919044Z\",\"jfrEndTime\":\"2026-10-04T05:31:02.450919044Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.003992015961557627}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:03.452598148Z\",\"jfrEndTime\":\"2026-10-04T05:31:03.452598148Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.0139860138297081}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:04.459269580Z\",\"jfrEndTime\":\"2026-10-04T05:31:04.459269580Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":9.950249223038554E-4,\"machineTotal\":0.011940298601984978}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:05.461274140Z\",\"jfrEndTime\":\"2026-10-04T05:31:05.461274140Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":0.0,\"machineTotal\":0.02195608802139759}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:06.464814934Z\",\"jfrEndTime\":\"2026-10-04T05:31:06.464814934Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.005982053931802511}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:07.474629294Z\",\"jfrEndTime\":\"2026-10-04T05:31:07.474629294Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":0.0,\"machineTotal\":0.003968254197388887}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:08.485122064Z\",\"jfrEndTime\":\"2026-10-04T05:31:08.485122064Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.01287128683179617}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:09.495679833Z\",\"jfrEndTime\":\"2026-10-04T05:31:09.495679833Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":0.011881188489496708}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:10.495805411Z\",\"jfrEndTime\":\"2026-10-04T05:31:10.495805411Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010010009864345193,\"jvmSystem\":0.0,\"machineTotal\":0.022022021934390068}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:11.504501906Z\",\"jfrEndTime\":\"2026-10-04T05:31:11.504501906Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.930486558005214E-4,\"jvmSystem\":0.0,\"machineTotal\":0.002979146083816886}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:12.512610282Z\",\"jfrEndTime\":\"2026-10-04T05:31:12.512610282Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":9.94035741314292E-4,\"machineTotal\":0.003976142965257168}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:13.516179035Z\",\"jfrEndTime\":\"2026-10-04T05:31:13.516179035Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.011964107863605022}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:14.517433185Z\",\"jfrEndTime\":\"2026-10-04T05:31:14.517433185Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.012000000104308128}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:15.527455960Z\",\"jfrEndTime\":\"2026-10-04T05:31:15.527455960Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0019782392773777246,\"jvmSystem\":0.0,\"machineTotal\":0.018793273717164993}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:16.531956454Z\",\"jfrEndTime\":\"2026-10-04T05:31:16.531956454Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":9.970089886337519E-4,\"machineTotal\":0.0019940179772675037}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:17.540985779Z\",\"jfrEndTime\":\"2026-10-04T05:31:17.540985779Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":0.003960396163165569}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:18.550394768Z\",\"jfrEndTime\":\"2026-10-04T05:31:18.550394768Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.94035741314292E-4,\"jvmSystem\":0.0,\"machineTotal\":0.009940357878804207}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:19.560760955Z\",\"jfrEndTime\":\"2026-10-04T05:31:19.560760955Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.012845849618315697}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:20.565076784Z\",\"jfrEndTime\":\"2026-10-04T05:31:20.565076784Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.02193419821560383}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:21.569489779Z\",\"jfrEndTime\":\"2026-10-04T05:31:21.569489779Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":0.0,\"machineTotal\":0.0019960079807788134}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:22.571574963Z\",\"jfrEndTime\":\"2026-10-04T05:31:22.571574963Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":9.980039903894067E-4,\"machineTotal\":0.004990019835531712}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:31:23.572064871Z\",\"jfrEndTime\":\"2026-10-04T05:31:23.572064871Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.010999999940395355}"
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "id": "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats",
+      "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.stats",
+      "collectedAt": "2026-10-04T05:31:25.125Z",
+      "status": "succeeded",
+      "data": {
+        "read": "2026-10-04T05:31:25.121700824Z",
+        "preread": "2026-10-04T05:31:24.089472014Z",
+        "cpu_stats": {
+          "cpu_usage": {
+            "total_usage": 2425638000
+          },
+          "system_cpu_usage": 492559950000000,
+          "online_cpus": 10
+        },
+        "precpu_stats": {
+          "cpu_usage": {
+            "total_usage": 2417238000
+          },
+          "system_cpu_usage": 492549820000000,
+          "online_cpus": 10
+        },
+        "memory_stats": {
+          "usage": 206823424,
+          "limit": 536870912
+        },
+        "pids_stats": {
+          "current": 30,
+          "limit": 18446744073709552000
+        }
+      }
+    }
+  ]
+}

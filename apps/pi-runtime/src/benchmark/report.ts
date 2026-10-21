@@ -41,6 +41,23 @@ export function buildReport(
   };
 }
 
+export function renderMessageReport(results: CaseResult[]): string {
+  const lines = ['# 真实模型值班消息评测', '', '以下消息来自 agent 渲染器的 fake fetch 捕获，没有外发。自动通过不等于能推进恢复。', '',
+    '| 案例 | 模型 | thinking | 输入 token | 输出 token | 耗时 ms | 消息字节 | 自动结果 |',
+    '|---|---|---|---:|---:|---:|---:|---|'];
+  for (const result of results) {
+    lines.push(`| ${result.caseId} | ${result.provider}/${result.model} | ${result.thinking.effective ?? 'unknown'} | ${result.tokenUsage?.input ?? 'unknown'} | ${result.tokenUsage?.output ?? 'unknown'} | ${result.latencyMs} | ${result.message?.bytes ?? '未生成'} | ${result.messageEvaluation?.hardPass === true && result.evaluation?.hardPass === true ? '通过' : '未通过'} |`);
+  }
+  for (const result of results) {
+    lines.push('', `## ${result.caseId}`, '', `状态为 ${result.status}。${result.error ?? ''}`, '');
+    const checks = { ...result.evaluation?.checks, ...result.messageEvaluation?.checks };
+    if (!Object.keys(checks).length) lines.push('未形成报告，自动内容检查未执行，不能计为通过。');
+    for (const [name, value] of Object.entries(checks)) lines.push(`- ${name} ${value.status}。${value.detail ?? ''}`);
+    lines.push('', '### 最终消息原文', '', '```text', result.message?.content ?? '未生成最终消息。没有结构化报告，未调用企微渲染器。', '```');
+  }
+  return lines.join('\n') + '\n';
+}
+
 function checkMark(ok: boolean | undefined | null): string {
   if (ok === undefined || ok === null) return '—';
   return ok ? '✅' : '❌';

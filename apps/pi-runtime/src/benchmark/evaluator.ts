@@ -2,8 +2,11 @@ import {
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
   type SpecialistFinding,
+  diagnosisEvidenceIds,
+  type RuntimeInvestigationReportInput,
 } from '@pi-ops/protocol';
 import type { BenchmarkCase, BenchmarkEvidence } from './fixtures.js';
+import type { MessageOracle } from './message-cases.js';
 
 /**
  * Deterministic hard evaluation for the JVM Diagnosis Benchmark.
@@ -59,6 +62,7 @@ export interface BenchmarkRunOutput {
     contradictingEvidenceIds: string[];
     confidence: number;
     recommendation: string;
+    diagnosis?: RuntimeInvestigationReportInput['diagnosis'];
   };
   findings: SpecialistFinding[];
 }
@@ -75,6 +79,46 @@ const REMEDIATION_VOCABULARY = [
   'kill',
   'redeploy',
 ] as const;
+
+export interface MessageEvaluation {
+  checks: Record<string, HardCheck>;
+  purposes: Record<string, { inDiagnosis: boolean; inMessage: boolean }>;
+  forbiddenMatches: string[];
+  hardPass: boolean;
+}
+
+export function evaluateMessage(
+  oracle: MessageOracle,
+  report: RuntimeInvestigationReportInput | undefined,
+  findings: SpecialistFinding[],
+  evidence: BenchmarkEvidence[],
+  message: string,
+): MessageEvaluation {
+  const actions = report?.diagnosis?.actions ?? [];
+  const ids = new Set(evidence.map((item) => item.id));
+  const cited = [...diagnosisEvidenceIds(report?.diagnosis), ...(report?.supportingEvidenceIds ?? []), ...(report?.contradictingEvidenceIds ?? []),
+    ...findings.flatMap((finding) => [...finding.supportingEvidenceIds, ...finding.contradictingEvidenceIds, ...diagnosisEvidenceIds(finding.diagnosis)])];
+  const foreign = cited.filter((id) => !ids.has(id));
+  const prose = [report?.hypothesis, report?.recommendation, JSON.stringify(report?.diagnosis), message,
+    ...findings.flatMap((finding) => [finding.summary, ...finding.hypotheses, JSON.stringify(finding.diagnosis)])].join('\n');
+  const forbiddenMatches = oracle.forbiddenClaimPatterns.flatMap((pattern) => prose.match(new RegExp(pattern, 'gi')) ?? []);
+  const labels = { mitigation: '止损', repair: '修复', verification: '验证' };
+  const purposes = Object.fromEntries(Object.entries(labels).map(([purpose, label]) => [purpose, {
+    inDiagnosis: actions.some((action) => action.purpose === purpose),
+    inMessage: new RegExp(`${label}(?:（需批准）)?：`).test(message),
+  }]));
+  const checks = {
+    structuredDiagnosis: check(report?.diagnosis ? 'pass' : 'fail'),
+    actionsComplete: check(actions.length > 0 && actions.every((action) => [action.target, action.operation, action.expectedResult].every((value) => value.trim().length > 0)) ? 'pass' : 'fail'),
+    citationsExist: check(foreign.length === 0 ? 'pass' : 'fail', foreign.join(', ')),
+    forbiddenAttributionScreen: check(forbiddenMatches.length === 0 ? 'pass' : 'fail', '固定断言模式筛查，不代表语义上不存在禁止归因。'),
+    messageWithinLimit: check(Buffer.byteLength(message) <= 4000 ? 'pass' : 'fail', `${Buffer.byteLength(message)} bytes`),
+    mitigationVisible: check(purposes.mitigation?.inMessage ? 'pass' : 'fail'),
+    repairOrUnknownVisible: check(purposes.repair?.inMessage || message.includes('修复尚未确定') ? 'pass' : 'fail'),
+    verificationVisible: check(purposes.verification?.inMessage ? 'pass' : 'fail'),
+  };
+  return { checks, purposes, forbiddenMatches, hardPass: Object.values(checks).every((item) => item.status !== 'fail') };
+}
 
 function check(status: CheckStatus, detail?: string): HardCheck {
   return detail ? { status, detail } : { status };
@@ -98,7 +142,8 @@ export function evaluateCase(
   const citedEvidenceIds = uniq([
     ...(report?.supportingEvidenceIds ?? []),
     ...(report?.contradictingEvidenceIds ?? []),
-    ...findings.flatMap((item) => [...item.supportingEvidenceIds, ...item.contradictingEvidenceIds]),
+    ...diagnosisEvidenceIds(report?.diagnosis),
+    ...findings.flatMap((item) => [...item.supportingEvidenceIds, ...item.contradictingEvidenceIds, ...diagnosisEvidenceIds(item.diagnosis)]),
   ]);
   const missingEvidenceRequested = uniq(findings.flatMap((item) => item.missingEvidence));
   const validIds = citedEvidenceIds.filter((id) => evidenceById.has(id));

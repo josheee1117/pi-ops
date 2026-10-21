@@ -1,4 +1,5 @@
 import type { RuntimeInvestigationContext } from '@pi-ops/protocol';
+import type { MessageOracle, RawIncident } from './message-cases.js';
 
 /**
  * JVM Diagnosis Benchmark v1 — golden CPU incidents.
@@ -49,6 +50,10 @@ export interface BenchmarkCase {
   collectedAt: string;
   evidence: BenchmarkEvidence[];
   oracle: BenchmarkOracle;
+  rawIncident?: RawIncident;
+  supplementalEvidence?: BenchmarkEvidence[];
+  provenance?: string;
+  messageOracle?: MessageOracle;
 }
 
 const NODE = 'test-svc-02';
