@@ -25,7 +25,7 @@ function assertDecision(observations: NotificationObservation[], expected: First
 }
 
 describe('first notification decision', () => {
-  it('records an ordinary error without turning unknown counts into 0 or 1', () => {
+  it('analyzes an ordinary error without turning unknown counts into 0 or 1', () => {
     assertDecision([{
       kind: 'ordinary-error',
       persistence: { kind: 'known', value: 'brief' },
@@ -35,7 +35,7 @@ describe('first notification decision', () => {
       logLines: { kind: 'known', value: 7 },
       source: event('evt-ordinary'),
     }], {
-      action: 'record',
+      action: 'analyze',
       reason: 'ordinary-without-major-fact',
       missing: ['failure-count', 'request-count', 'impact'],
       failures: unknown,
@@ -95,7 +95,7 @@ describe('first notification decision', () => {
     });
   });
 
-  it('records when persistence is unknown instead of treating it as sustained', () => {
+  it('analyzes unknown persistence without treating it as sustained', () => {
     assertDecision([{
       kind: 'ordinary-error',
       persistence: unknown,
@@ -105,7 +105,7 @@ describe('first notification decision', () => {
       logLines: unknown,
       source: event('evt-unproven'),
     }], {
-      action: 'record',
+      action: 'analyze',
       reason: 'ordinary-without-major-fact',
       missing: ['failure-count', 'request-count', 'persistence', 'impact'],
       failures: unknown,
@@ -454,8 +454,8 @@ describe('first notification decision', () => {
   });
 });
 
-describe('legacy notification delivery', () => {
-  it('keeps the database unchanged when the pure function runs and still delivers INCIDENT_OPEN', async () => {
+describe('notification decision isolation', () => {
+  it('keeps the database unchanged when the pure function runs and does not deliver an isolated slow SQL', async () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const opened: OpsEvent = {
@@ -497,7 +497,8 @@ describe('legacy notification delivery', () => {
       notificationJobMaxAttempts: 3,
     }), store, notifier);
     await worker.runOnce();
-    assert.deepEqual(notifier.sent.map((item) => item.type), ['INCIDENT_OPEN']);
+    assert.deepEqual(notifier.sent, []);
+    assert.deepEqual(beforeJobs, []);
 
     const afterIncident = structuredClone(store.getIncident(incidentId));
     const afterJobs = structuredClone(store.listNotificationJobs(incidentId));
@@ -510,7 +511,7 @@ describe('legacy notification delivery', () => {
     }]));
     assert.deepEqual(store.getIncident(incidentId), afterIncident);
     assert.deepEqual(store.listNotificationJobs(incidentId), afterJobs);
-    assert.deepEqual(afterJobs.map((job) => job.status), ['DELIVERED']);
+    assert.deepEqual(afterJobs, []);
     store.close();
   });
 });

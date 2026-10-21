@@ -9,7 +9,7 @@ import { createApp } from '../app.js';
 import { createIncidentEngine } from '../incident.js';
 import { createNotificationJobWorker } from '../notification-worker.js';
 import { createFakeNotifier } from '../notifier.js';
-import { decideFirstNotification, type FirstNotificationDecision, type NotificationObservation } from '../notification-policy.js';
+import { decideFirstNotification, type FirstNotificationDecision, type MissingFact, type NotificationObservation } from '../notification-policy.js';
 import { buildFirstNotificationFactsFromStore } from '../notification-stored-facts.js';
 import { createEventStore, type EventStore } from '../store.js';
 import { makeAgentConfig } from './test-config.js';
@@ -84,7 +84,33 @@ function converted(store: EventStore, incidentId: string, eventIds: readonly str
   return { facts, decision: decideFirstNotification(facts) };
 }
 
+function assertRejectedFacts(
+  store: EventStore,
+  incidentId: string,
+  expectedGaps: Array<{ eventId: string; reason: MissingFact }>,
+): void {
+  const result = converted(store, incidentId, expectedGaps.map((gap) => gap.eventId));
+  assert.deepEqual(result.facts.observations, []);
+  assert.deepEqual([...new Set(result.facts.gaps?.map((gap) => JSON.stringify(gap)))],
+    [...new Set(expectedGaps.map((gap) => JSON.stringify(gap)))]);
+  assert.deepEqual(result.decision, { ...none, missing: [...new Set(expectedGaps.map((gap) => gap.reason))] });
+}
+
 describe('stored notification facts', () => {
+  it('distinguishes missing incidents and invalid times from an empty observation request', async () => {
+    const event = opsEvent({ id: 'evt-validation', source: 'application', type: 'business.error' });
+    const { store } = await ingest([event], 'application');
+    try {
+      const id = incidentIdOf(store, event.id);
+      assert.deepEqual(converted(store, id, []), { facts: { observations: [] }, decision: none });
+      assert.throws(() => converted(store, 'missing', []), /Incident missing does not exist/);
+      assert.throws(() => buildFirstNotificationFactsFromStore(store, { incidentId: id, eventIds: [], now: 'not-a-time' }), /Invalid notification evaluation time/);
+      const incident = store.getIncident(id)!;
+      store.updateIncident(id, { ...incident, first_seen: 'not-a-time' });
+      assert.throws(() => converted(store, id, []), /has invalid observation times/);
+    } finally { store.close(); }
+  });
+
   it('converts JFR OOME from ingress and rejects class-only, empty, and OOM text', async () => {
     const oome = opsEvent({
       id: 'evt-jfr-oome',
@@ -173,8 +199,8 @@ describe('stored notification facts', () => {
       requests: unknown,
       sources: [source(classOnly.id)],
     });
-    assert.deepEqual(converted(store, incidentIdOf(store, empty.id), [empty.id]).decision, none);
-    assert.deepEqual(converted(store, incidentIdOf(store, textOnly.id), [textOnly.id]).decision, none);
+    assertRejectedFacts(store, incidentIdOf(store, empty.id), [{ eventId: empty.id, reason: 'invalid-event' }]);
+    assertRejectedFacts(store, incidentIdOf(store, textOnly.id), [{ eventId: textOnly.id, reason: 'invalid-event' }]);
     assert.deepEqual(converted(store, incidentIdOf(store, nonStackExtended.id), [nonStackExtended.id]).decision, {
       action: 'record',
       reason: 'exception-not-oome',
@@ -197,7 +223,7 @@ describe('stored notification facts', () => {
     store.close();
   });
 
-  it('keeps an equivalent parsed window and drops an event outside it', async () => {
+  it('keeps an equivalent parsed window and reports an event outside it as a gap', async () => {
     const event = opsEvent({
       id: 'evt-jfr-window',
       source: 'jfr',
@@ -229,7 +255,7 @@ describe('stored notification facts', () => {
       severity: incident.severity,
       state: incident.state,
     });
-    assert.deepEqual(converted(store, id, [event.id]).decision, none);
+    assertRejectedFacts(store, id, [{ eventId: event.id, reason: 'invalid-event' }]);
     store.close();
   });
 
@@ -333,7 +359,7 @@ describe('stored notification facts', () => {
         sources: [source(label.id)],
       },
     });
-    assert.deepEqual(converted(store, incidentIdOf(store, conflict.id), [conflict.id]).decision, none);
+    assertRejectedFacts(store, incidentIdOf(store, conflict.id), [{ eventId: conflict.id, reason: 'invalid-event' }]);
     store.close();
   });
 
@@ -363,11 +389,12 @@ describe('stored notification facts', () => {
     assert.equal(store.getIncident(id)?.event_count, 2);
     const expected = {
       observations: [ordinary(plain.id), ordinary(withClass.id)],
+      unknownImpactDueAt: '2026-08-20T12:05:00.000Z',
     };
     assert.deepEqual(converted(store, id, [withClass.id, plain.id, plain.id]).facts, expected);
     assert.deepEqual(converted(store, id, [plain.id, withClass.id]).facts, expected);
     assert.deepEqual(converted(store, id, [plain.id, withClass.id]).decision, {
-      action: 'record',
+      action: 'analyze',
       reason: 'ordinary-without-major-fact',
       missing: [...gaps],
       failures: unknown,
@@ -412,6 +439,7 @@ describe('stored notification facts', () => {
     const { store } = await ingest([positive, extended, nonStack], 'application');
     assert.deepEqual(converted(store, incidentIdOf(store, positive.id), [positive.id]), {
       facts: {
+        gaps: [{ eventId: positive.id, reason: 'operation-binding' }],
         observations: [
           ordinary(positive.id),
           {
@@ -426,7 +454,7 @@ describe('stored notification facts', () => {
       decision: {
         action: 'alert',
         reason: 'jvm-oome',
-        missing: [...gaps],
+        missing: [...gaps, 'operation-binding'],
         failures: unknown,
         requests: unknown,
         sources: [source(positive.id)],
@@ -434,6 +462,7 @@ describe('stored notification facts', () => {
     });
     const extendedResult = converted(store, incidentIdOf(store, extended.id), [extended.id]);
     assert.deepEqual(extendedResult.facts, {
+      gaps: [{ eventId: extended.id, reason: 'operation-binding' }],
       observations: [
         ordinary(extended.id),
         {
@@ -448,17 +477,17 @@ describe('stored notification facts', () => {
     assert.deepEqual(extendedResult.decision, {
       action: 'alert',
       reason: 'jvm-oome',
-      missing: [...gaps],
+      missing: [...gaps, 'operation-binding'],
       failures: unknown,
       requests: unknown,
       sources: [source(extended.id)],
     });
     assert.deepEqual(converted(store, incidentIdOf(store, nonStack.id), [nonStack.id]), {
-      facts: { observations: [ordinary(nonStack.id)] },
+      facts: { observations: [ordinary(nonStack.id)], gaps: [{ eventId: nonStack.id, reason: 'operation-binding' }] },
       decision: {
-        action: 'record',
+        action: 'analyze',
         reason: 'ordinary-without-major-fact',
-        missing: [...gaps],
+        missing: [...gaps, 'operation-binding'],
         failures: unknown,
         requests: unknown,
         sources: [source(nonStack.id)],
@@ -493,7 +522,7 @@ describe('stored notification facts', () => {
       service: 'foreign',
       attributes: { dockerAction: 'oom', oomKilled: true },
     });
-    const wrongSource = opsEvent({
+    const applicationOom = opsEvent({
       id: 'evt-app-oom',
       source: 'application',
       type: 'jvm.oom',
@@ -523,10 +552,15 @@ describe('stored notification facts', () => {
     });
     assert.deepEqual(converted(store, healthId, [recovered.id]).decision, none);
 
-    const other = await ingest([wrongProducer, wrongSource], 'application');
-    assert.deepEqual(converted(other.store, incidentIdOf(other.store, wrongProducer.id), [wrongProducer.id]).decision, none);
-    assert.deepEqual(converted(other.store, incidentIdOf(other.store, wrongSource.id), [wrongSource.id]).decision, none);
-    assert.deepEqual(converted(store, healthId, [wrongProducer.id, 'missing-event']).decision, none);
+    const other = await ingest([wrongProducer, applicationOom], 'application');
+    assertRejectedFacts(other.store, incidentIdOf(other.store, wrongProducer.id), [{ eventId: wrongProducer.id, reason: 'unsupported-source' }]);
+    assert.deepEqual(converted(other.store, incidentIdOf(other.store, applicationOom.id), [applicationOom.id]).decision, {
+      action: 'alert', reason: 'jvm-oome', missing: [], failures: unknown, requests: unknown, sources: [source(applicationOom.id)],
+    });
+    assertRejectedFacts(store, healthId, [
+      { eventId: wrongProducer.id, reason: 'invalid-event' },
+      { eventId: 'missing-event', reason: 'invalid-event' },
+    ]);
 
     const manual = createEventStore(':memory:');
     const nodeEvent = opsEvent({
@@ -578,15 +612,15 @@ describe('stored notification facts', () => {
     });
     assert.equal(manual.linkEventToIncident(wrongNode.id, nodeEvent.id), true);
     assert.equal(manual.linkEventToIncident(wrongService.id, serviceEvent.id), true);
-    assert.deepEqual(converted(manual, wrongNode.id, [nodeEvent.id]).decision, none);
-    assert.deepEqual(converted(manual, wrongService.id, [serviceEvent.id]).decision, none);
-    assert.deepEqual(converted(manual, wrongNode.id, [unlinked.id]).decision, none);
+    assertRejectedFacts(manual, wrongNode.id, [{ eventId: nodeEvent.id, reason: 'invalid-event' }]);
+    assertRejectedFacts(manual, wrongService.id, [{ eventId: serviceEvent.id, reason: 'invalid-event' }]);
+    assertRejectedFacts(manual, wrongNode.id, [{ eventId: unlinked.id, reason: 'invalid-event' }]);
     manual.close();
     other.store.close();
     store.close();
   });
 
-  it('does not turn malformed attributes into major facts and does not hide a closed database', async () => {
+  it('reports malformed attributes and event times as gaps and does not hide a closed database', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stored-facts-'));
     const dbPath = join(dir, 'facts.sqlite');
     try {
@@ -644,19 +678,22 @@ describe('stored notification facts', () => {
       rewrite(join(dir, 'business.sqlite'), business.id, '{', null);
       rewrite(join(dir, 'business.sqlite'), invalidTime.id, null, 'not-a-time');
 
-      assert.deepEqual(converted(store, incidentIdOf(store, oome.id), [oome.id]).decision, none);
-      assert.deepEqual(converted(dockerStore, incidentIdOf(dockerStore, docker.id), [docker.id]).decision, none);
+      assertRejectedFacts(store, incidentIdOf(store, oome.id), [{ eventId: oome.id, reason: 'invalid-event' }]);
+      assertRejectedFacts(dockerStore, incidentIdOf(dockerStore, docker.id), [{ eventId: docker.id, reason: 'invalid-event' }]);
       const businessResult = converted(businessStore, incidentIdOf(businessStore, business.id), [business.id]);
-      assert.deepEqual(businessResult.facts, { observations: [ordinary(business.id)] });
+      assert.deepEqual(businessResult.facts, {
+        observations: [ordinary(business.id)],
+        gaps: [{ eventId: business.id, reason: 'invalid-event' }, { eventId: business.id, reason: 'operation-binding' }],
+      });
       assert.deepEqual(businessResult.decision, {
-        action: 'record',
+        action: 'analyze',
         reason: 'ordinary-without-major-fact',
-        missing: [...gaps],
+        missing: [...gaps, 'invalid-event', 'operation-binding'],
         failures: unknown,
         requests: unknown,
         sources: [source(business.id)],
       });
-      assert.deepEqual(converted(businessStore, incidentIdOf(businessStore, invalidTime.id), [invalidTime.id]).decision, none);
+      assertRejectedFacts(businessStore, incidentIdOf(businessStore, invalidTime.id), [{ eventId: invalidTime.id, reason: 'invalid-event' }]);
       store.close();
       dockerStore.close();
       businessStore.close();
@@ -669,9 +706,9 @@ describe('stored notification facts', () => {
     assert.throws(() => buildFirstNotificationFactsFromStore(closed, { incidentId: 'missing', eventIds: ['missing'] }));
   });
 
-  it('still delivers the independent legacy INCIDENT_OPEN fixture', async () => {
+  it('does not schedule or deliver an unconditional OPEN for an isolated slow SQL', async () => {
     const opened = opsEvent({
-      id: 'evt-legacy-open',
+      id: 'evt-isolated-slow-sql',
       source: 'application',
       type: 'application.slow_sql',
       severity: 'warning',
@@ -688,7 +725,9 @@ describe('stored notification facts', () => {
       notificationJobMaxAttempts: 3,
     }), store, notifier);
     await worker.runOnce();
-    assert.deepEqual(notifier.sent.map((item) => item.type), ['INCIDENT_OPEN']);
+    assert.deepEqual(notifier.sent, []);
+    assert.deepEqual(store.listNotificationJobs(id), []);
+    assert.equal(store.getNotificationDecision(id)?.action, 'analyze');
     assert.equal(store.getIncident(id)?.state, 'OPEN');
     store.close();
   });
@@ -774,19 +813,8 @@ describe('stored notification facts', () => {
         sources: [source(killed.id)],
       },
     });
-    const cross = {
-      facts: { observations: [] },
-      decision: {
-        action: 'record' as const,
-        reason: 'no-observation' as const,
-        missing: [],
-        failures: unknown,
-        requests: unknown,
-        sources: [],
-      },
-    };
-    assert.deepEqual(converted(store, incidentOom.id, [killed.id]), cross);
-    assert.deepEqual(converted(store, incidentDie.id, [oom.id]), cross);
+    assertRejectedFacts(store, incidentOom.id, [{ eventId: killed.id, reason: 'invalid-event' }]);
+    assertRejectedFacts(store, incidentDie.id, [{ eventId: oom.id, reason: 'invalid-event' }]);
     store.close();
   });
 });

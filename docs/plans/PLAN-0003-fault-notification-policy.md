@@ -95,7 +95,16 @@ pnpm typecheck
 
 `notification-coverage.test.ts`、`notification-coverage-lifecycle.test.ts`、`notification-policy-config.test.ts` 和 `notification-migration.test.ts` 覆盖关键类别、反例、持续等待、重启、重复、跨窗口、报告价值、恢复竞态与 legacy。原 `notification.test.ts` 的投递 guard、重试和重启检查改用已绑定健康故障，不再靠无条件 slow SQL 排程。
 
-`notification-policy.check.ts` 与 `notification-stored-facts.check.ts` 是 2026-10-20 旧合同快照。它们原本就不在默认测试，仍保留，不为本次策略重写历史预期。直接运行会因 ordinary 的 analyze、显式 gap、缺 Incident 抛错和取消无条件 OPEN 而失败。新策略验证使用上述默认测试，不以修改旧 golden 掩盖合同变化。
+`notification-policy.check.ts` 与 `notification-stored-facts.check.ts` 已按当前合同更新。它们仍不在默认 `*.test.ts` 测试中，需要在 `apps/agent` 下单独运行：
+
+```sh
+./node_modules/.bin/tsx src/__tests__/notification-policy.check.ts
+./node_modules/.bin/tsx src/__tests__/notification-stored-facts.check.ts
+```
+
+策略检查覆盖 ordinary 的 analyze、计数未知、重大事实优先级、缺绑定和纯函数不修改数据库。存储事实检查经进程内 `/v1/events` 写入 SQLite，覆盖来源、关联、对象、时间、畸形属性的显式 gap、持续观测期限、缺 Incident 和非法时间抛错，以及孤立 slow SQL 不排无条件 OPEN。空观测请求仍与缺事实区分。critical-task 的 bound 输入仅检查纯函数合同，不证明任务执行器接入。
+
+两个检查自备数据，不需要数据库或环境变量。存储事实检查在系统临时目录创建 SQLite，用第二个连接模拟畸形存储数据，结束后删除目录。全部通过时 exit 0，任一断言失败时 exit 非 0。未删除原有用例。重复的基础场景保留为检查入口的回归，生产转换器与生命周期的完整覆盖仍由 `notification-coverage*.test.ts` 提供。
 
 ## 未完成的生产者合同
 
