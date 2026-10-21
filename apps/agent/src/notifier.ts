@@ -182,13 +182,17 @@ function describeFault(type: string, service: string, recovered: boolean): { tit
 
 function formatWeComMarkdown(notification: NotificationPayload): string {
   const incident = notification.incident;
-  const recovered = notification.type === 'INCIDENT_RECOVERED';
+  const recovered = notification.type === 'INCIDENT_RECOVERED' || notification.notice === 'recovered-before-delivery';
   const completedAfterRecovery = notification.type === 'INVESTIGATION_COMPLETED' && incident.state === 'RECOVERED';
   const described = describeFault(incident.type, incident.service, recovered);
-  const title = notification.type === 'INVESTIGATION_COMPLETED'
-    ? `${incident.service} 诊断完成${completedAfterRecovery ? '（故障已恢复）' : ''}`
-    : described.title;
-  const body = completedAfterRecovery ? '故障已在诊断完成前恢复，以下是诊断时的判断。' : described.body;
+  const title = notification.notice === 'manual-confirmation' ? `${incident.service} 需要人工确认`
+    : notification.notice === 'recovered-before-delivery' ? `${incident.service} 曾发生、现已恢复`
+      : notification.type === 'INVESTIGATION_COMPLETED'
+        ? `${incident.service} ${notification.notice === 'diagnosis-update' ? '诊断更新' : '诊断完成'}${completedAfterRecovery ? '（故障已恢复）' : ''}`
+        : described.title;
+  const body = notification.notice === 'manual-confirmation' ? '错误在配置的等待期后仍持续，影响尚未确认，需要人工确认。'
+    : notification.notice === 'recovered-before-delivery' ? '该故障曾发生，首次通知送达前已收到正向恢复事实。'
+      : completedAfterRecovery ? '故障已在诊断完成前恢复，以下是诊断时的判断。' : described.body;
   const when = beijingTime(notification.type === 'INCIDENT_OPEN' || completedAfterRecovery ? incident.firstSeen : incident.lastSeen);
   const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
   const time = `${completedAfterRecovery ? '发生时间' : '时间'}：${when}（北京时间）`;
@@ -208,6 +212,7 @@ function formatWeComMarkdown(notification: NotificationPayload): string {
   const compose = () => [
     `### ${field(title)}`,
     ...(completedAfterRecovery ? [body] : []),
+    ...(notification.notice === 'diagnosis-update' && notification.impactSummary ? [field(notification.impactSummary)] : []),
     ...(brief ? [`**${field(brief.conclusion.replaceAll('*', ''))}**`] : []),
     ...(!completedAfterRecovery && !analysis?.diagnosis && !(analysis && incident.type === 'jvm.cpu_pressure') ? [body] : []),
     `机器：${field(incident.nodeId)}`, time,

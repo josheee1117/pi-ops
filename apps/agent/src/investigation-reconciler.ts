@@ -23,6 +23,7 @@ export function createInvestigationReconciler(options: {
   let active: Promise<void> | undefined;
 
   async function reconcile(): Promise<void> {
+    options.store.reconcileNotifications(now());
     if (!options.enabled) return;
     if (active) return active;
     active = run().finally(() => {
@@ -34,6 +35,9 @@ export function createInvestigationReconciler(options: {
   async function run(): Promise<void> {
     options.loop.reconcile({ timeoutMs: options.staleTimeoutMs });
     for (const incident of options.store.listIncidents()) {
+      const decision = options.store.getNotificationDecision(incident.id);
+      if (decision && (incident.state === 'RECOVERED' || incident.state === 'CLOSED'
+        || (decision.action !== 'analyze' && decision.action !== 'alert' && !decision.missing.includes('health-binding')))) continue;
       const job = options.store.getEvidenceJob(`job-${incident.id}`);
       if (!job || job.state !== 'COMPLETED') continue;
       const generation = job.generation;

@@ -11,6 +11,7 @@ export interface DockerInspectResult {
     Status?: string;
     Running?: boolean;
     StartedAt?: string;
+    FinishedAt?: string;
     OOMKilled?: boolean;
     ExitCode?: number;
     Health?: { Status?: string };
@@ -276,6 +277,7 @@ export function createDockerEvidenceProvider(
               Status: inspect.State?.Status,
               Running: inspect.State?.Running,
               StartedAt: inspect.State?.StartedAt,
+              FinishedAt: inspect.State?.FinishedAt,
               OOMKilled: inspect.State?.OOMKilled,
               ExitCode: inspect.State?.ExitCode,
               Health: {

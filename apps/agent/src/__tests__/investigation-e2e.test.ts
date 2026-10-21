@@ -370,9 +370,8 @@ describe('deterministic investigation E2E', () => {
     await harness.notifications.runOnce();
     const openId = notificationJobId('INCIDENT_OPEN', incident.id);
     const completedId = notificationJobId('INVESTIGATION_COMPLETED', session.id);
-    assert.equal(harness.store.getNotificationJob(openId)?.status, 'DELIVERED');
-    assert.equal(harness.store.getNotificationJob(completedId)?.status, 'DELIVERED');
-    assert.equal(harness.store.getNotificationJob(completedId)?.payload.analysis?.reasoningResultId, result.id);
+    assert.equal(harness.store.getNotificationJob(openId), undefined);
+    assert.equal(harness.store.getNotificationJob(completedId), undefined);
 
     const replayed = harness.loop.handleRuntimeResult({
       schemaVersion: 1,
@@ -391,7 +390,7 @@ describe('deterministic investigation E2E', () => {
     assert.equal(replayed.id, report.id);
     assert.equal(
       harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INVESTIGATION_COMPLETED').length,
-      1,
+      0,
     );
 
     const recovery = {
@@ -414,7 +413,7 @@ describe('deterministic investigation E2E', () => {
     assert.equal(harness.store.getIncident(incident.id)?.state, 'RECOVERED');
     await harness.notifications.runOnce();
     const recoveredId = notificationJobId('INCIDENT_RECOVERED', incident.id);
-    assert.equal(harness.store.getNotificationJob(recoveredId)?.status, 'DELIVERED');
+    assert.equal(harness.store.getNotificationJob(recoveredId), undefined);
 
     const replayEvent = await harness.agentApp.request('/v1/events', {
       method: 'POST',
@@ -425,9 +424,7 @@ describe('deterministic investigation E2E', () => {
       }),
     });
     assert.equal(replayEvent.status, 200);
-    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INCIDENT_OPEN').length, 1);
-    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INCIDENT_RECOVERED').length, 1);
-    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INVESTIGATION_COMPLETED').length, 1);
+    assert.equal(harness.store.listNotificationJobs(incident.id).length, 0);
 
     const delivered = harness.notifier.sent.length;
     harness.notifications.start();

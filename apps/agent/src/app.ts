@@ -255,6 +255,7 @@ export function createApp(
           })),
         };
       }),
+      notificationDecision: store.getNotificationDecision(incident.id) ?? { policyVersion: 'legacy' },
       notifications: store.listNotificationJobs(incident.id).map((job) => ({
         id: job.id,
         type: job.type,

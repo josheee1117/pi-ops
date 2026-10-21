@@ -14,7 +14,11 @@ import {
   TerminalNotificationError,
 } from '../notifier.js';
 import { notificationJobId } from '../notification.js';
-import { createEventStore } from '../store.js';
+import { createEventStore as openEventStore } from '../store.js';
+import { DEFAULT_NOTIFICATION_POLICY } from '../notification-config.js';
+
+const healthRule = { ruleId: 'test-health', ruleVersion: 1, nodeId: 'test-svc-02', service: 'data-asset-service', target: 'data-asset-service', url: 'http://data-asset/health', method: 'GET', failureSamples: 2, intervalMs: 1000 };
+const createEventStore = (path: string) => openEventStore(path, { ...DEFAULT_NOTIFICATION_POLICY, healthRules: [healthRule] });
 import { makeAgentConfig } from './test-config.js';
 
 const CONFIG = makeAgentConfig({
@@ -28,13 +32,13 @@ function slowSql(overrides: Partial<OpsEvent> = {}): OpsEvent {
     schemaVersion: 1,
     id: 'evt-open',
     time: '2026-08-20T12:00:00.000Z',
-    source: 'application',
+    source: 'health',
     nodeId: 'test-svc-02',
     service: 'data-asset-service',
-    type: 'application.slow_sql',
-    severity: 'warning',
-    message: 'slow sql',
-    attributes: { sqlFingerprint: 'deadbeef' },
+    type: 'health.failure',
+    severity: 'error',
+    message: 'health failure',
+    attributes: { ...healthRule },
     ...overrides,
   };
 }
@@ -46,6 +50,10 @@ function report() {
     contradictingEvidenceIds: [] as string[],
     confidence: 0.7,
     recommendation: 'check disk latency',
+    diagnosis: {
+      observations: [], candidateCauses: [{ cause: 'disk route', supportingEvidenceIds: ['evidence-repair'], contradictingEvidenceIds: [] }], uncertainties: [],
+      actions: [{ purpose: 'repair' as const, target: 'storage', preconditions: ['route verified'], operation: 'restore storage route', expectedResult: 'IO succeeds', risk: 'configuration change', requiresApproval: true, evidenceIds: ['evidence-repair'] }],
+    },
   };
 }
 
@@ -54,7 +62,7 @@ describe('durable operational notifications', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const first = engine.processEvent(event, event.time);
     engine.processEvent(event, event.time);
     const jobs = store.listNotificationJobs(first.incidentId!);
@@ -71,8 +79,11 @@ describe('durable operational notifications', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
+    store.insertEvidence({ id: 'evidence-repair', incidentId: created.incidentId!, nodeId: event.nodeId, source: 'host', kind: 'host.load', collectedAt: event.time, status: 'succeeded', data: {} });
+    const initial = store.listNotificationJobs(created.incidentId!)[0]!;
+    store.markNotificationJobRunning(initial.id); store.markNotificationJobDelivered(initial.id);
     const loop = createInvestigationLoopService(store);
     const { session } = loop.start(created.incidentId!);
     await loop.submit(session.id);
@@ -81,8 +92,7 @@ describe('durable operational notifications', () => {
     const jobs = store.listNotificationJobs(created.incidentId!).filter((job) => job.type === 'INVESTIGATION_COMPLETED');
     assert.equal(jobs.length, 1);
     assert.equal(jobs[0]?.investigationSessionId, session.id);
-    assert.ok(jobs[0]?.reasoningResultId);
-    assert.equal(jobs[0]?.payload.analysis?.investigationSessionId, session.id);
+    assert.equal(jobs[0]?.payload.notice, 'diagnosis-update');
     store.close();
   });
 
@@ -90,22 +100,22 @@ describe('durable operational notifications', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     const recovery = slowSql({
       id: 'evt-recovered',
       time: '2026-08-20T12:10:00.000Z',
-      type: 'application.slow_sql_recovered',
+      type: 'health.recovered',
       severity: 'info',
       message: 'recovered',
     });
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [recovery] }, recovery.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [recovery] }, recovery.time);
     engine.processEvent(recovery, recovery.time);
     engine.processEvent(recovery, recovery.time);
     const recovered = store.listNotificationJobs(created.incidentId!).filter((job) => job.type === 'INCIDENT_RECOVERED');
-    assert.equal(recovered.length, 1);
+    assert.equal(recovered.length, 0);
     assert.equal(store.getIncident(created.incidentId!)?.state, 'RECOVERED');
-    assert.equal('analysis' in recovered[0]!.payload, false);
+    assert.equal(store.listNotificationJobs(created.incidentId!)[0]?.payload.notice, 'recovered-before-delivery');
     store.close();
   });
 
@@ -113,7 +123,7 @@ describe('durable operational notifications', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     const before = structuredClone(store.getIncident(created.incidentId!)!);
     const notifier = createFakeNotifier();
@@ -132,7 +142,7 @@ describe('durable operational notifications', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     assert.equal(store.markNotificationJobRunning(notificationJobId('INCIDENT_OPEN', created.incidentId!)), true);
     const notifier = createFakeNotifier();
@@ -237,7 +247,7 @@ describe('HttpWebhookNotifier', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     const beforeIncident = structuredClone(store.getIncident(created.incidentId!)!);
     const beforeEvidence = structuredClone(store.listEvidence(created.incidentId!));
@@ -285,7 +295,7 @@ describe('notification delivery safety', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     const beforeIncident = structuredClone(store.getIncident(created.incidentId!)!);
     const beforeEvidence = structuredClone(store.listEvidence(created.incidentId!));
@@ -314,7 +324,7 @@ describe('notification delivery safety', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     const openId = notificationJobId('INCIDENT_OPEN', created.incidentId!);
     assert.equal(store.markNotificationJobRunning(openId), true);
@@ -326,11 +336,11 @@ describe('notification delivery safety', () => {
     const recovery = slowSql({
       id: 'evt-recovered',
       time: '2026-08-20T12:10:00.000Z',
-      type: 'application.slow_sql_recovered',
+      type: 'health.recovered',
       severity: 'info',
       message: 'recovered',
     });
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [recovery] }, recovery.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [recovery] }, recovery.time);
     engine.processEvent(recovery, recovery.time);
     const recoveredId = notificationJobId('INCIDENT_RECOVERED', created.incidentId!);
     assert.equal(store.markNotificationJobRunning(recoveredId), true);
@@ -344,7 +354,7 @@ describe('notification delivery safety', () => {
     const store = createEventStore(':memory:');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
     const event = slowSql();
-    store.insertBatch({ producer: { id: 'app', type: 'application', version: '1' }, events: [event] }, event.time);
+    store.insertBatch({ producer: { id: 'app', type: 'node-agent', version: '1' }, events: [event] }, event.time);
     const created = engine.processEvent(event, event.time);
     const openId = notificationJobId('INCIDENT_OPEN', created.incidentId!);
     assert.equal(store.markNotificationJobRunning(openId), true);
@@ -365,12 +375,12 @@ describe('notification delivery safety', () => {
     const recovery = slowSql({
       id: 'evt-hist-rec',
       time: '2026-08-01T10:10:00.000Z',
-      type: 'application.slow_sql_recovered',
+      type: 'health.recovered',
       severity: 'info',
       message: 'recovered',
     });
     store.insertBatch({
-      producer: { id: 'app', type: 'application', version: '1' },
+      producer: { id: 'app', type: 'node-agent', version: '1' },
       events: [failure, recovery],
     }, '2026-08-20T18:00:00.000Z');
     const engine = createIncidentEngine(store, { aggregationWindowMs: 300_000 });
@@ -378,18 +388,15 @@ describe('notification delivery safety', () => {
     engine.reconcilePendingRecoveries();
     const incident = store.listIncidents()[0]!;
     const pending = store.listPendingNotificationJobs(10);
-    assert.deepEqual(pending.map((job) => job.type), ['INCIDENT_OPEN', 'INCIDENT_RECOVERED']);
-    assert.ok(pending[0]!.createdAt <= pending[1]!.createdAt);
+    assert.deepEqual(pending.map((job) => job.type), ['INCIDENT_OPEN']);
+    assert.equal(pending[0]!.payload.notice, 'recovered-before-delivery');
     assert.equal(pending[0]!.payload.incident.firstSeen, '2026-08-01T10:00:00.000Z');
-    assert.equal(pending[1]!.payload.incident.lastSeen, '2026-08-01T10:10:00.000Z');
+    assert.equal(pending[0]!.payload.incident.lastSeen, '2026-08-01T10:10:00.000Z');
     const notifier = createFakeNotifier();
     const worker = createNotificationJobWorker(CONFIG, store, notifier);
     await worker.runOnce();
-    assert.deepEqual(notifier.sent.map((item) => item.type), ['INCIDENT_OPEN', 'INCIDENT_RECOVERED']);
-    assert.deepEqual(notifier.identities, [
-      notificationJobId('INCIDENT_OPEN', incident.id),
-      notificationJobId('INCIDENT_RECOVERED', incident.id),
-    ]);
+    assert.deepEqual(notifier.sent.map((item) => item.type), ['INCIDENT_OPEN']);
+    assert.deepEqual(notifier.identities, [notificationJobId('INCIDENT_OPEN', incident.id)]);
     store.close();
   });
 });

@@ -4,6 +4,8 @@ import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence, InvestigationRuntimeMetadata } from '@pi-ops/protocol';
 import { investigationDiagnosisSchema, normalizeSpecialistRoles } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
+import { DEFAULT_NOTIFICATION_POLICY, type NotificationPolicyConfig } from './notification-config.js';
+import { evaluateNotification, type StoredNotificationDecision } from './notification-decision.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
 import type { MemoryFeedback } from './memory-feedback.js';
@@ -17,11 +19,7 @@ import type { InvestigationReport } from './investigation-report.js';
 import type { InvestigationContext } from './investigation-context.js';
 import type { InvestigationSession } from './investigation-session.js';
 import type { DelegationTask } from './delegation-task.js';
-import {
-  buildNotificationJob,
-  incidentFactsFromRow,
-  type NotificationJob,
-} from './notification.js';
+import type { NotificationJob } from './notification.js';
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -418,6 +416,11 @@ CREATE INDEX IF NOT EXISTS idx_investigation_evidence_audits_runtime
 `;
 
 const CREATE_NOTIFICATION_JOBS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS notification_decisions (
+  incident_id TEXT PRIMARY KEY REFERENCES incidents(id) ON DELETE CASCADE,
+  decision_json TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notification_jobs (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -1045,6 +1048,15 @@ export interface EventStore {
   }>;
 
   withTransaction<T>(fn: () => T): T;
+  computeEventFingerprint(event: OpsEvent): string;
+  legacyEventFingerprint(event: OpsEvent): string;
+  listIncidentEventIds(incidentId: string): string[];
+  getNotificationDecision(incidentId: string): StoredNotificationDecision | undefined;
+  saveNotificationDecision(incidentId: string, decision: StoredNotificationDecision): void;
+  evaluateNotification(incidentId: string, now?: string): StoredNotificationDecision | undefined;
+  reconcileNotifications(now?: string): void;
+  updatePendingNotificationPayload(id: string, payload: NotificationJob['payload']): void;
+  suppressPendingDiagnosisUpdates(incidentId: string): void;
   scheduleNotificationJob(job: NotificationJob): boolean;
   getNotificationJob(id: string): NotificationJob | undefined;
   listNotificationJobs(incidentId: string): NotificationJob[];
@@ -1509,7 +1521,7 @@ function rebuildReasoningJobsIncidentIndex(db: { exec(sql: string): unknown; pre
   `);
 }
 
-export function createEventStore(dbPath: string): EventStore {
+export function createEventStore(dbPath: string, notificationPolicy: NotificationPolicyConfig = DEFAULT_NOTIFICATION_POLICY): EventStore {
   const db = new Database(dbPath);
 
   // Performance + safety pragmas
@@ -1537,6 +1549,9 @@ export function createEventStore(dbPath: string): EventStore {
     );
 
     db.exec(CREATE_INCIDENTS_TABLE_SQL);
+    const incidentColumns = new Set((db.pragma('table_info(incidents)') as Array<{ name: string }>).map((row) => row.name));
+    if (!incidentColumns.has('notification_policy_version')) db.exec("ALTER TABLE incidents ADD COLUMN notification_policy_version TEXT NOT NULL DEFAULT 'legacy'");
+    if (!incidentColumns.has('fingerprint_version')) db.exec('ALTER TABLE incidents ADD COLUMN fingerprint_version INTEGER NOT NULL DEFAULT 1');
     db.exec(CREATE_INCIDENT_EVENTS_TABLE_SQL);
     db.exec(CREATE_EVENT_PROCESSING_TABLE_SQL);
     db.exec(CREATE_PENDING_RECOVERIES_TABLE_SQL);
@@ -1545,8 +1560,8 @@ export function createEventStore(dbPath: string): EventStore {
     // A legacy producer fingerprint could have merged unrelated identities;
     // fail closed rather than silently cementing that corruption.
     const legacyIncidents = db.prepare(
-      'SELECT id, state FROM incidents',
-    ).all() as Array<{ id: string; state: IncidentState }>;
+      'SELECT id, state, fingerprint_version FROM incidents',
+    ).all() as Array<{ id: string; state: IncidentState; fingerprint_version: 1 | 2 }>;
     const linkedIdentities = db.prepare(`
       SELECT events.source, events.node_id, events.service, events.type, events.attributes
       FROM incident_events
@@ -1565,13 +1580,14 @@ export function createEventStore(dbPath: string): EventStore {
         type: string;
         attributes: string;
       }>;
+      if (incident.fingerprint_version === 2 && rows.some((event) => event.type === 'business.error')) continue;
       const identities = new Set(rows.map((event) => computeFingerprint({
         source: event.source as OpsEvent['source'],
         nodeId: event.node_id,
         service: event.service,
         type: event.type,
         attributes: JSON.parse(event.attributes) as Record<string, unknown>,
-      })));
+      }, incident.fingerprint_version, notificationPolicy)));
       if (identities.size > 1) {
         throw new Error(
           `Incident ${incident.id} links Events with multiple central identities`,
@@ -1627,7 +1643,7 @@ export function createEventStore(dbPath: string): EventStore {
       const event = mapStoredEvent(stored);
       insertPendingRecovery.run({
         event_id: event.id,
-        fingerprint: computeFingerprint(event),
+        fingerprint: computeFingerprint(event, 2, notificationPolicy),
         event_time: event.time,
         event_json: JSON.stringify(event),
       });
@@ -1665,6 +1681,10 @@ export function createEventStore(dbPath: string): EventStore {
     db.exec(CREATE_INVESTIGATION_RUNTIME_AUDITS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_EVIDENCE_AUDITS_TABLE_SQL);
     db.exec(CREATE_NOTIFICATION_JOBS_TABLE_SQL);
+    const notificationColumns = new Set((db.pragma('table_info(notification_jobs)') as Array<{ name: string }>).map((row) => row.name));
+    if (!notificationColumns.has('policy_version')) db.exec("ALTER TABLE notification_jobs ADD COLUMN policy_version TEXT NOT NULL DEFAULT 'legacy'");
+    if (!notificationColumns.has('decision_json')) db.exec('ALTER TABLE notification_jobs ADD COLUMN decision_json TEXT');
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_new_completed ON notification_jobs(incident_id) WHERE type = 'INVESTIGATION_COMPLETED' AND policy_version = '1'");
     db.exec(CREATE_INVESTIGATION_HYPOTHESES_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_QUALITY_EVALUATIONS_TABLE_SQL);
     db.exec(CREATE_INVESTIGATION_RELATIONS_TABLE_SQL);
@@ -2166,23 +2186,6 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     };
   }
 
-  function insertNotification(job: NotificationJob): void {
-    insertNotificationJobStmt.run({
-      id: job.id,
-      type: job.type,
-      incident_id: job.incidentId,
-      investigation_session_id: job.investigationSessionId ?? null,
-      reasoning_result_id: job.reasoningResultId ?? null,
-      status: job.status,
-      attempts: job.attempts,
-      payload_json: JSON.stringify(job.payload),
-      last_error: job.lastError ?? null,
-      created_at: job.createdAt,
-      updated_at: job.updatedAt,
-      delivered_at: job.deliveredAt ?? null,
-    });
-  }
-
   function insertIncident(id: string, incident: Omit<IncidentRow, 'id'>): void {
     insertIncidentStmt.run({
       id,
@@ -2338,6 +2341,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
   ): IncidentRow => {
     const id = generateId('inc');
     insertIncident(id, incident);
+    db.prepare("UPDATE incidents SET notification_policy_version = '1', fingerprint_version = 2 WHERE id = ?").run(id);
     const link = linkEventStmt.run({ incident_id: id, event_id: event.id });
     if (link.changes !== 1) {
       throw new Error(`Event ${event.id} is already linked to an Incident`);
@@ -2360,14 +2364,9 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         updated_at: now,
       });
     }
-    const created = { id, ...incident };
-    insertNotification(buildNotificationJob({
-      type: 'INCIDENT_OPEN',
-      incident: incidentFactsFromRow(created),
-      evidenceIds: [],
-      now,
-    }));
-    return created;
+    store.saveNotificationDecision(id, { policyVersion: 1, evaluatedAt: now, action: 'record', reason: 'pending', missing: [], valueKeys: [] });
+    store.evaluateNotification(id, now);
+    return store.getIncident(id)!;
   });
 
   function laterTimestamp(a: string, b: string): string {
@@ -2557,6 +2556,14 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     ): IncidentRow | undefined {
       const eventTime = new Date(timestamp).getTime();
       const rows = listIncidentsByFingerprintStmt.all({ fingerprint }) as IncidentRow[];
+      if (rows.length === 0) {
+        const active = db.prepare("SELECT * FROM incidents WHERE fingerprint_version = 2 AND type = 'business.error' AND state IN ('OPEN', 'INVESTIGATING', 'NOTIFIED')").all() as IncidentRow[];
+        for (const incident of active) {
+          const eventId = store.listIncidentEventIds(incident.id)[0];
+          const stored = eventId ? store.getEvent(eventId) : undefined;
+          if (stored && computeFingerprint(mapStoredEvent(stored), 2, notificationPolicy) === fingerprint) rows.push(incident);
+        }
+      }
       const candidates: Array<{
         incident: IncidentRow;
         distance: number;
@@ -2580,7 +2587,12 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
           : eventTime > lastSeen
             ? eventTime - lastSeen
             : 0;
-        if (distance <= aggregationWindowMs) {
+        const decision = store.getNotificationDecision(incident.id);
+        const boundEpisode = active && decision !== undefined && (decision.action === 'alert'
+          || (decision.action === 'analyze' && decision.facts?.observations.some((item) => item.kind === 'ordinary-error')
+            && !decision.missing.includes('operation-binding'))
+          || store.listNotificationJobs(incident.id).some((job) => job.type === 'INCIDENT_OPEN'));
+        if (distance <= aggregationWindowMs || boundEpisode) {
           candidates.push({ incident, distance, firstSeen });
         }
       }
@@ -2599,7 +2611,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     createIncident(incident: Omit<IncidentRow, 'id'>): IncidentRow {
       const id = generateId('inc');
       insertIncident(id, incident);
-      return { id, ...incident };
+      return store.getIncident(id)!;
     },
 
     createIncidentFromEvent(
@@ -2647,18 +2659,21 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     // ── Evidence ──────────────────────────────────────────────────────────
 
     insertEvidence(evidence: EvidenceRecord): void {
-      insertEvidenceStmt.run({
-        id: evidence.id,
-        incident_id: evidence.incidentId,
-        node_id: evidence.nodeId,
-        source: evidence.source,
-        kind: evidence.kind,
-        collected_at: evidence.collectedAt,
-        status: evidence.status,
-        data_json: JSON.stringify(evidence.data ?? null),
-        error: evidence.error ?? null,
-        failure_class: evidence.failureClass ?? null,
-      });
+      db.transaction(() => {
+        insertEvidenceStmt.run({
+          id: evidence.id,
+          incident_id: evidence.incidentId,
+          node_id: evidence.nodeId,
+          source: evidence.source,
+          kind: evidence.kind,
+          collected_at: evidence.collectedAt,
+          status: evidence.status,
+          data_json: JSON.stringify(evidence.data ?? null),
+          error: evidence.error ?? null,
+          failure_class: evidence.failureClass ?? null,
+        });
+        store.evaluateNotification(evidence.incidentId);
+      })();
     },
 
     listEvidence(incidentId: string): EvidenceRecord[] {
@@ -3334,6 +3349,56 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       return result;
     },
 
+    computeEventFingerprint(event: OpsEvent): string {
+      return computeFingerprint(event, 2, notificationPolicy);
+    },
+
+    legacyEventFingerprint(event: OpsEvent): string {
+      return computeFingerprint(event, 1, notificationPolicy);
+    },
+
+    listIncidentEventIds(incidentId: string): string[] {
+      return (db.prepare('SELECT event_id FROM incident_events WHERE incident_id = ? ORDER BY event_id').all(incidentId) as Array<{ event_id: string }>).map((row) => row.event_id);
+    },
+
+    getNotificationDecision(incidentId: string): StoredNotificationDecision | undefined {
+      const row = db.prepare('SELECT decision_json FROM notification_decisions WHERE incident_id = ?').get(incidentId) as { decision_json: string } | undefined;
+      return row ? JSON.parse(row.decision_json) as StoredNotificationDecision : undefined;
+    },
+
+    saveNotificationDecision(incidentId: string, decision: StoredNotificationDecision): void {
+      db.prepare('INSERT INTO notification_decisions (incident_id, decision_json) VALUES (?, ?) ON CONFLICT(incident_id) DO UPDATE SET decision_json = excluded.decision_json').run(incidentId, JSON.stringify(decision));
+    },
+
+    evaluateNotification(incidentId: string, now = new Date().toISOString()) {
+      try { return db.transaction(() => evaluateNotification(store, incidentId, notificationPolicy, now))(); }
+      catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const value: StoredNotificationDecision = { policyVersion: 1, evaluatedAt: now, action: 'error', reason: message, missing: ['fact-conversion-failed'], valueKeys: store.getNotificationDecision(incidentId)?.valueKeys ?? [] };
+        if (store.getIncident(incidentId)) store.saveNotificationDecision(incidentId, value);
+        return value;
+      }
+    },
+
+    reconcileNotifications(now = new Date().toISOString()): void {
+      for (const incident of store.listIncidents()) {
+        const decision = store.getNotificationDecision(incident.id);
+        const undeliveredRecovery = incident.state === 'RECOVERED' && store.listNotificationJobs(incident.id).some((job) => job.status === 'PENDING');
+        if (decision && (undeliveredRecovery || (decision.action !== 'recover' && (decision.action === 'error'
+          || (decision.dueAt !== undefined && Date.parse(decision.dueAt) <= Date.parse(now)))))) {
+          store.evaluateNotification(incident.id, now);
+        }
+      }
+    },
+
+    suppressPendingDiagnosisUpdates(incidentId: string): void {
+      db.prepare("UPDATE notification_jobs SET status = 'FAILED', last_error = 'suppressed: incident recovered before diagnosis delivery', updated_at = ? WHERE incident_id = ? AND type = 'INVESTIGATION_COMPLETED' AND status = 'PENDING' AND policy_version = '1'").run(new Date().toISOString(), incidentId);
+    },
+
+    updatePendingNotificationPayload(id: string, payload: NotificationJob['payload']): void {
+      db.prepare("UPDATE notification_jobs SET payload_json = ? WHERE id = ? AND status = 'PENDING'").run(JSON.stringify(payload), id);
+    },
+
     scheduleNotificationJob(job: NotificationJob): boolean {
       const inserted = insertNotificationJobStmt.run({
         id: job.id,
@@ -3349,6 +3414,9 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
         updated_at: job.updatedAt,
         delivered_at: job.deliveredAt ?? null,
       });
+      if (inserted.changes > 0 && store.getNotificationDecision(job.incidentId)) {
+        db.prepare("UPDATE notification_jobs SET policy_version = '1', decision_json = ? WHERE id = ?").run(JSON.stringify(store.getNotificationDecision(job.incidentId)), job.id);
+      }
       return inserted.changes > 0;
     },
 
@@ -3376,27 +3444,42 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     },
 
     markNotificationJobDelivered(id: string): boolean {
-      const now = new Date().toISOString();
-      const result = markNotificationJobDeliveredStmt.run({
-        id,
-        updated_at: now,
-        delivered_at: now,
-      });
-      return result.changes === 1;
+      return db.transaction(() => {
+        const now = new Date().toISOString();
+        const result = markNotificationJobDeliveredStmt.run({
+          id,
+          updated_at: now,
+          delivered_at: now,
+        });
+        if (result.changes === 1) {
+          const job = store.getNotificationJob(id);
+          if (job) store.evaluateNotification(job.incidentId, now);
+        }
+        return result.changes === 1;
+      })();
     },
 
     markNotificationJobRetry(id: string, error: string, failed: boolean): boolean {
-      const result = markNotificationJobRetryStmt.run({
-        id,
-        status: failed ? 'FAILED' : 'PENDING',
-        last_error: error,
-        updated_at: new Date().toISOString(),
-      });
-      return result.changes === 1;
+      return db.transaction(() => {
+        const result = markNotificationJobRetryStmt.run({
+          id,
+          status: failed ? 'FAILED' : 'PENDING',
+          last_error: error,
+          updated_at: new Date().toISOString(),
+        });
+        const job = store.getNotificationJob(id);
+        if (result.changes === 1 && job) store.evaluateNotification(job.incidentId);
+        return result.changes === 1;
+      })();
     },
 
     resetRunningNotificationJobs(): number {
-      return resetRunningNotificationJobsStmt.run(new Date().toISOString()).changes;
+      return db.transaction(() => {
+        const reset = db.prepare("SELECT DISTINCT incident_id FROM notification_jobs WHERE status = 'RUNNING' AND policy_version = '1'").all() as Array<{ incident_id: string }>;
+        const changed = resetRunningNotificationJobsStmt.run(new Date().toISOString()).changes;
+        for (const row of reset) store.evaluateNotification(row.incident_id);
+        return changed;
+      })();
     },
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -3420,15 +3503,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     });
     store.removePendingRecovery(recovery.id);
     store.markEventProcessed(recovery.id, recovery.time);
-    const recovered = store.getIncident(incident.id)!;
-    insertNotification(buildNotificationJob({
-      type: 'INCIDENT_RECOVERED',
-      incident: incidentFactsFromRow(recovered),
-      evidenceIds: store.listEvidence(incident.id)
-        .filter((item) => item.status === 'succeeded')
-        .map((item) => item.id),
-      now: new Date().toISOString(),
-    }));
+    store.evaluateNotification(incident.id);
     return true;
   });
 

@@ -119,7 +119,7 @@ describe('hysteresis', () => {
 // ── HTTP health transitions ──────────────────────────────────────────────────
 
 describe('health detector', () => {
-  it('emits one bound failure then one bound recovery with sample and transition metadata', async (t) => {
+  it('emits one failure then one recovery for 200 → fail → 200 (no flood)', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-21T02:00:00Z') });
     const statuses: number[] = [];
     const probe: ProbeFn = async () => {

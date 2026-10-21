@@ -21,10 +21,6 @@ import {
   REASONING_STRATEGY_VERSION,
 } from './reasoning-strategy.js';
 import { hashEvidenceSnapshot } from './reasoning-worker.js';
-import {
-  buildNotificationJob,
-  incidentFactsFromRow,
-} from './notification.js';
 import type { EventStore, IncidentRow } from './store.js';
 
 const MAX_TEXT_CHARS = 2000;
@@ -226,22 +222,7 @@ export function createInvestigationLoopService(
         store.markDelegationTaskCompleted(task.id, report.createdAt);
         if (job.status !== 'COMPLETED') store.markReasoningJobCompleted(job.id);
         store.updateInvestigationSessionStatus(session.id, 'COMPLETED', report.createdAt);
-        store.scheduleNotificationJob(buildNotificationJob({
-          type: 'INVESTIGATION_COMPLETED',
-          incident: incidentFactsFromRow(incident),
-          evidenceIds: evidence.filter((item) => item.status === 'succeeded').map((item) => item.id),
-          now: report.createdAt,
-          investigationSessionId: session.id,
-          reasoningResultId: result.id,
-          analysis: {
-            investigationSessionId: session.id,
-            reasoningResultId: result.id,
-            hypothesis: report.hypothesis,
-            confidence: report.confidence,
-            recommendation: report.recommendation,
-            ...(report.diagnosis ? { diagnosis: report.diagnosis } : {}),
-          },
-        }));
+        store.evaluateNotification(incident.id, report.createdAt);
       });
       return report;
     },
@@ -251,16 +232,19 @@ export function createInvestigationLoopService(
       if (session.status === 'COMPLETED') {
         throw new Error(`InvestigationSession ${sessionId} is already completed`);
       }
-      const task = store.getDelegationTask(session.delegationTaskId);
-      if (task && task.status !== 'COMPLETED') {
-        store.markDelegationTaskFailed(task.id, error);
-      }
-      const plan = task ? store.getInvestigationPlan(task.investigationPlanId) : undefined;
-      const job = plan ? store.getReasoningJob(plan.reasoningJobId) : undefined;
-      if (job && job.status !== 'COMPLETED' && job.status !== 'FAILED') {
-        store.markReasoningJobFailed(job.id, error);
-      }
-      store.updateInvestigationSessionStatus(session.id, 'FAILED', now());
+      store.withTransaction(() => {
+        const task = store.getDelegationTask(session.delegationTaskId);
+        if (task && task.status !== 'COMPLETED') {
+          store.markDelegationTaskFailed(task.id, error);
+        }
+        const plan = task ? store.getInvestigationPlan(task.investigationPlanId) : undefined;
+        const job = plan ? store.getReasoningJob(plan.reasoningJobId) : undefined;
+        if (job && job.status !== 'COMPLETED' && job.status !== 'FAILED') {
+          store.markReasoningJobFailed(job.id, error);
+        }
+        store.updateInvestigationSessionStatus(session.id, 'FAILED', now());
+        store.evaluateNotification(session.incidentId, now());
+      });
       return store.getInvestigationSession(session.id)!;
     },
   };

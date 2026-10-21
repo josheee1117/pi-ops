@@ -1,4 +1,5 @@
 import type { OpsEvent } from '@pi-ops/protocol';
+import { criticalOperationFor, DEFAULT_NOTIFICATION_POLICY, serviceNotificationPolicy, type NotificationPolicyConfig } from './notification-config.js';
 
 export const RECOVERY_TYPE_MAP: Readonly<Record<string, string>> = {
   'health.recovered': 'health.failure',
@@ -30,7 +31,7 @@ function stringAttribute(event: FingerprintEvent, key: string): string | undefin
  * Extra centrally allowlisted dimensions. Producer fingerprints are ignored.
  * JVM CPU/GC keep service-level identity.
  */
-function typeSpecificDimensions(event: FingerprintEvent): string[] {
+function typeSpecificDimensions(event: FingerprintEvent, version: 1 | 2, policy: NotificationPolicyConfig): string[] {
   const type = RECOVERY_TYPE_MAP[event.type] ?? event.type;
   switch (type) {
     case 'application.slow_sql': {
@@ -45,8 +46,14 @@ function typeSpecificDimensions(event: FingerprintEvent): string[] {
         ?? stringAttribute(event, 'errorCode')
         ?? '';
       const module = stringAttribute(event, 'module');
-      return module ? [code, module] : [code];
+      const operation = stringAttribute(event, 'operation');
+      const binding = version === 2 && operation ? criticalOperationFor(serviceNotificationPolicy(policy, event.service), operation) : undefined;
+      if (binding) return [code, binding.operation ?? binding.path ?? operation ?? ''];
+      const dimensions = module ? [code, module] : [code];
+      return version === 2 && operation ? [...dimensions, operation.split('?')[0] ?? operation] : dimensions;
     }
+    case 'health.failure':
+      return version === 2 ? ['target', 'url', 'method', 'containerName'].map((key) => stringAttribute(event, key) ?? '') : [];
     default:
       return [];
   }
@@ -55,13 +62,13 @@ function typeSpecificDimensions(event: FingerprintEvent): string[] {
 /**
  * Deterministic Incident identity. Never includes timestamps or message text.
  */
-export function computeFingerprint(event: FingerprintEvent): string {
+export function computeFingerprint(event: FingerprintEvent, version: 1 | 2 = 2, policy: NotificationPolicyConfig = DEFAULT_NOTIFICATION_POLICY): string {
   const canonicalType = RECOVERY_TYPE_MAP[event.type] ?? event.type;
   return JSON.stringify([
     canonicalSource(event),
     event.nodeId,
     event.service,
     canonicalType,
-    ...typeSpecificDimensions(event),
+    ...typeSpecificDimensions(event, version, policy),
   ]);
 }

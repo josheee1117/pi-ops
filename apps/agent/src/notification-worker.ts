@@ -13,18 +13,20 @@ export interface NotificationJobWorker {
 export function createNotificationJobWorker(
   config: AgentConfig,
   store: EventStore,
-  notifier: Notifier,
+  notifier?: Notifier,
 ): NotificationJobWorker {
   const pollIntervalMs = config.notificationJobPollIntervalMs ?? 1000;
   const maxAttempts = config.notificationJobMaxAttempts ?? 5;
   const batchSize = config.notificationJobBatchSize ?? 20;
 
   async function drain(): Promise<void> {
+    store.reconcileNotifications();
+    if (!notifier) return;
     const jobs = store.listPendingNotificationJobs(batchSize);
     for (const job of jobs) {
       if (!store.markNotificationJobRunning(job.id)) continue;
       try {
-        await notifier.send(job.payload);
+        await notifier.send(store.getNotificationJob(job.id)?.payload ?? job.payload);
         if (!store.markNotificationJobDelivered(job.id)) {
           console.warn('[agent] notification transition skipped because state changed');
         }
@@ -44,7 +46,7 @@ export function createNotificationJobWorker(
   return createPollingWorker({
     name: 'notification',
     intervalMs: pollIntervalMs,
-    reset: () => store.resetRunningNotificationJobs(),
+    reset: () => notifier ? store.resetRunningNotificationJobs() : 0,
     drain,
   });
 }

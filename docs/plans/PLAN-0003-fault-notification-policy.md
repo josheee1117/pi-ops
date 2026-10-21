@@ -1,87 +1,104 @@
-# PLAN-0003：通知策略最小实现规格
+# PLAN-0003：通知策略实现与配置
 
-状态：proposed。产品方向见 [ADR-0030](../adr/ADR-0030-fault-notification-policy.md)，不是完整实现合同已获批准。本波只改文档；中央仍运行旧策略。下列字段名和实现顺序供下一环节审查，不授权生产修改或部署。
+状态：步骤 4 和 5 已实现。产品规则见 [ADR-0030](../adr/ADR-0030-fault-notification-policy.md)。本页描述中央事实转换和离线验证，不构成真实部署或企微交付验收。
 
-## 当前调用与缺口
+## 事实与决定
 
-- `packages/protocol/src/index.ts` 已有 schemaVersion 1 的 `OpsEvent`、`EventBatch` 和开放 `attributes`。继续用 `business.error`，不新增 wire schema 或事件总线。
-- `apps/agent/src/store.ts` 的 `createIncidentFromEventTransaction` 无条件排 `INCIDENT_OPEN`；`applyRecoveryTransaction` 无条件排 `INCIDENT_RECOVERED`。`findIncidentForEvent` 用 last_seen 聚合窗，不能保证长期同故障只有一个 Incident。
-- `apps/agent/src/investigation-loop.ts` 的 `complete` 在保存报告与结果的事务中排 `INVESTIGATION_COMPLETED`。同 session callback 重放返回已有报告，不同 session 仍各排一条消息。
-- `notification.ts` 的任务 ID 按 Incident 或 session 生成；`store.ts` 的唯一索引与 RUNNING 状态 guard 防止逻辑重复。`notification-worker.ts` 负责发送、有限重试和重启恢复，不负责模型判断。
-- `packages/protocol/src/investigation-runtime.ts` 的报告只有 hypothesis、证据引用、confidence、recommendation，没有可信的告警许可字段。`apps/pi-runtime/src/coordinator.ts` 补证一次后综合报告，失败可以返回 failed。不能从 recommendation 文本或 confidence 阈值直接授权通知。
+`notification-stored-facts.ts` 从同一 Incident 的不可变 Event 和成功 Evidence 构建事实。它核对关联、节点、服务和时间。模型报告不能写入事实。事件数、日志行数不是请求失败次数，没有分母就不计算失败率。
 
-## 最小决定及依据
-
-先在 agent 内定义一个 `AlertDecision` 值，复用 Incident ID 作为故障记录身份，不新建 Fault、AlertCase 或独立策略服务。字段为 `incidentId`、`policyVersion`、`evaluatedAt`、`action: record | analyze | alert | recover`、`reason`、`eventIds`、`evidenceIds`、`missingFacts`。分析关联用可选 `investigationSessionId`、`reasoningResultId`，恢复关联用可选 `initialNotificationId`。增加 `facts` 保存下述事实快照。拟在 incidents 增加可空 `alert_decision_json` 保存最新决定；Event、Evidence 和报告能还原输入，但不能代替历史决定记录。首次排程时须冻结其决定依据，拟在 notification_jobs 增加可空 `decision_json`，不进入外部 payload。是否需要保存每次未排程决定的历史留待实现评审，不先建通用审计平台。
-
-事实快照最少标出故障对象、观测区间、信号类别、影响是否已确认，以及判定使用的配置来源。失败次数、总请求数、采样窗、触发条件、恢复条件分别允许 `unknown`。未知不是 0，也不是未发生。`event_count` 是去重事件记录数，不是失败请求数；采样、聚合或丢弃后不能由它反推失败率。单条事件不证明只失败了一次。缺少业务影响和阈值时，普通异常最多记录或分析，不能伪造一个触发次数或窗口。
-
-事实只引用所属 Incident 的已接收 Event 和成功 Evidence，并核对对象与发生时间。模型输出仍放在现有 report/result 的分析字段，不能写入事实快照。确定性重大类别必须有实际依据，例如已绑定健康目标的失败转换及配置、已确认关键任务的失败结果、真实 OOME 类型、cgroup oom 事实。severity=critical、错误文本含 OOM 或 exitCode=137 单独都不够。
-
-新增字段范围尽量限于内部决定、策略版本与事实依据。复用 NotificationJob 的 DELIVERED 和 deliveredAt 判断交付，不新增一个可能漂移的 `notified` 布尔值。复用现有 NotificationPayload；若未来首次告警携带分析，需要明确修改 `buildNotificationPayload` 当前只给 COMPLETED 附 analysis 的条件，保持 facts/analysis 分离，不悄悄改 wire version。本规格不要求该扩展。
-
-## 判定表
-
-| 可证明的条件 | 决定与消息 |
+| 事实 | 决定 |
 | --- | --- |
-| 预期拒绝、已观测单次普通错误、已绑定规则下的短峰值 | record；首次 0，恢复 0。 |
-| 持续模糊压力或普通异常，影响未知 | analyze；首次 0。模型或补证失败时保留 unknown，不当成正常或重大故障。 |
-| 影响已由当前事实确认的持续普通异常 | alert；模型建议可解释事实，不独立授权。尚缺影响规则时保持 GAP。 |
-| 已确认不可用、关键任务失败、JVM OOME、cgroup OOM | alert；先排确定性事实通知，不等待收证或模型成功。补充失败不撤销该决定。 |
-| 同故障重复事件、同或不同 Investigation 完成 | 更新记录；首次总数不增加，COMPLETED 消息 0。 |
-| 正向恢复且首次 DELIVERED | recover；关联首次 notificationId，恢复逻辑任务恰 1。 |
-| 正向恢复但从未告警 | 记录恢复，不发恢复消息。 |
-| 先恢复后迟到报告 | 保存合法报告，不重开故障、不补首次或 COMPLETED 消息。 |
+| 真实 OutOfMemoryError。application 与 JFR 要有消息或栈，原始 Docker 日志必须有 Java 栈。 | 立即首次通知。 |
+| 真实 StackOverflowError，有 Java 栈。 | 立即首次通知。 |
+| Docker oom action、oomKilled=true，或当前同对象 inspect 的 OOMKilled=true 且 FinishedAt 在故障窗口内。 | 立即首次通知。单独退出码 137 不通知。 |
+| health.failure 与中央规则的 ruleId、版本、节点、服务、目标、URL、method、container、连续样本数及间隔匹配。 | 立即首次通知。缺绑定显式记录 health-binding。 |
+| 非预期业务错误命中该服务的关键操作配置。 | 立即首次通知。4xx 拒绝不授权。 |
+| 普通错误或 CPU、GC、慢 SQL 等独立观测，在服务等待期内持续且间隔不超过上限。 | 先 analyze，到期仍持续发一次"需要人工确认"。 |
+| host 内存或磁盘迟滞已确认压力，尚无同对象恢复。 | 先 analyze，按服务等待期升级。它们是状态转换事件，不要求重复 failure。 |
+| 孤立普通错误、已停止的短暂错误、预期拒绝、单独 exit 137。 | 不排通知。 |
 
-“已通知”暂以内部确认 DELIVERED 为可观测下限，不表示人类可见或平台支持幂等。进程在发送后确认前崩溃仍可能物理重发，沿用原 notificationId 和原重试边界，不声称 exactly-once。
+不存在的 Incident 和非法时间抛明确错误。未支持来源、非法事件和缺操作身份保留来源 ID 与 gap。`EventStore.evaluateNotification()` 将失败保存为 action=error。运维接口 `GET /v1/ops/incidents/:id` 的 `notificationDecision` 暴露决定和缺口。legacy 返回 policyVersion=legacy，不伪装成无需通知。
 
-首次仍 PENDING/RUNNING 就恢复是未定产品边界。候选是记录恢复事实、保留首次任务，待首次 DELIVERED 后排一次恢复；最终 FAILED 则保留交付缺口，不发恢复。该候选未获批准，不可默认为生产行为。如果采用，迟到首次消息须表达已知恢复状态和故障发生时间，不能描述成当前仍在故障。这里只给候选，不改变现有重试、任务 payload 或旧队列。
+`notification-decision.ts` 计算首次、一次有价值更新和恢复。`store.ts` 在事务内调用它。新证据直接触发重评。完成与失败、事件追加、期限轮询、恢复和首次 DELIVERED 都调用同一入口。调查 reconciler 跳过 record 且无需补绑定分析的故障，沿用现有 generation、backoff 和重试上限。
 
-## 故障身份与恢复
+首次任务、补充任务、恢复任务各保留一个逻辑身份。新策略补充任务另有每 Incident 唯一索引。新修法比较结构化 repair 的 target、preconditions、operation、expectedResult、risk 和 requiresApproval，不比较 confidence 或引用顺序。修法必须引用当前成功证据。新影响只比较绑定事实类别，不从模型措辞反推。修法和新影响共用一次补发名额。
 
-同一故障不重复叫人要求先解决 Incident 关联，不能只在 notifier 去重。拟对已确定同一故障对象、类别和因果 episode 且未恢复的事件复用活跃 Incident，不因聚合窗经过而重建。同一对象不等于同一故障；没有正向恢复信号时的长期关闭规则尚未确定，不能无限合并来掩盖缺口。恢复后再次失败是新故障。没有足够对象身份时不全局按错误码合并；不同操作同 code/module、跨源 OOM 与 die 的关联仍需来源事实，缺失时标 GAP。保留多候选恢复 fail closed。
+## 配置文件
 
-`business.error` 当前没有恢复映射。B02 的恢复需同接口同操作成功和批准的恢复窗，不能把 health 200、无新 ERROR 或 COMPLETED 当作恢复。不在本波杜撰 `business.error_recovered` 或增加定时自动恢复。应用源先独立补异常事件，计数与正向恢复信号合同另行补齐后才实现 B02 全闭环。
+Agent 读取 `PI_OPS_NOTIFICATION_POLICY_PATH` 指定的 UTF-8 JSON 文件。未设置时用 `apps/agent/src/notification-config.ts` 的默认值。指定文件替换整个默认配置，不合并。改完重启 agent。容器部署需将文件只读挂载到对应路径，再设置该环境变量。
 
-## 路径归属与顺序
+以下是独立配置示例。orders 的 /login 是示例，不是已确认的生产默认路由。
 
-本波中央文档 owner 独占本文件、ADR-0030 与两份 testing 规格，不改生产、协议或默认测试。应用 owner 独占 supervisor 指定的独立 DataAsset 源码工作区中全局异常处理入口、`BusinessErrorRecorder` 及必要 Starter/JFR sender 文件和离线测试。具体源码路径以应用 owner 的读查报告为准；不得触碰 `/Users/hejiayuan/code/data-asset` 的 dirty 主工作区，不 checkout。
-
-1. 应用 seam 复用 BusinessErrorRecorder → JFR → sender → EventBatch。只覆盖非预期请求异常，预期拒绝不发故障事件。固定 businessCode/module 的身份语义，异常类、有限脱敏栈和响应状态放既有 attributes；字段是否实际可携带由应用 owner 验证，不宣称现有 recorder 已支持。禁止请求头、请求体、SQL 参数和凭据进入事件。此 seam 可独立编译和离线验证，不等待中央实现。
-2. 下一波中央 owner 在获准后独占 `apps/agent/src/notification.ts`、`store.ts`、`incident.ts`、`fingerprint.ts`、`investigation-loop.ts` 及专用离线验收。先实现内部决定与持久化，再把创建/更新/恢复/完成四个入口接入同一判定。去掉默认完成消息的排程，不删除历史任务类型或报告。
-3. 同一中央 owner 接续 `notification-worker.ts` 中交付后的恢复联动，仅在上述竞态细节确定后实施。决定和排程保持事务原子性，既有任务唯一索引、RUNNING guard、attempts、maxAttempts、终态和重启重试不变。
-4. `packages/protocol/**` 与 `apps/pi-runtime/src/coordinator.ts` 本计划不修改。需要新的模型建议字段时另提小合同，不能借机建通用规则 DSL、重写 coordinator、迁移整个 store 或放宽证据权限。
-
-## 离线 literal 验收
-
-未来使用独立空库、固定时钟、内存事件与 FakeNotifier。以下数值是断言输出，不是产品触发阈值；输入窗口与触发计数必须来自明确 fixture 配置，未绑定则 `BLOCKED`。不执行目标探测、故障注入、真实模型或外部通知。
-
-| 案例 | 固定断言 |
-| --- | --- |
-| B01 成功正例与已分类预期拒绝对照，真实应用离线处理链 | sender 故障事件数 `0`，中央首次 `0`，恢复 `0`。手工 business.error 不能替代发送器证明。 |
-| B02 非预期异常正例与成功对照 | 正例经 recorder/JFR/mapper 得到 `type=business.error`，有实际异常类与稳定 code/module；成功对照故障事件 `0`。只编译通过不等于链路通过。 |
-| B02 普通单次且无重大事实 | `action=record`，首次 `0`，完成消息 `0`。缺次数时 `missingFacts` 包含计数缺口，不冒称单次。 |
-| B02 持续但缺影响证据 | `action=analyze`，首次 `0`，影响 `unknown`；补证失败和模型不可达分别覆盖。 |
-| B02 持续且按绑定规则确认影响 | 同故障 Incident `1`、首次逻辑任务 `1`；同事件重放与不同 session 完成后仍 `1`，完成消息 `0`。无恢复合同则恢复 `GAP`，不得伪造通过。 |
-| S06 按 fixture 绑定规则确认不可用正例 | 模型 failed、补证 failed 时仍首次 `1`；成功交付后同目标正向恢复为 `RECOVERED`，恢复任务 `1`。 |
-| S06 瞬态失败对照 | detector 故障事件 `0`、首次 `0`、恢复 `0`。不借 duration 默认值替目标审批。 |
-| callback 与时序对照 | 同 session 重放不增加结果与消息；不同 session 可各留报告但完成消息 `0`；先恢复后报告首次增量 `0`。 |
-
-成功发送的 FakeNotifier 用例分别断言 `['INCIDENT_OPEN','INCIDENT_RECOVERED']` 与 `[]`，不是只比较任务数。重大故障加入 OOME 与 cgroup oom 正例，以及普通 ERROR 与单独 137 对照。PENDING/RUNNING 恢复竞态只记录 proposed，未决前不得定义 PASS。既有 `first-batch-offline.check.ts` 是旧合同快照，保留原历史输出，不为了新策略改 golden 为当前结果。新验收必须单列预期与观测，且不加入默认测试或降低既有治理证明。
-
-已落地的两份离线检查，命令在 `apps/agent` 下运行：
-
-```text
-./node_modules/.bin/tsx src/__tests__/notification-policy.check.ts
-./node_modules/.bin/tsx src/__tests__/notification-stored-facts.check.ts
+```json
+{
+  "defaultUnknownImpactWaitMs": 300000,
+  "defaultObservationMaxGapMs": 120000,
+  "services": {
+    "orders": {
+      "unknownImpactWaitMs": 180000,
+      "observationMaxGapMs": 60000,
+      "criticalOperations": [
+        { "ruleId": "orders-login-v1", "operation": "POST /login", "workflow": "登录", "owner": "orders 值班人" },
+        { "ruleId": "orders-submit-v1", "path": "/orders/submit", "workflow": "下单" }
+      ]
+    }
+  },
+  "healthRules": [
+    {
+      "ruleId": "orders-health-v1", "ruleVersion": 1,
+      "nodeId": "node-1", "service": "orders", "target": "orders",
+      "url": "http://orders/health", "method": "GET", "container": "orders",
+      "failureSamples": 2, "intervalMs": 10000
+    }
+  ]
+}
 ```
 
-两个文件名都不是 `*.test.ts`。`apps/agent/package.json` 的 `test` 只加载 `src/**/*.test.ts`，所以默认 `pnpm test` 不会运行它们。不要把文件改成 `*.test.ts`，也不要加进默认 `test` 脚本。
+每条关键操作必须只填 path 或 operation 之一。path 忽略 HTTP 方法，operation 精确包含方法或非 HTTP 操作名。支持单段 `{name}` 路由模板，不支持前缀通配。精确路径先于模板匹配。只把配置模板放进通知事实和新指纹，授权 code 与 query 值不作为关键操作身份。ruleId 改名不改变操作身份。配置增删后，中央用已保存事件按当前配置匹配活跃故障，不重复创建首次通知。
 
-两份检查自备数据，不需要准备数据库或环境变量。`notification-policy.check.ts` 用 `:memory:` SQLite 跑判定函数和旧 `INCIDENT_OPEN` 投递；`notification-stored-facts.check.ts` 在系统临时目录建 `facts.sqlite` 并从第二个连接改写行，结束前删目录。全部通过时 exit 0，任一断言不符时 exit 非 0。exit 0 只表示纯函数与事实层的合同快照匹配，不是上面任何一个场景的 `PASS`。
+node-agent 的 `PI_OPS_HEALTH_TARGETS` 对应目标要配置相同的 ruleId 和 ruleVersion。中央 failureSamples 等于 `PI_OPS_HEALTH_FAILURE_DURATION`，这是连续失败样本数，不是秒。intervalMs 等于目标实际间隔。改这些字段需同步中央规则。旧 node-agent 配置仍能解析，但没有绑定就不授权重大通知。
 
-## 部署迁移边界
+## 默认值的依据
 
-本波不部署、不操作旧数据库。未来先离线验证 additive 字段对旧库可读，旧行策略版本缺失表示 legacy，不回填新决定。不得回放、自动取消、删除、重排或改写旧任务。新策略只用于批准的切换边界之后的新故障；旧 Incident 的新事件如何归属也需在切换清单显式锁定，不能靠启动时间猜测。
+所有服务未配置等待期时使用 300000 ms，最大观测间隔使用 120000 ms。这是可改的运维默认值，不是已验证的业务 SLA，也不复用聚合窗。服务可分别覆盖。
 
-外发启用前必须单独审批数据库、队列范围、目标与消息预算。旧队列不明确时不启动连接真实 notifier 的 worker，因为它当前会 reset RUNNING 并扫描 PENDING。离线验证用新库，不以清空旧库解决迁移。旧库投递与迁移方案、未确认首次交付时恢复的规则、场景 T/W/R、业务影响与关键任务认定仍未定。文档和离线结果均不构成真实接入 PASS。
+| 服务 | 默认关键操作 | 仓内依据 |
+| --- | --- | --- |
+| dataasset、data-asset、data-asset-service | GET /auth/authClientInfo、GET /auth/{code}、GET /oauth/wework/code、GET /oauth/wework/code/{corp}。 | `artifacts/real-dataasset-lab/app/build/lib/data-asset-web-0.0.1-SNAPSHOT.jar` 的 AuthController 与 WeworkOauthController Spring 注解。用 `javap -v -p -classpath <jar> <class>` 核对。 |
+| order-service、dataasset-jdk17-local-本地演练 | submitOrder，所属流程为下单演练。 | `deploy/local/jdk17-drill/Drill.java` 与该目录 README。不是生产核心任务清单。 |
+
+默认健康绑定只有 local-dev 节点的 pi-ops-drill，URL 为 `http://pi-ops-drill:8088/health`，容器为 pi-ops-drill，ruleId 为 local-drill-health-v1，版本 1，连续样本数 1，间隔 2000 ms。依据为 `deploy/local/compose.env`，本轮同步了 node-agent 的规则字段。其他健康目标必须显式配置，不能拿本地规则冒充 DataAsset 线上绑定。
+
+需要用户补齐实际生产 service 名、各服务等待期、核心业务流程的核心接口、负责人、生产节点及健康目标。DataAsset 四条路由存在的证据不证明每个部署都使用这些 service 名。未知的服务不会自动套用前缀规则。仓内没有其他生产服务的完整关键接口清单，没有编造默认值。
+
+## 迁移与交付
+
+新增 notification_decisions 表保存最新决定。incidents 新增 notification_policy_version 与 fingerprint_version，旧行默认 legacy 和版本 1。notification_jobs 新增 policy_version 和冻结 decision_json，旧行默认 legacy。没有回填、删除或重排旧任务。新故障标记策略版本 1、指纹版本 2。既有历史指纹修复逻辑继续按各行指纹版本运行，不把旧队列迁成新策略。版本 2 的业务故障保留保存时的指纹，不因操作配置变化重写。
+
+新策略使用对象、操作和类别复用未恢复故障，不受短期聚合窗限制。缺操作身份时只在原聚合窗内关联。没有业务成功生产合同，不把 health 200、COMPLETED 或无新日志当作业务恢复。业务类故障长期关闭仍由运维管理，不新增猜测性自动恢复。
+
+首次未发送即恢复会更新新任务的待发送快照，使用"曾发生、现已恢复"，不另排恢复。RUNNING 时恢复且发送成功，则首次交付后补恢复。发送失败回到 PENDING 或重启重置时再次判断恢复，首次重试改成恢复摘要，诊断重试终止。首次最终 FAILED 不发孤立恢复。旧任务不改写。恢复后尚未发送的诊断更新终止为 FAILED，last_error 说明 suppressed，不重新花费投递预算。
+
+所有网络发送都在数据库事务之外。外部交付至少一次，不能声称 exactly-once。未配置 webhook 时 worker 仍运行决定轮询，但不发送或标记 DELIVERED。
+
+## 验证入口
+
+新增默认测试经真实 `scanContainerLog`、`dockerEventToOpsEvent`、`createHealthDetector` 转换，通过进程内 `/v1/events` 写入 SQLite 后检查事实、决定、任务和 fake fetch 消息。它们不是启动网络服务的 E2E，也不证明外部 DataAsset starter 的真实接入。
+
+```sh
+pnpm --filter @pi-ops/agent test
+pnpm --filter @pi-ops/node-agent test
+pnpm --filter @pi-ops/pi-runtime test
+pnpm --filter @pi-ops/protocol test
+pnpm typecheck
+```
+
+`notification-coverage.test.ts`、`notification-coverage-lifecycle.test.ts`、`notification-policy-config.test.ts` 和 `notification-migration.test.ts` 覆盖关键类别、反例、持续等待、重启、重复、跨窗口、报告价值、恢复竞态与 legacy。原 `notification.test.ts` 的投递 guard、重试和重启检查改用已绑定健康故障，不再靠无条件 slow SQL 排程。
+
+`notification-policy.check.ts` 与 `notification-stored-facts.check.ts` 是 2026-10-20 旧合同快照。它们原本就不在默认测试，仍保留，不为本次策略重写历史预期。直接运行会因 ordinary 的 analyze、显式 gap、缺 Incident 抛错和取消无条件 OPEN 而失败。新策略验证使用上述默认测试，不以修改旧 golden 掩盖合同变化。
+
+## 未完成的生产者合同
+
+关键批任务最终失败仍没有本仓可用的任务执行器生产链。不能用手写 bound critical-task fixture 声称接入完成。本轮核心接口由实际日志 JFR 转换链覆盖。生产业务成功与重试耗尽信号、完整关键任务清单需对应应用 owner 补齐。真正的非 OOM 意外容器退出还缺预期运行状态和维护绑定，单独 die 不当成 OOM 或已确认业务不可用。
+
+真实模型、隔离故障演练和企微外发需要另行授权。旧库队列、目标和消息预算未确认前，不启动连接真实 notifier 的 worker。

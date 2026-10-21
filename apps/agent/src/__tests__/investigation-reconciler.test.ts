@@ -154,7 +154,7 @@ describe('investigation reconciliation', () => {
     assert.equal(store.listReasoningResults(created.id).length, 1);
     assert.equal(
       store.listNotificationJobs(created.id).filter((job) => job.type === 'INVESTIGATION_COMPLETED').length,
-      1,
+      0,
     );
     store.close();
   });

@@ -495,6 +495,7 @@ describe('Docker log evidence', () => {
         Status: 'exited',
         Running: false,
         StartedAt: '2026-08-20T12:00:00.000Z',
+        FinishedAt: '2026-08-20T12:00:01.000Z',
         OOMKilled: true,
         ExitCode: 137,
         Health: { Status: 'unhealthy', Log: [{ Output: 'token=secret' }] },
@@ -517,6 +518,7 @@ describe('Docker log evidence', () => {
     const imageConfig = data['Config'] as Record<string, unknown>;
 
     assert.equal(state['OOMKilled'], true);
+    assert.equal(state['FinishedAt'], '2026-08-20T12:00:01.000Z');
     assert.equal(state['ExitCode'], 137);
     assert.equal(data['RestartCount'], 4);
     assert.equal(health['Status'], 'unhealthy');

@@ -11,7 +11,10 @@ export type MissingFact =
   | 'impact'
   | 'health-binding'
   | 'critical-task-binding'
-  | 'critical-task-result';
+  | 'critical-task-result'
+  | 'unsupported-source'
+  | 'invalid-event'
+  | 'operation-binding';
 
 export type NotificationObservation =
   | {
@@ -52,6 +55,13 @@ export type NotificationObservation =
       source: SourceRef;
     }
   | {
+      kind: 'critical-operation';
+      ruleId: string;
+      operation: string;
+      workflow: string;
+      source: SourceRef;
+    }
+  | {
       kind: 'critical-task';
       result: 'failed' | 'succeeded' | 'unknown';
       binding: { kind: 'bound'; objectKey: string; ruleId: string } | { kind: 'missing' };
@@ -60,6 +70,8 @@ export type NotificationObservation =
 
 export type FirstNotificationReason =
   | 'jvm-oome'
+  | 'jvm-stack-overflow'
+  | 'critical-operation-failed'
   | 'docker-oom'
   | 'health-unavailable'
   | 'critical-task-impact'
@@ -87,6 +99,8 @@ export interface FirstNotificationDecision {
 
 export interface FirstNotificationFacts {
   observations: NotificationObservation[];
+  gaps?: Array<{ eventId: string; reason: MissingFact }>;
+  unknownImpactDueAt?: string;
 }
 
 const GAP_ORDER: MissingFact[] = [
@@ -166,6 +180,7 @@ function collectMissing(observations: NotificationObservation[]): MissingFact[] 
         if (observation.persistence.kind === 'unknown') found.add('persistence');
         if (observation.impact.kind === 'unknown') found.add('impact');
         break;
+      case 'critical-operation':
       case 'jvm-exception':
       case 'docker':
         break;
@@ -211,6 +226,8 @@ function recordReason(observation: NotificationObservation): FirstNotificationRe
       return 'short-peak';
     case 'ordinary-error':
       return 'ordinary-without-major-fact';
+    case 'critical-operation':
+      return 'critical-operation-failed';
     case 'jvm-exception':
       return 'exception-not-oome';
     case 'docker':
@@ -233,13 +250,19 @@ function recordReason(observation: NotificationObservation): FirstNotificationRe
  * Does not check source trust, Incident association, time, or delivery.
  */
 export function decideFirstNotification(facts: FirstNotificationFacts): FirstNotificationDecision {
-  const missing = collectMissing(facts.observations);
+  const missing = [...new Set([...collectMissing(facts.observations), ...(facts.gaps ?? []).map((gap) => gap.reason)])];
   const failures = echoedCount(facts.observations, 'failures');
   const requests = echoedCount(facts.observations, 'requests');
   const oome = facts.observations.find(recognizedOome);
   if (oome) {
     return { action: 'alert', reason: 'jvm-oome', missing, failures, requests, sources: [oome.source] };
   }
+  const overflow = facts.observations.find((item) => item.kind === 'jvm-exception'
+    && item.exceptionClass === 'java.lang.StackOverflowError'
+    && /(?:^|\n)\s*at\s+\S+\([^)\n]*\)/.test(item.stackTrace));
+  if (overflow) return { action: 'alert', reason: 'jvm-stack-overflow', missing, failures, requests, sources: [overflow.source] };
+  const critical = facts.observations.find((item) => item.kind === 'critical-operation');
+  if (critical) return { action: 'alert', reason: 'critical-operation-failed', missing, failures, requests, sources: [critical.source] };
   const docker = facts.observations.find(dockerOom);
   if (docker) {
     return { action: 'alert', reason: 'docker-oom', missing, failures, requests, sources: [docker.source] };
@@ -261,7 +284,8 @@ export function decideFirstNotification(facts: FirstNotificationFacts): FirstNot
     return { action: 'record', reason: 'no-observation', missing, failures, requests, sources: [] };
   }
   return {
-    action: 'record',
+    action: facts.observations.some((item) => item.kind === 'ordinary-error'
+      && !(item.impact.kind === 'known' && item.impact.value === 'none')) ? 'analyze' : 'record',
     reason: recordReason(first),
     missing,
     failures,

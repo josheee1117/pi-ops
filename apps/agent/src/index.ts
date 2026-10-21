@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { loadConfig } from './config.js';
 import { createEventStore } from './store.js';
+import { loadNotificationPolicy } from './notification-config.js';
 import { createIncidentEngine } from './incident.js';
 import { createEvidenceOrchestrator } from './evidence-orchestrator.js';
 import { createEvidenceJobWorker } from './evidence-worker.js';
@@ -17,7 +18,7 @@ import { createHttpWebhookNotifier, createWeComNotifier } from './notifier.js';
 import { createApp } from './app.js';
 
 const config = loadConfig();
-const store = createEventStore(config.sqlitePath);
+const store = createEventStore(config.sqlitePath, loadNotificationPolicy(config.notificationPolicyPath));
 const incidentEngine = createIncidentEngine(store, {
   aggregationWindowMs: config.aggregationWindowMs,
   reasonerType: config.reasonerType,
@@ -74,11 +75,11 @@ const reasoningWorker = createReasoningJobWorker(
   createMemoryRetriever(store),
 );
 reasoningWorker.start();
-const notificationWorker = config.notificationWebhookUrl
-  ? createNotificationJobWorker(
-    config,
-    store,
-    config.notificationWebhookKind === 'wecom'
+const notificationWorker = createNotificationJobWorker(
+  config,
+  store,
+  config.notificationWebhookUrl
+    ? config.notificationWebhookKind === 'wecom'
       ? createWeComNotifier({
         webhookUrl: config.notificationWebhookUrl,
         timeoutMs: config.notificationTimeoutMs ?? 3000,
@@ -89,10 +90,10 @@ const notificationWorker = config.notificationWebhookUrl
         timeoutMs: config.notificationTimeoutMs ?? 3000,
         maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
         ...(config.notificationWebhookToken ? { token: config.notificationWebhookToken } : {}),
-      }),
-  )
-  : undefined;
-notificationWorker?.start();
+      })
+    : undefined,
+);
+notificationWorker.start();
 const app = createApp(
   config,
   store,

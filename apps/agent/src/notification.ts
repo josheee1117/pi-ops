@@ -49,6 +49,8 @@ export interface NotificationPayload {
     eventCount: number;
     evidenceIds: string[];
   };
+  notice?: 'fault' | 'manual-confirmation' | 'diagnosis-update' | 'recovered-before-delivery';
+  impactSummary?: string;
   analysis?: NotificationAnalysis;
 }
 

@@ -120,7 +120,7 @@ describe('InvestigationLoopService', () => {
     }
   });
 
-  it('stores and reads diagnosis and passes it unchanged to notification payloads', async () => {
+  it('stores and reads diagnosis without notifying an unalerted legacy incident', async () => {
     const { store, incident } = seedIncident();
     try {
       const loop = createInvestigationLoopService(store);
@@ -132,8 +132,7 @@ describe('InvestigationLoopService', () => {
       assert.deepEqual(store.getInvestigationReportBySessionId(session.id)?.diagnosis, actionDiagnosis);
       assert.deepEqual(store.listAllInvestigationReports()[0]?.diagnosis, actionDiagnosis);
       const notification = store.listNotificationJobs(incident.id).find((job) => job.type === 'INVESTIGATION_COMPLETED');
-      assert.deepEqual(notification?.payload.analysis?.diagnosis, actionDiagnosis);
-      assert.equal(notification?.payload.analysis?.recommendation, report.recommendation);
+      assert.equal(notification, undefined);
       const config = makeAgentConfig();
       const app = createApp(config, store, createIncidentEngine(store, config));
       const response = await app.request(`/v1/ops/incidents/${incident.id}`, {

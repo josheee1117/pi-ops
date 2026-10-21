@@ -8,6 +8,7 @@ export interface NodeAgentEndpoint {
 
 export interface AgentConfig {
   port: number;
+  notificationPolicyPath?: string;
   ingestToken: string;
   operatorToken: string;
   sqlitePath: string;
@@ -186,6 +187,7 @@ export function loadConfig(): AgentConfig {
       max: 30 * 24 * 60 * 60 * 1000,
     }),
     nodeAgents: parseNodeAgents(),
+    ...(process.env['PI_OPS_NOTIFICATION_POLICY_PATH'] ? { notificationPolicyPath: process.env['PI_OPS_NOTIFICATION_POLICY_PATH'] } : {}),
     evidenceTimeoutMs: integerEnv('PI_OPS_EVIDENCE_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,
     }),
