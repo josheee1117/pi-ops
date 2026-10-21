@@ -1001,7 +1001,7 @@
       "executionClass": "COMPONENT",
       "location": {
         "file": "apps/agent/src/__tests__/wecom-notifier.test.ts",
-        "testName": "sends three markdown templates with ordered incident facts and an Idempotency-Key"
+        "testName": "renders first, diagnosis, recovery and notice types without diagnostics or secrets"
       },
       "proofs": [
         {

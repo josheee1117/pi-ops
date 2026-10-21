@@ -1,3 +1,4 @@
+import { deterministicSummary } from '@pi-ops/protocol';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -114,6 +115,7 @@ describe('bounded multi-agent coordinator', () => {
             supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [], confidence: 0.8,
             recommendation: '检查健康接口详情。\n核对应用日志。',
             diagnosis: {
+              summary: deterministicSummary({ type: 'health.failure', service: 'order-service' }),
               observations: [{ statement: '健康接口返回 503。', evidenceIds: ['evd-now'] }],
               candidateCauses: [{ cause: '具体失败条件未知。', supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [] }],
               uncertainties: ['缺少健康详情。'],

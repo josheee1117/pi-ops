@@ -1,3 +1,4 @@
+import { deterministicSummary } from '@pi-ops/protocol';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { investigationReportInputSchema, type RuntimeInvestigationContext } from '@pi-ops/protocol';
@@ -24,6 +25,7 @@ const repair = {
 
 function diagnosis(action = repair) {
   return {
+    summary: deterministicSummary(context.incident),
     observations: [{ statement: '生效路由与部署契约不同。', evidenceIds: ['ev-config'] }],
     candidateCauses: [{
       cause: '客户端路由未同步。', supportingEvidenceIds: ['ev-config'], contradictingEvidenceIds: [],
@@ -134,7 +136,7 @@ describe('diagnosis and action contract', () => {
       };
       const outcome = await investigate(context, { model });
       assert.equal(outcome.status, 'completed', layer);
-      assert.equal(outcome.report?.diagnosis, undefined);
+      assert.ok(outcome.report?.diagnosis?.summary);
       assert.match(outcome.report?.hypothesis ?? '', /诊断不完整/);
     }
     assert.equal(investigationReportInputSchema.safeParse({

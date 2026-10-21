@@ -51,7 +51,7 @@ export async function renderMessage(benchmarkCase: BenchmarkCase, report: Runtim
   let content = '';
   let fetchCalls = 0;
   const notifier = createWeComNotifier({
-    webhookUrl: 'https://capture.invalid/no-network', timeoutMs: 1000, maxResponseBytes: 128,
+    webhookUrl: 'https://capture.invalid/no-network', detailsBaseUrl: 'http://127.0.0.1:8080', timeoutMs: 1000, maxResponseBytes: 128,
     fetch: async (_url: unknown, init?: RequestInit) => {
       fetchCalls++;
       if (typeof init?.body !== 'string') throw new Error('expected string notification body');

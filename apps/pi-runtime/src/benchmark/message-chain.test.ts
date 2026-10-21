@@ -1,3 +1,4 @@
+import { deterministicSummary } from '@pi-ops/protocol';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MESSAGE_CASES } from './message-cases.js';
@@ -53,6 +54,7 @@ function report(): RuntimeInvestigationReportInput {
     hypothesis: '第106行抛出异常，触发逻辑未知。', recommendation: '核对对应版本源码。',
     confidence: 0.6, supportingEvidenceIds: [id], contradictingEvidenceIds: [],
     diagnosis: {
+      summary: deterministicSummary({ type: 'business.error', service: 'dataasset' }),
       observations: [{ statement: 'RuntimeException', evidenceIds: [id] }],
       candidateCauses: [{ cause: '触发逻辑未知', supportingEvidenceIds: [id], contradictingEvidenceIds: [] }],
       uncertainties: ['修复尚未确定'], actions: [
@@ -81,7 +83,8 @@ it('runs the real notifier with fake fetch and checks action visibility, bytes, 
   assert.equal(result.status, 'completed');
   assert.equal(result.message?.fetchCalls, 1);
   assert.equal(result.messageEvaluation?.hardPass, true, JSON.stringify(result.messageEvaluation));
-  assert.match(result.message!.content, /止损（需批准）/);
+  assert.match(result.message!.content, /止损：.*经批准/);
+  assert.match(result.message!.content, /brief\?format=markdown/);
   const markdown = renderMessageReport([result]);
   assert.ok(markdown.includes(result.message!.content));
   assert.match(markdown, /scripted\/deterministic/);
@@ -95,6 +98,18 @@ it('runs the real notifier with fake fetch and checks action visibility, bytes, 
   assert.equal(check.checks.mitigationVisible!.status, 'fail');
   bad.hypothesis = '确认库存不足';
   assert.equal(evaluateMessage(sample.messageOracle!, bad, [], sample.evidence, '').checks.forbiddenAttributionScreen!.status, 'fail');
+});
+
+it('renders all seven cases in fake mode with bounded summaries and detail links without network calls', async () => {
+  for (const sample of MESSAGE_CASES) {
+    const model = createFakeRuntimeModel();
+    const result = await runCase(sample, { model, mode: 'fake', thinkingLevel: 'off' });
+    assert.equal(result.status, 'completed', sample.id);
+    assert.equal(result.message?.fetchCalls, 1, sample.id);
+    assert.equal(result.messageEvaluation?.hardPass, true, `${sample.id}: ${JSON.stringify(result.messageEvaluation)}`);
+    assert.equal(model.networkCalls, 0);
+    for (const label of ['场景：', '发生了什么：', '严重程度：', '恢复建议：', '编号：', 'http://127.0.0.1:8080/v1/ops/incidents/']) assert.ok(result.message!.content.includes(label), `${sample.id}: ${label}`);
+  }
 });
 
 it('records billed usage from a rejected specialist and stops before a run above the reserve', async () => {

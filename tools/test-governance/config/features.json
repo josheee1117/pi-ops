@@ -556,6 +556,8 @@
         "apps/agent/src/notification-worker.ts",
         "apps/agent/src/polling-worker.ts",
         "apps/agent/src/notifier.ts",
+        "apps/agent/src/on-call-brief.ts",
+        "apps/agent/src/incident-brief.ts",
         "apps/agent/src/notification-policy.ts",
         "apps/agent/src/notification-stored-facts.ts",
         "apps/agent/src/notification-config.ts",

@@ -86,6 +86,7 @@ describe('InvestigationLoopService', () => {
           risk: '发布可能影响现有调用。', requiresApproval: true, evidenceIds: ['evd-inv-1'],
         };
         const diagnosis = {
+          summary: { scene: '订单查询', whatHappened: '查询报错。', severity: { level: '一般', reason: '尚无关键业务影响事实。' }, recovery: ['修复：核对路由和契约。'] },
           ...(scenario === 'insufficient' ? actionDiagnosis : {
             observations: [{ statement: '生效路由 /old 与部署契约 /orders 不同。', evidenceIds: ['evd-inv-1'] }],
             candidateCauses: [{ cause: '客户端路由未同步。', supportingEvidenceIds: ['evd-inv-1'], contradictingEvidenceIds: [] }],
@@ -141,6 +142,16 @@ describe('InvestigationLoopService', () => {
       assert.equal(response.status, 200);
       const body = await response.json();
       assert.deepEqual(body.sessions[0].report.diagnosis, actionDiagnosis);
+      const url = `/v1/ops/incidents/${incident.id}/brief?format=markdown`;
+      assert.equal((await app.request(url)).status, 401);
+      assert.equal((await app.request(url, { headers: { Authorization: 'Bearer ingest-token' } })).status, 401);
+      const detail = await app.request(url, { headers: { Authorization: 'Bearer operator-token' } });
+      assert.equal(detail.status, 200);
+      assert.match(detail.headers.get('content-type') ?? '', /text\/markdown/);
+      const markdown = await detail.text();
+      for (const text of [incident.id, '场景', '严重程度', actionDiagnosis.observations[0]!.statement,
+        actionDiagnosis.actions[0]!.operation, actionDiagnosis.actions[0]!.risk, actionDiagnosis.uncertainties[0]!, 'evd-inv-1', 'load1', '只读']) assert.ok(markdown.includes(text), text);
+      assert.equal((await app.request('/v1/ops/incidents/missing/brief?format=markdown', { headers: { Authorization: 'Bearer operator-token' } })).status, 404);
     } finally { store.close(); }
   });
 

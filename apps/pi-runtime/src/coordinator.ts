@@ -3,6 +3,8 @@ import {
   investigationReportInputSchema,
   investigationDiagnosisSchema,
   diagnosisEvidenceIds,
+  deterministicSummary,
+  investigationSummarySchema,
   MAX_EVIDENCE_ENRICHMENT_ROUNDS,
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   MAX_EVIDENCE_TYPES_PER_SPECIALIST,
@@ -123,14 +125,14 @@ export async function investigate(
 
     const currentIds = new Set(working.evidence.map((item) => item.id));
     const degraded = completed.find((finding) => finding.summary.startsWith('诊断不完整'));
-    const report = degraded && !completed.some((finding) => finding.diagnosis)
+    const rawReport = degraded && !completed.some((finding) => finding.diagnosis)
       ? { hypothesis: degraded.hypotheses[0]!, recommendation: degraded.summary, confidence: Math.min(0.3, degraded.confidence), supportingEvidenceIds: [], contradictingEvidenceIds: [] }
       : model.provider === 'fake'
         ? synthesizeDeterministic(working, completed, currentIds)
         : await synthesizeWithModel(model, working, completed, currentIds, signal, usage);
     return {
       status: 'completed',
-      report,
+      report: withPlainSummary(rawReport, working),
       selectedSpecialists,
       findings: completed,
       specialistStatus,
@@ -315,6 +317,33 @@ function sameCanonicalEvidence(existing: RuntimeInvestigationContext['evidence']
   return true;
 }
 
+function withPlainSummary(report: RuntimeInvestigationReportInput, context: RuntimeInvestigationContext): RuntimeInvestigationReportInput {
+  const fallback = deterministicSummary(context.incident, context.summarySeverity);
+  const ids = context.evidence.map((item) => item.id);
+  const diagnosis = report.diagnosis ?? {
+    observations: [],
+    candidateCauses: [{ cause: report.hypothesis, supportingEvidenceIds: report.supportingEvidenceIds, contradictingEvidenceIds: report.contradictingEvidenceIds }],
+    uncertainties: ['诊断不完整，修复尚未确定。'],
+    actions: [{ purpose: 'evidence_collection' as const, target: context.incident.service,
+      preconditions: ['确认故障时间和对应部署版本。'], operation: report.recommendation,
+      expectedResult: '取得修复依据。', risk: '只读核对，不直接修改服务。', requiresApproval: false, evidenceIds: [] }],
+  };
+  const needsMitigation = fallback.severity.level === '严重' && !diagnosis.actions.some((item) => item.purpose === 'mitigation');
+  const mitigation = {
+    purpose: 'mitigation' as const, target: context.incident.service,
+    preconditions: ['故障仍持续且确认影响业务。', '负责人批准，已核对备用容量和回滚路径。'],
+    operation: '隔离故障流量或暂停已确认的触发任务；若影响扩大，按核对过的路径回滚。',
+    expectedResult: '降低失败请求，阻止影响扩大。', risk: '可能中断部分请求，不能自动执行。',
+    requiresApproval: true, evidenceIds: ids.slice(0, 20),
+  };
+  const summary = diagnosis.summary ?? fallback;
+  return { ...report, diagnosis: { ...diagnosis,
+    summary: { ...summary, severity: fallback.severity,
+      recovery: needsMitigation ? [fallback.recovery[0]!, ...summary.recovery.filter((item) => !item.startsWith('止损')).slice(0, 2)] : summary.recovery },
+    actions: needsMitigation && ids.length ? [mitigation, ...diagnosis.actions] : diagnosis.actions,
+  } };
+}
+
 function synthesizeDeterministic(
   context: RuntimeInvestigationContext,
   findings: SpecialistFinding[],
@@ -379,6 +408,7 @@ async function synthesizeWithModel(
     ].join('\n'),
     user: JSON.stringify({
       incident: context.incident,
+      summarySeverity: deterministicSummary(context.incident, context.summarySeverity).severity,
       evidenceIds: [...currentIds],
       evidence: context.evidence,
       findings,
@@ -386,8 +416,12 @@ async function synthesizeWithModel(
     }),
     signal,
     }, (value) => {
-      const parsed = investigationReportInputSchema.extend({ diagnosis: investigationDiagnosisSchema }).safeParse(normalizeReportPayload(value));
+      const parsed = investigationReportInputSchema.extend({ diagnosis: investigationDiagnosisSchema.extend({ summary: investigationSummarySchema }) }).safeParse(normalizeReportPayload(value));
       if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
+      if (deterministicSummary(context.incident, context.summarySeverity).severity.level === '严重'
+        && parsed.data.diagnosis.actions.length === 8 && !parsed.data.diagnosis.actions.some((item) => item.purpose === 'mitigation')) {
+        throw new Error('invalid coordinator synthesis: unavailable service requires room for mitigation');
+      }
       return parsed.data;
     });
   } catch (error) {

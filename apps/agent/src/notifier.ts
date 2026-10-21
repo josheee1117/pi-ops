@@ -1,5 +1,5 @@
 import type { NotificationPayload } from './notification.js';
-import { deterministicSteps, diagnosisSteps, renderBriefStep, shortenBriefField, toOnCallBrief } from './on-call-brief.js';
+import { plainSummary } from './on-call-brief.js';
 
 export interface Notifier {
   send(notification: NotificationPayload): Promise<void>;
@@ -89,164 +89,29 @@ export function createHttpWebhookNotifier(options: {
   };
 }
 
-/** Plain Chinese for the fault types the detectors actually emit. */
-const FAULT_COPY: Record<string, { name: string; open: string; recovered: string }> = {
-  'health.failure': {
-    name: '健康检查失败',
-    open: '健康检查连续没有通过，服务可能已经不可用。',
-    recovered: '健康检查重新通过。',
-  },
-  'container.die': {
-    name: '容器退出',
-    open: '容器进程退出了，服务不在运行。',
-    recovered: '容器已重新运行。',
-  },
-  'container.restart': {
-    name: '容器重启',
-    open: '容器刚刚异常重启。',
-    recovered: '容器重启后已稳定。',
-  },
-  'container.oom': {
-    name: '容器内存不足被杀',
-    open: '容器因为内存不足被系统杀掉。',
-    recovered: '容器内存不足的情况已过去。',
-  },
-  'jvm.oom': {
-    name: 'Java 内存耗尽',
-    open: 'Java 进程内存耗尽（OutOfMemoryError）。',
-    recovered: 'Java 内存耗尽的情况已过去。',
-  },
-  'jvm.stack_overflow': {
-    name: 'Java 栈溢出',
-    open: 'Java 进程栈溢出（StackOverflowError）。',
-    recovered: 'Java 栈溢出的情况已过去。',
-  },
-  'business.error': {
-    name: '接口报错',
-    open: '应用接口出现未处理异常。',
-    recovered: '应用接口报错已恢复。',
-  },
-  'host.memory_pressure': {
-    name: '机器内存过高',
-    open: '机器内存占用持续过高。',
-    recovered: '机器内存占用已回到正常范围。',
-  },
-  'host.disk_pressure': {
-    name: '磁盘空间不足',
-    open: '机器磁盘占用持续过高。',
-    recovered: '机器磁盘空间已恢复。',
-  },
-  'application.slow_sql': {
-    name: '慢 SQL',
-    open: '数据库出现慢 SQL。',
-    recovered: '慢 SQL 已恢复。',
-  },
-  'jvm.cpu_pressure': {
-    name: 'Java CPU 过高',
-    open: '检测到 Java 进程 CPU 压力，持续时间和当前状态需核对。',
-    recovered: 'Java 进程 CPU 占用已回落。',
-  },
-  'jvm.gc_pressure': {
-    name: 'Java 垃圾回收过频',
-    open: 'Java 垃圾回收过于频繁。',
-    recovered: 'Java 垃圾回收已恢复正常。',
-  },
-};
-
-function beijingTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date);
-  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-  return `${pick('month')}月${pick('day')}日 ${pick('hour')}:${pick('minute')}`;
-}
-
-function describeFault(type: string, service: string, recovered: boolean): { title: string; body: string } {
-  const known = FAULT_COPY[type];
-  if (!known) {
-    return recovered
-      ? { title: `${service} 已恢复`, body: `${type} 已恢复。` }
-      : { title: `${service} 发生故障`, body: `故障类型是 ${type}。` };
-  }
-  return recovered
-    ? { title: `${service} 已恢复`, body: known.recovered }
-    : { title: `${service} ${known.name}`, body: known.open };
-}
-
-function formatWeComMarkdown(notification: NotificationPayload): string {
-  const incident = notification.incident;
-  const recovered = notification.type === 'INCIDENT_RECOVERED' || notification.notice === 'recovered-before-delivery';
-  const completedAfterRecovery = notification.type === 'INVESTIGATION_COMPLETED' && incident.state === 'RECOVERED';
-  const described = describeFault(incident.type, incident.service, recovered);
-  const title = notification.notice === 'manual-confirmation' ? `${incident.service} 需要人工确认`
-    : notification.notice === 'recovered-before-delivery' ? `${incident.service} 曾发生、现已恢复`
-      : notification.type === 'INVESTIGATION_COMPLETED'
-        ? `${incident.service} ${notification.notice === 'diagnosis-update' ? '诊断更新' : '诊断完成'}${completedAfterRecovery ? '（故障已恢复）' : ''}`
-        : described.title;
-  const body = notification.notice === 'manual-confirmation' ? '错误在配置的等待期后仍持续，影响尚未确认，需要人工确认。'
-    : notification.notice === 'recovered-before-delivery' ? '该故障曾发生，首次通知送达前已收到正向恢复事实。'
-      : completedAfterRecovery ? '故障已在诊断完成前恢复，以下是诊断时的判断。' : described.body;
-  const when = beijingTime(notification.type === 'INCIDENT_OPEN' || completedAfterRecovery ? incident.firstSeen : incident.lastSeen);
-  const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
-  const time = `${completedAfterRecovery ? '发生时间' : '时间'}：${when}（北京时间）`;
-  const brief = analysis ? toOnCallBrief(analysis.hypothesis, analysis.recommendation, analysis.diagnosis) : undefined;
-  const repairUnknown = analysis?.diagnosis && !analysis.diagnosis.actions.some((action) => action.purpose === 'repair');
-  const steps = analysis?.diagnosis ? diagnosisSteps(analysis.diagnosis).filter((step) => step !== '修复尚未确定。')
-    : brief?.steps.length ? [...brief.steps] : deterministicSteps(incident, recovered || completedAfterRecovery);
-  const reference = analysis?.reasoningResultId ?? incident.id;
-  const marker = `已截断，完整内容见诊断编号 ${reference}`;
-  let operationBytes = Infinity;
-  let fieldBytes = Infinity;
-  let omitted = 0;
-  const field = (text: string) => shortenBriefField(text, fieldBytes, marker);
-  let evidence = brief?.evidence ? `\n**依据**\n${brief.evidence}` : '';
-  let unknown = brief?.unknown ? `\n**未知**\n${brief.unknown}` : '';
-  let confidence = analysis ? `\n<font color="comment">模型自评 ${Math.round(analysis.confidence * 100)}%，不是准确率</font>` : '';
-  const compose = () => [
-    `### ${field(title)}`,
-    ...(completedAfterRecovery ? [body] : []),
-    ...(notification.notice === 'diagnosis-update' && notification.impactSummary ? [field(notification.impactSummary)] : []),
-    ...(brief ? [`**${field(brief.conclusion.replaceAll('*', ''))}**`] : []),
-    ...(!completedAfterRecovery && !analysis?.diagnosis && !(analysis && incident.type === 'jvm.cpu_pressure') ? [body] : []),
-    `机器：${field(incident.nodeId)}`, time,
-    ...(analysis ? ['诊断原文时间按 UTC 阅读；显式时区以原文为准。'] : []),
-    ...(evidence ? [evidence] : []),
-    ...(unknown ? [unknown] : []),
-    '', '**下一步**', ...(repairUnknown ? ['修复尚未确定。'] : []), ...steps.map((step, index) => `${index + 1}. ${renderBriefStep(step, { reference, operationBytes, fieldBytes })}`),
-    ...(omitted ? [`另有 ${omitted} 条动作见完整诊断（编号 ${reference}）`] : []),
-    ...(confidence ? [confidence] : []),
-    '', `编号：${incident.id}`,
+export function formatWeComMarkdown(notification: NotificationPayload, detailsBaseUrl = ''): string {
+  const summary = plainSummary(notification);
+  const status = notification.notice === 'manual-confirmation' ? '需要人工确认'
+    : notification.notice === 'recovered-before-delivery' ? '曾发生、现已恢复'
+      : notification.type === 'INCIDENT_RECOVERED' ? '已恢复'
+        : notification.type === 'INVESTIGATION_COMPLETED' ? '诊断更新' : '故障通知';
+  const text = (value: string) => value.replace(/[\r\n]/g, ' ').replace(/[<>*`]/g, '');
+  const url = `${detailsBaseUrl.replace(/\/$/, '')}/v1/ops/incidents/${encodeURIComponent(notification.incident.id)}/brief?format=markdown`;
+  return [
+    `### ${status}`,
+    `场景：${text(summary.scene)}`,
+    `发生了什么：${text(summary.whatHappened)}`,
+    `严重程度：${summary.severity.level}，${text(summary.severity.reason)}`,
+    '恢复建议：', ...summary.recovery.map((item, index) => `${index + 1}. ${text(item)}`),
+    `编号：${text(notification.incident.id)}`,
+    `详情获取方式：GET ${url}`,
+    '鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。',
   ].join('\n');
-  let content = compose();
-  if (Buffer.byteLength(content) > 4000) { confidence = ''; unknown = ''; evidence = ''; content = compose(); }
-  while (Buffer.byteLength(content) > 4000 && steps.length > 1) {
-    const removed = steps.pop();
-    if (typeof removed !== 'string' || !analysis?.diagnosis) omitted++;
-    content = compose();
-  }
-  // Shorten the operation only after whole lower-priority actions have yielded.
-  if (Buffer.byteLength(content) > 4000) {
-    const first = steps[0];
-    const operation = typeof first === 'string' ? first : first?.operation ?? '';
-    operationBytes = Math.max(32, Buffer.byteLength(operation) - (Buffer.byteLength(content) - 4000) - Buffer.byteLength(marker) - 20);
-    content = compose();
-  }
-  // Metadata and safety fields can themselves exceed the channel limit. Mark every shortened field.
-  for (fieldBytes = 512; Buffer.byteLength(content) > 4000; fieldBytes = Math.floor(fieldBytes / 2)) {
-    content = compose();
-  }
-  return content;
 }
 
 export function createWeComNotifier(options: {
   webhookUrl: string;
+  detailsBaseUrl?: string;
   timeoutMs: number;
   maxResponseBytes: number;
   fetch?: typeof fetch;
@@ -254,7 +119,7 @@ export function createWeComNotifier(options: {
   const fetchImpl = options.fetch ?? fetch;
   return {
     async send(notification) {
-      const content = formatWeComMarkdown(notification);
+      const content = formatWeComMarkdown(notification, options.detailsBaseUrl);
       try {
         const response = await fetchImpl(options.webhookUrl, {
           method: 'POST',

@@ -82,6 +82,7 @@ const notificationWorker = createNotificationJobWorker(
     ? config.notificationWebhookKind === 'wecom'
       ? createWeComNotifier({
         webhookUrl: config.notificationWebhookUrl,
+        detailsBaseUrl: config.incidentDetailsBaseUrl ?? `http://localhost:${config.port}`,
         timeoutMs: config.notificationTimeoutMs ?? 3000,
         maxResponseBytes: config.notificationMaxResponseBytes ?? 8192,
       })

@@ -23,17 +23,18 @@ async function main() {
   const value = (flag: string) => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
   const root = fileURLToPath(new URL('../../../../', import.meta.url));
   const configPath = resolve(root, value('--config') ?? 'artifacts/real-dataasset-lab/central/runtime-secrets.env');
-  const config = readModelConfig(configPath);
+  const mode = args.includes('--live') ? 'live' : 'fake';
+  const config = mode === 'live' ? readModelConfig(configPath)
+    : { provider: 'fake', model: 'deterministic', thinkingLevel: 'off' as const, apiKey: undefined };
   const cases = value('--case') ? MESSAGE_CASES.filter((item) => item.id === value('--case')) : MESSAGE_CASES;
   if (!cases.length) throw new Error('unknown case');
   const catalogPath = resolve(process.env['PI_CODING_AGENT_DIR'] ?? join(process.env['HOME'] ?? '', '.pi/agent'), 'models.json');
-  const catalog: { providers?: Record<string, { models?: Array<{ id: string; maxTokens?: number; reasoning?: boolean }> }> } = JSON.parse(readFileSync(catalogPath, 'utf8'));
+  const catalog: { providers?: Record<string, { models?: Array<{ id: string; maxTokens?: number; reasoning?: boolean }> }> } = mode === 'live' ? JSON.parse(readFileSync(catalogPath, 'utf8')) : {};
   const configuredModel = catalog.providers?.[config.provider]?.models?.find((item) => item.id === config.model);
   const modelLimits = configuredModel ? { id: configuredModel.id, maxTokens: configuredModel.maxTokens, reasoning: configuredModel.reasoning } : undefined;
   const budget = 1_000_000;
   const estimate = cases.reduce((sum, item) => sum + estimateCaseTokens(item), 0);
   if (estimate > budget) throw new Error(`estimated tokens=${estimate} exceed budget=${budget}`);
-  const mode = args.includes('--live') ? 'live' : 'fake';
   const out = resolve(root, value('--out') ?? `artifacts/on-call-messages/${new Date().toISOString().replace(/[:.]/g, '-')}`);
   console.log(JSON.stringify({ mode, configPath, provider: config.provider, model: config.model, thinking: config.thinkingLevel, cases: cases.map((item) => item.id), estimatedTokens: estimate, budget }));
   if (args.includes('--dry-run')) return;

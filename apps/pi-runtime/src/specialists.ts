@@ -21,6 +21,8 @@ export const DIAGNOSIS_CONTRACT = [
   'Evidence ID、哈希和 job id 只放 JSON 引用数组，禁止写入上述正文。',
   'hypothesis 与 summary 写清结论、依据和未知项，每项最多 2000 字符；recommendation 最多 2000 字符，保留动作前提、时间和验证方法。',
   'diagnosis 必须包含 observations、candidateCauses、uncertainties、actions。只保存结论和引用，不保存思维链。',
+  'coordinator 的 diagnosis.summary 必填，包含 scene（服务与场景，1至80字符）、whatHappened（发生了什么，1至160字符）、severity（{level,reason}，level为严重/高/一般，reason为1至80字符）、recovery（1至3条，每条1至100字符，先止损后修复和验证）。只写值班人员能读懂的短句，不堆英文术语或证据编号。等级服从输入 summarySeverity 规则，不服从模型自评。',
+  '服务可能不可用的内存耗尽、调用栈溢出和健康检查失败，必须给 mitigation 止损动作。先说明批准、备用容量和回滚前提，再建议隔离故障流量或暂停已确认的触发任务。不要只给补证。',
   'observations 最多 10 项，每项为 {statement,evidenceIds}，引用至少一个当前证据。candidateCauses 为 1 至 5 项，每项为 {cause,supportingEvidenceIds,contradictingEvidenceIds}。',
   'observations.statement 和 candidateCauses.cause 各最多 2000 字符。uncertainties 最多 10 条，每条最多 1000 字符，明确修复尚未确定的原因。',
   'actions 为 1 至 8 项，每项必须包含 {purpose,target,preconditions,operation,expectedResult,risk,requiresApproval,evidenceIds}。',
@@ -33,6 +35,7 @@ export const DIAGNOSIS_CONTRACT = [
 /** Cross-layer inference limits apply to both specialists and final synthesis. */
 export const CURRENT_EVIDENCE_LIMITS = [
   '用当前成功 Evidence 支撑判断。相关 Evidence ID 全部写入 JSON 数组，不要写入正文。',
+  '数字和单位必须逐字引用证据，不改数量级，不凭印象重写；NanoCpus=2000000000不能写成200000000，若证据写2e9则照抄2e9。不做无依据换算。容器内存不是应用堆内存，不能把容器占用说成堆占用。',
   'JFR事件名（如com.example.MemoryFailure）是观测名，不是业务分配路径；异常文本只证明应用报错，不证明现实库存或外部依赖故障。',
   '异常类、文本和栈只能确认异常及抛出位置。没有源码或调用证据时，不得把库存校验、条件判断、结果映射或依赖调用列为较可能原因；应说明触发逻辑未知，并建议读代码确认。',
   'docker.logs的模型视图可能只保留前20行；只能引用实际可见片段，不得称完整日志或完整故障窗口。采样时间与事件时间的间隔须按原始时间计算。',

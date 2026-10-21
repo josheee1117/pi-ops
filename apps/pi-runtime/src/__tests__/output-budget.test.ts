@@ -1,3 +1,4 @@
+import { deterministicSummary } from '@pi-ops/protocol';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { investigate } from '../coordinator.js';
@@ -9,6 +10,7 @@ const context: RuntimeInvestigationContext = {
   evidence: [{ id: 'ev-log', kind: 'docker.logs', data: { lines: ['java.lang.IllegalStateException at Orders.java:9'] } }],
 };
 const diagnosis = {
+  summary: deterministicSummary(context.incident),
   observations: [{ statement: '日志有异常。', evidenceIds: ['ev-log'] }],
   candidateCauses: [{ cause: '触发逻辑未知。', supportingEvidenceIds: ['ev-log'], contradictingEvidenceIds: [] }],
   uncertainties: ['缺少源码。'], actions: [{
@@ -46,7 +48,7 @@ it('still generates a labeled legacy report when both attempts return truncated 
   } };
   const result = await investigate(context, { model });
   assert.equal(result.status, 'completed', result.error);
-  assert.equal(result.report?.diagnosis, undefined);
+  assert.ok(result.report?.diagnosis?.summary);
   assert.match(result.report?.hypothesis ?? '', /诊断不完整/);
   assert.match(result.report?.recommendation ?? '', /Orders.java:9/);
   assert.equal(calls, 2);
@@ -61,7 +63,7 @@ it('keeps a labeled legacy report when coordinator truncates twice after a valid
   const result = await investigate(context, { model });
   assert.equal(result.status, 'completed');
   assert.equal(calls, 3);
-  assert.equal(result.report?.diagnosis, undefined);
+  assert.ok(result.report?.diagnosis?.summary);
   assert.match(result.report?.hypothesis ?? '', /诊断不完整.*日志有异常/);
   assert.equal(result.inputTokens, 30);
 });
@@ -75,7 +77,7 @@ it('does not use length-terminated JSON as a complete diagnosis even if it parse
   const result = await investigate(context, { model });
   assert.equal(calls, 2);
   assert.equal(result.status, 'completed');
-  assert.equal(result.report?.diagnosis, undefined);
+  assert.ok(result.report?.diagnosis?.summary);
   assert.match(result.report?.hypothesis ?? '', /诊断不完整/);
 });
 
@@ -90,7 +92,7 @@ it('retries schema-oversized output then degrades, while valid output needs no r
     assert.equal(result.status, 'completed', result.error);
     if (oversized) {
       assert.match(result.report?.hypothesis ?? '', /诊断不完整/);
-      assert.equal(result.report?.diagnosis, undefined);
+      assert.ok(result.report?.diagnosis?.summary);
     } else {
       assert.equal(calls, 2);
       assert.deepEqual(result.report?.diagnosis, diagnosis);

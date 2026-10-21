@@ -19,6 +19,7 @@ export type HistoricalKnowledgeStatus = 'available' | 'unavailable';
 
 export interface InvestigationContext {
   schemaVersion: number;
+  summarySeverity?: import('@pi-ops/protocol').InvestigationSummary['severity'];
   incident: IncidentContext['incident'];
   evidence: readonly IncidentContext['evidence'][number][];
   truncation?: IncidentContext['truncation'];
@@ -55,6 +56,7 @@ export function buildInvestigationContext(
   const knowledge = retrieveKnowledge(incidentContext, store);
   return deepFreeze({
     schemaVersion: INVESTIGATION_SCHEMA_VERSION,
+    ...(store.getIncident(incident.id) ? { summarySeverity: store.getSummarySeverity(incident.id) } : {}),
     incident: incidentContext.incident,
     evidence: incidentContext.evidence,
     ...(incidentContext.truncation ? { truncation: incidentContext.truncation } : {}),

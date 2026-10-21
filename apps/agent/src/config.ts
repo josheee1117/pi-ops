@@ -9,6 +9,7 @@ export interface NodeAgentEndpoint {
 export interface AgentConfig {
   port: number;
   notificationPolicyPath?: string;
+  incidentDetailsBaseUrl?: string;
   ingestToken: string;
   operatorToken: string;
   sqlitePath: string;
@@ -70,6 +71,14 @@ export interface AgentConfig {
   investigationRetryBackoffMs: number;
   /** SUBMITTED/RUNNING sessions older than this fail and may retry. */
   investigationStaleTimeoutMs: number;
+}
+
+function parseDetailsBaseUrl(value: string): string {
+  const url = new URL(value);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || value.length > 500) {
+    throw new Error('PI_OPS_INCIDENT_DETAILS_BASE_URL must be an HTTP(S) base URL without credentials, query or fragment, at most 500 characters');
+  }
+  return url.toString().replace(/\/$/, '');
 }
 
 function requireEnv(key: string): string {
@@ -187,6 +196,7 @@ export function loadConfig(): AgentConfig {
       max: 30 * 24 * 60 * 60 * 1000,
     }),
     nodeAgents: parseNodeAgents(),
+    ...(process.env['PI_OPS_INCIDENT_DETAILS_BASE_URL'] ? { incidentDetailsBaseUrl: parseDetailsBaseUrl(process.env['PI_OPS_INCIDENT_DETAILS_BASE_URL']) } : {}),
     ...(process.env['PI_OPS_NOTIFICATION_POLICY_PATH'] ? { notificationPolicyPath: process.env['PI_OPS_NOTIFICATION_POLICY_PATH'] } : {}),
     evidenceTimeoutMs: integerEnv('PI_OPS_EVIDENCE_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,

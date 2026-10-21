@@ -1,4 +1,14 @@
 import { readFileSync } from 'node:fs';
+import { DEFAULT_SUMMARY_SEVERITY, investigationSummarySchema, z, type InvestigationSummary } from '@pi-ops/protocol';
+
+const severityRulesSchema = z.object({
+  unavailableTypes: z.array(z.string().min(1)).min(1),
+  unavailable: investigationSummarySchema.shape.severity,
+  criticalOperation: investigationSummarySchema.shape.severity,
+  other: investigationSummarySchema.shape.severity,
+}).strict();
+
+export type SummarySeverityRules = z.infer<typeof severityRulesSchema>;
 
 export interface CriticalOperation {
   ruleId: string;
@@ -28,6 +38,7 @@ export interface ServiceNotificationPolicy {
 }
 
 export interface NotificationPolicyConfig {
+  summarySeverity?: SummarySeverityRules;
   defaultUnknownImpactWaitMs: number;
   defaultObservationMaxGapMs: number;
   services: Record<string, ServiceNotificationPolicy>;
@@ -35,6 +46,7 @@ export interface NotificationPolicyConfig {
 }
 
 export const DEFAULT_NOTIFICATION_POLICY: NotificationPolicyConfig = {
+  summarySeverity: DEFAULT_SUMMARY_SEVERITY,
   defaultUnknownImpactWaitMs: 300_000,
   defaultObservationMaxGapMs: 120_000,
   services: {
@@ -109,7 +121,9 @@ export function loadNotificationPolicy(path: string | undefined): NotificationPo
       ...(text(item.container) ? { container: item.container } : {}),
     };
   });
-  return { defaultUnknownImpactWaitMs: raw.defaultUnknownImpactWaitMs, defaultObservationMaxGapMs: raw.defaultObservationMaxGapMs, services, healthRules };
+  return { defaultUnknownImpactWaitMs: raw.defaultUnknownImpactWaitMs, defaultObservationMaxGapMs: raw.defaultObservationMaxGapMs, services, healthRules,
+    ...(raw.summarySeverity !== undefined ? { summarySeverity: severityRulesSchema.parse(raw.summarySeverity) } : {}),
+  };
 }
 
 export function criticalOperationFor(policy: ServiceNotificationPolicy, operation: string): CriticalOperation | undefined {
@@ -123,6 +137,17 @@ export function criticalOperationFor(policy: ServiceNotificationPolicy, operatio
     const right = actual.split('/');
     return left.length === right.length && left.every((part, index) => /^\{[A-Za-z]+\}$/.test(part) ? Boolean(right[index]) : part === right[index]);
   });
+}
+
+export function ruleSummarySeverity(type: string, observations: readonly import('./notification-policy.js').NotificationObservation[], config: NotificationPolicyConfig): InvestigationSummary['severity'] {
+  const rules = config.summarySeverity ?? DEFAULT_SUMMARY_SEVERITY;
+  if (rules.unavailableTypes.includes(type) || observations.some((item) =>
+    (item.kind === 'docker' && (item.oomKilled || item.dockerAction === 'oom'))
+    || (item.kind === 'jvm-exception' && ['java.lang.OutOfMemoryError', 'java.lang.StackOverflowError'].includes(item.exceptionClass))
+    || (item.kind === 'health' && item.binding.kind === 'bound' && item.transition.kind === 'failure'))) return rules.unavailable;
+  if (observations.some((item) => item.kind === 'critical-operation'
+    || (item.kind === 'critical-task' && item.binding.kind === 'bound' && item.result === 'failed'))) return rules.criticalOperation;
+  return rules.other;
 }
 
 function record(value: unknown): value is Record<string, unknown> {

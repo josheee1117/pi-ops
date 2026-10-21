@@ -26,7 +26,8 @@ export function createNotificationJobWorker(
     for (const job of jobs) {
       if (!store.markNotificationJobRunning(job.id)) continue;
       try {
-        await notifier.send(store.getNotificationJob(job.id)?.payload ?? job.payload);
+        const payload = store.getNotificationJob(job.id)?.payload ?? job.payload;
+        await notifier.send({ ...payload, summarySeverity: store.getSummarySeverity(job.incidentId) });
         if (!store.markNotificationJobDelivered(job.id)) {
           console.warn('[agent] notification transition skipped because state changed');
         }

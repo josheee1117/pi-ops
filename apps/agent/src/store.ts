@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { OpsEvent, EventBatch, Evidence, InvestigationRuntimeMetadata } from '@pi-ops/protocol';
 import { investigationDiagnosisSchema, normalizeSpecialistRoles } from '@pi-ops/protocol';
 import { computeFingerprint } from './fingerprint.js';
-import { DEFAULT_NOTIFICATION_POLICY, type NotificationPolicyConfig } from './notification-config.js';
+import { DEFAULT_NOTIFICATION_POLICY, ruleSummarySeverity, type NotificationPolicyConfig } from './notification-config.js';
 import { evaluateNotification, type StoredNotificationDecision } from './notification-decision.js';
 import type { ReasoningResult } from './reasoner.js';
 import type { MemoryCandidate, ReasoningEvaluation } from './reasoning-evaluation.js';
@@ -1051,6 +1051,7 @@ export interface EventStore {
   computeEventFingerprint(event: OpsEvent): string;
   legacyEventFingerprint(event: OpsEvent): string;
   listIncidentEventIds(incidentId: string): string[];
+  getSummarySeverity(incidentId: string): import('@pi-ops/protocol').InvestigationSummary['severity'];
   getNotificationDecision(incidentId: string): StoredNotificationDecision | undefined;
   saveNotificationDecision(incidentId: string, decision: StoredNotificationDecision): void;
   evaluateNotification(incidentId: string, now?: string): StoredNotificationDecision | undefined;
@@ -3362,6 +3363,12 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       return (db.prepare('SELECT event_id FROM incident_events WHERE incident_id = ? ORDER BY event_id').all(incidentId) as Array<{ event_id: string }>).map((row) => row.event_id);
     },
 
+    getSummarySeverity(incidentId: string) {
+      const incident = store.getIncident(incidentId);
+      if (!incident) throw new Error(`Incident ${incidentId} does not exist`);
+      return ruleSummarySeverity(incident.type, store.getNotificationDecision(incidentId)?.facts?.observations ?? [], notificationPolicy);
+    },
+
     getNotificationDecision(incidentId: string): StoredNotificationDecision | undefined {
       const row = db.prepare('SELECT decision_json FROM notification_decisions WHERE incident_id = ?').get(incidentId) as { decision_json: string } | undefined;
       return row ? JSON.parse(row.decision_json) as StoredNotificationDecision : undefined;
@@ -3401,6 +3408,8 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     },
 
     scheduleNotificationJob(job: NotificationJob): boolean {
+      job.payload.summarySeverity = ruleSummarySeverity(job.payload.incident.type,
+        store.getNotificationDecision(job.incidentId)?.facts?.observations ?? [], notificationPolicy);
       const inserted = insertNotificationJobStmt.run({
         id: job.id,
         type: job.type,

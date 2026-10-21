@@ -67,7 +67,20 @@ export const investigationActionSchema = z.object({
 
 export type InvestigationAction = z.infer<typeof investigationActionSchema>;
 
+export const investigationSummarySchema = z.object({
+  scene: z.string().trim().min(1).max(80),
+  whatHappened: z.string().trim().min(1).max(160),
+  severity: z.object({
+    level: z.enum(['严重', '高', '一般']),
+    reason: z.string().trim().min(1).max(80),
+  }).strict(),
+  recovery: z.array(z.string().trim().min(1).max(100)).min(1).max(3),
+}).strict();
+
+export type InvestigationSummary = z.infer<typeof investigationSummarySchema>;
+
 export const investigationDiagnosisSchema = z.object({
+  summary: investigationSummarySchema.optional(),
   observations: z.array(z.object({
     statement: z.string().trim().min(1).max(2000),
     evidenceIds: z.array(z.string().min(1)).min(1).max(20),
@@ -249,6 +262,7 @@ const runtimeContextSchema = z.object({
     type: z.string().min(1),
     service: z.string().min(1),
   }).passthrough(),
+  summarySeverity: investigationSummarySchema.shape.severity.optional(),
   evidence: z.array(z.object({
     id: z.string().min(1),
     kind: z.string().min(1),

@@ -68,6 +68,11 @@ describe('notification lifecycle from production converters', () => {
       try {
         const incident = await ingest(business(0, operation, status));
         assert.equal(store.listNotificationJobs(incident.id).length, count);
+        if (count) {
+          assert.equal(store.getSummarySeverity(incident.id).level, '高');
+          assert.match(await markdown(store.listNotificationJobs(incident.id)[0]!.payload), /严重程度：高/);
+          assert.equal(createInvestigationLoopService(store).start(incident.id).context.summarySeverity?.level, '高');
+        }
       } finally { store.close(); }
     }
     const { store, ingest } = harness(':memory:', { ...policy, services: { orders: { ...policy.services.orders!, criticalOperations: [{ ruleId: 'submit-v1', operation: 'submitOrder', workflow: '下单' }] } } });

@@ -3,6 +3,7 @@ import {
   RUNTIME_FORBIDDEN_CAPABILITIES,
   type SpecialistFinding,
   diagnosisEvidenceIds,
+  investigationSummarySchema,
   type RuntimeInvestigationReportInput,
 } from '@pi-ops/protocol';
 import type { BenchmarkCase, BenchmarkEvidence } from './fixtures.js';
@@ -116,6 +117,9 @@ export function evaluateMessage(
     mitigationVisible: check(purposes.mitigation?.inMessage ? 'pass' : 'fail'),
     repairOrUnknownVisible: check(purposes.repair?.inMessage || message.includes('修复尚未确定') ? 'pass' : 'fail'),
     verificationVisible: check(purposes.verification?.inMessage ? 'pass' : 'fail'),
+    plainSummary: check(investigationSummarySchema.safeParse(report?.diagnosis?.summary).success ? 'pass' : 'fail'),
+    detailAddress: check(/\/v1\/ops\/incidents\/[^\s]+\/brief\?format=markdown/.test(message) && message.includes('Bearer') ? 'pass' : 'fail'),
+    noDetailedSections: check(/\*\*(?:依据|未知|下一步)\*\*|模型自评|\n前提：|\n风险：/.test(message) ? 'fail' : 'pass'),
   };
   return { checks, purposes, forbiddenMatches, hardPass: Object.values(checks).every((item) => item.status !== 'fail') };
 }

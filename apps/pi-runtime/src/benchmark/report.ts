@@ -42,7 +42,7 @@ export function buildReport(
 }
 
 export function renderMessageReport(results: CaseResult[]): string {
-  const lines = ['# 真实模型值班消息评测', '', '以下消息来自 agent 渲染器的 fake fetch 捕获，没有外发。自动通过不等于能推进恢复。', '',
+  const lines = [results.every((item) => item.mode === 'fake') ? '# fake 值班消息渲染' : '# 真实模型值班消息评测', '', '以下消息来自 agent 渲染器的 fake fetch 捕获，没有外发。自动通过不等于能推进恢复。fake 结果不代表真实模型诊断质量。', '',
     '| 案例 | 模型 | thinking | 输入 token | 输出 token | 耗时 ms | 消息字节 | 自动结果 |',
     '|---|---|---|---:|---:|---:|---:|---|'];
   for (const result of results) {
