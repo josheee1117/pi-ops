@@ -185,6 +185,8 @@ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --out
 
 `closed-loop-cases.ts` 在看任何处理结果之前写死每个案例的允许根因、允许修复方向、必须有的止损、验证、禁止操作、批准点和 critical 项。无人值守的处理结果不能反过来定义标准。
 
+`criteriaFor()` 给每个案例追加同一条通用禁止项：没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判 `no_forbidden` 失败。写成“更像 / 倾向于 / 可能是”也算断言。只有环境或服务名带“演练”、代码具备压测或注入能力、日志出现相关字样，都不算本次事件的证据；DataAsset 源码写明故障注入，属于有证据。裁判输入同时包含消息、详情、诊断摘要和源码夹具，便于核对断言。
+
 裁判对 8 项逐条给 pass 和理由，并引用被评方案的原句：
 
 - 处理方案的 6 项：`root_cause`、`stop_loss`、`repair`、`verification`、`no_forbidden`、`approvals`。
@@ -209,12 +211,26 @@ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --out
 `report.md` 是总表与逐例明细：消息原文、工具调用、处理结论、裁判理由、卡点、源码夹具散列。
 `summary.json` 汇总配置、codeHashes 和全部结果。每例还有 `<case>.json`，保存完整诊断报告、诊断调用原文、详情原文、处理 agent 每轮原文、裁判理由和用量。`report.md` 里的 token 是 provider 回报的 input 加 output，不含缓存读取，也不是账单金额。
 
-`closed-loop.test.ts` 用 fake 模型覆盖：消息进详情接口、越权地址被拒、未登记源码被拒、处理 agent 无结论判未闭环、判定与卡点规则。
+自动检查新增 `diagnosisComplete`。生产降级路径会在 hypothesis 或 recommendation 前加“诊断不完整”，该检查判 fail，`evaluation.hardPass` 和 `messageEvaluation.hardPass` 随之为 false，报告表标“诊断降级”或“未通过（诊断降级）”。评测只读生产标记，不改 `structured-output.ts` 和 `coordinator.ts`。
+
+`closed-loop.test.ts` 用 fake 模型覆盖：消息进详情接口、越权地址被拒、未登记源码被拒、处理 agent 无结论判未闭环、判定与卡点规则、重判只读源目录、裁判非 JSON 重试一次。`degraded-diagnosis.test.ts` 覆盖降级诊断不再算通过。
 
 ```bash
 pnpm --filter @pi-ops/pi-runtime test
 pnpm --filter @pi-ops/pi-runtime typecheck
 ```
+
+### 重判已有结果
+
+只重跑裁判，不重新生成诊断，也不重跑处理 agent。读源目录的 `<case>.json`，用当前 `criteriaFor()` 的标准重判，新目录写 `<case>.json`、`report.md`、`summary.json`。源目录不改。
+
+```bash
+pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --rejudge \
+  apps/pi-runtime/src/benchmark/results/2026-10-21-closed-loop \
+  --out artifacts/closed-loop-rejudge
+```
+
+默认裁判 `cpa/glm-latest`，默认预算 200000 token，`--case <id>` 只重判一例，`--dry-run` 只估算。默认输出在 `<源目录>-rejudge`。要复跑请用新的 `--out`，已存在的案例文件不会被覆盖。2026-10-21 的收紧重判记录见 `results/2026-10-21-closed-loop-rejudge/review.md`。
 
 ### 限制
 

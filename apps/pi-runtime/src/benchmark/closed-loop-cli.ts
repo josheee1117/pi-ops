@@ -10,6 +10,7 @@ import { createLiveBenchmarkModel } from './live-model.js';
 import { runClosedLoopCase, type ClosedLoopCaseResult } from './closed-loop-runner.js';
 import { criteriaFor } from './closed-loop-cases.js';
 import { renderClosedLoopReport } from './closed-loop-report.js';
+import { rejudgeDirectory, renderRejudgeReport } from './closed-loop-rejudge.js';
 
 const DEFAULT_AGENT_CATALOG = 'apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent';
 const CASE_RESERVE = 95_000;
@@ -93,6 +94,36 @@ async function main() {
   const value = (flag: string) => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
   const mode = args.includes('--live') ? 'live' : 'fake';
   const root = fileURLToPath(new URL('../../../../', import.meta.url));
+  const rejudgeSource = value('--rejudge');
+  if (rejudgeSource) {
+    const sourceDir = resolve(root, rejudgeSource);
+    const outDir = resolve(root, value('--out') ?? `${sourceDir}-rejudge`);
+    const judgeSpec = parseSpec(value('--judge') ?? 'cpa/glm-latest');
+    const modelCatalog = resolve(value('--model-catalog') ?? join(homedir(), '.pi/agent'));
+    const budget = Number(value('--budget') ?? 200_000);
+    const selected = value('--case');
+    const caseIds = selected ? [selected] : MESSAGE_CASES.map((item) => item.id);
+    const estimate = caseIds.length * 12_000;
+    const judge = { provider: judgeSpec.provider, model: judgeSpec.model, thinking: 'off' };
+    console.log(JSON.stringify({ mode: 'rejudge', sourceDir, outDir, judge, caseIds, estimatedTokens: estimate, budget }));
+    if (estimate > budget) throw new Error(`estimated tokens=${estimate} exceed budget=${budget}`);
+    if (args.includes('--dry-run')) return;
+    const tracker: Tracker = { spent: 0, budget };
+    const judgeModel = budgeted((await withCatalog(modelCatalog, () => createLiveBenchmarkModel({ ...judgeSpec, thinkingLevel: 'off' }))).model, tracker);
+    const started = Date.now();
+    const results = await rejudgeDirectory({ sourceDir, outDir, repoRoot: root, judgeModel, caseIds });
+    const wallMs = Date.now() - started;
+    writeFileSync(join(outDir, 'summary.json'), `${JSON.stringify({ mode: 'rejudge', sourceDir, judge, budget, spent: tracker.spent, wallMs, results }, null, 2)}\n`);
+    writeFileSync(join(outDir, 'report.md'), renderRejudgeReport({
+      results, sourceDir, judge: { provider: judgeSpec.provider, model: judgeSpec.model },
+      spent: tracker.spent, budget, wallMs,
+    }));
+    for (const result of results) {
+      console.log(JSON.stringify({ case: result.caseId, old: result.oldVerdict, new: result.newVerdict, changed: result.changed.map((item) => item.id), tokens: result.tokens, ms: result.latencyMs }));
+    }
+    if (results.some((result) => result.error)) process.exitCode = 1;
+    return;
+  }
   const configPath = resolve(root, value('--config') ?? 'artifacts/real-dataasset-lab/central/runtime-secrets.env');
   const agentCatalog = resolve(root, value('--agent-catalog') ?? DEFAULT_AGENT_CATALOG);
   const modelCatalog = resolve(value('--model-catalog') ?? join(homedir(), '.pi/agent'));

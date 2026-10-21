@@ -1,13 +1,16 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createFakeRuntimeModel, type RuntimeModel } from '../model.js';
 import { MESSAGE_CASES } from './message-cases.js';
 import { criteriaFor } from './closed-loop-cases.js';
 import { deriveGaps, deriveVerdict, runClosedLoopCase } from './closed-loop-runner.js';
-import type { HandlerResult, JudgeItem } from './closed-loop-agent.js';
+import { rejudgeDirectory } from './closed-loop-rejudge.js';
+import { runJudge, type HandlerResult, type JudgeItem } from './closed-loop-agent.js';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -121,4 +124,62 @@ it('derives closed, partial and open from judge items and case critical items', 
     criteria: criteriaFor('stack-overflow'), detailFailed: false, diagnosisUnavailable: false,
   });
   assert.deepEqual(sourceGap, ['missing_source']);
+});
+
+it('rejudges a saved case with the new rule without touching the source directory', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'closed-loop-rejudge-'));
+  const sourceDir = join(directory, 'source');
+  const outDir = join(directory, 'out');
+  const fileName = 'cpu-quota-burst.json';
+  mkdirSync(sourceDir, { recursive: true });
+  cpSync(`${repoRoot}apps/pi-runtime/src/benchmark/results/2026-10-21-closed-loop/${fileName}`, join(sourceDir, fileName), { recursive: true });
+  const before = createHash('sha256').update(readFileSync(join(sourceDir, fileName))).digest('hex');
+  let prompt = '';
+  const judgeModel: RuntimeModel = {
+    provider: 'fake', model: 'judge', networkCalls: 0,
+    async invoke(request) {
+      prompt = request.user;
+      const items = ['root_cause', 'stop_loss', 'repair', 'verification', 'no_forbidden', 'approvals', 'diagnosis_truth', 'info_sufficiency']
+        .map((id) => ({ id, pass: id !== 'no_forbidden', reason: id === 'no_forbidden' ? '断言“业务并未发生故障”没有本次事件证据。' : `${id} 通过。` }));
+      return { text: JSON.stringify({ items, notes: 'rejudge test' }), inputTokens: 7, outputTokens: 7, stopReason: 'stop' };
+    },
+  };
+  try {
+    const results = await rejudgeDirectory({ sourceDir, outDir, repoRoot, judgeModel, caseIds: ['cpu-quota-burst'] });
+    assert.equal(results.length, 1);
+    assert.equal(results[0]!.oldVerdict, 'closed');
+    assert.equal(results[0]!.newVerdict, 'open');
+    assert.ok(results[0]!.changed.some((item) => item.id === 'no_forbidden' && item.oldPass === true && item.newPass === false));
+    assert.match(prompt, /没有证据就断言/);
+    assert.match(prompt, /class Drill|static int cpuSeconds/);
+    assert.ok(existsSync(join(outDir, fileName)));
+    assert.equal(createHash('sha256').update(readFileSync(join(sourceDir, fileName))).digest('hex'), before);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it('retries once when the judge returns non-JSON', async () => {
+  let calls = 0;
+  const judgeModel: RuntimeModel = {
+    provider: 'fake', model: 'judge', networkCalls: 0,
+    async invoke() {
+      calls += 1;
+      const text = calls === 1
+        ? '下面是判定结果：全部通过。'
+        : JSON.stringify({
+          items: ['root_cause', 'stop_loss', 'repair', 'verification', 'no_forbidden', 'approvals', 'diagnosis_truth', 'info_sufficiency']
+            .map((id) => ({ id, pass: true, reason: 'retry test' })),
+        });
+      return { text, inputTokens: 3, outputTokens: 3, stopReason: 'stop' };
+    },
+  };
+  const handler: HandlerResult = { status: 'answered', turns: 1, calls: [], texts: [], inputTokens: 0, outputTokens: 0 };
+  const judge = await runJudge({
+    model: judgeModel, message: '消息', detailMarkdown: '详情', criteria: criteriaFor('health-503'),
+    diagnosisExcerpt: '摘要', handler,
+  });
+  assert.equal(calls, 2);
+  assert.equal(judge.items.length, 8);
+  assert.equal(judge.inputTokens, 6);
 });

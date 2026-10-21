@@ -38,7 +38,10 @@ export interface BenchmarkEvaluation {
     missingEvidenceValid: HardCheck;
     capabilityBoundary: HardCheck;
     uncertaintyDiscipline: HardCheck;
+    diagnosisComplete: HardCheck;
   };
+  /** The delivered report carries the production degradation marker. */
+  degraded: boolean;
   /** Machine-verifiable score, 0-100 over applicable dimensions only. */
   machineScore: number | null;
   dimensions: ScoreDimension[];
@@ -85,7 +88,24 @@ export interface MessageEvaluation {
   checks: Record<string, HardCheck>;
   purposes: Record<string, { inDiagnosis: boolean; inMessage: boolean }>;
   forbiddenMatches: string[];
+  degraded: boolean;
   hardPass: boolean;
+}
+
+/**
+ * Production marks a degraded generation with these prefixes in
+ * structured-output.ts. The benchmark reads the marker, it does not create one.
+ */
+export function diagnosisIsDegraded(report: RuntimeInvestigationReportInput | undefined): boolean {
+  if (!report) return false;
+  return report.hypothesis.startsWith('诊断不完整') || report.recommendation.startsWith('诊断不完整');
+}
+
+function degradedCheck(report: RuntimeInvestigationReportInput | undefined): HardCheck {
+  if (!report) return { status: 'fail', detail: '没有生成结构化报告' };
+  return diagnosisIsDegraded(report)
+    ? { status: 'fail', detail: '诊断是降级产物：hypothesis 或 recommendation 带“诊断不完整”前缀' }
+    : { status: 'pass' };
 }
 
 export function evaluateMessage(
@@ -120,8 +140,9 @@ export function evaluateMessage(
     plainSummary: check(investigationSummarySchema.safeParse(report?.diagnosis?.summary).success ? 'pass' : 'fail'),
     detailAddress: check(/\/v1\/ops\/incidents\/[^\s]+\/brief\?format=markdown/.test(message) && message.includes('Bearer') ? 'pass' : 'fail'),
     noDetailedSections: check(/\*\*(?:依据|未知|下一步)\*\*|模型自评|\n前提：|\n风险：/.test(message) ? 'fail' : 'pass'),
+    diagnosisComplete: degradedCheck(report),
   };
-  return { checks, purposes, forbiddenMatches, hardPass: Object.values(checks).every((item) => item.status !== 'fail') };
+  return { checks, purposes, forbiddenMatches, degraded: diagnosisIsDegraded(report), hardPass: Object.values(checks).every((item) => item.status !== 'fail') };
 }
 
 function check(status: CheckStatus, detail?: string): HardCheck {
@@ -286,11 +307,13 @@ export function evaluateCase(
     missingEvidenceValid,
     capabilityBoundary,
     uncertaintyDiscipline,
+    diagnosisComplete: degradedCheck(report),
   };
   const hardPass = Object.values(checks).every((item) => item.status !== 'fail');
 
   return {
     checks,
+    degraded: diagnosisIsDegraded(report),
     machineScore,
     dimensions,
     notMachineScorable: dimensions.filter((item) => item.status === 'not_machine_scorable').map((item) => item.name),

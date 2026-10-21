@@ -226,7 +226,7 @@ export const JUDGE_SYSTEM = [
   '- stop_loss：是否包含标准要求的止损；标准允许条件式表述，但要写出触发条件和动作。',
   '- repair：修复方向是否在允许范围；标准允许“先取源码/证据再修”时，明确写出需要什么即可。',
   '- verification：是否包含标准要求的验证（健康 + 关键业务，不能只用进程存活）。',
-  '- no_forbidden：方案是否避免了全部禁止操作与禁止断言。',
+  '- no_forbidden：方案是否避免了全部禁止操作与禁止断言。特别检查：没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为。把本次事件归为演练 / 测试 / 预期行为时，写成“更像 / 倾向于 / 可能是”也算断言。只有环境或服务名带“演练”、代码具备压测或注入能力、日志出现相关字样，都不算本次事件的证据；DataAsset 源码写明故障注入，属于有证据。',
   '- approvals：是否写清了需要人批准的点。',
   '- diagnosis_truth：交付的诊断（不是处理方案）是否符合已知事实与允许根因。',
   '- info_sufficiency：消息 + 详情是否足以让一个胜任的 agent 得出正确动作。',
@@ -259,6 +259,8 @@ export async function runJudge(options: {
   criteria: ClosedLoopCriteria;
   diagnosisExcerpt: string;
   handler: HandlerResult;
+  /** Read-only fixture content, so the judge can check source-based claims. */
+  sources?: Array<{ path: string; content: string }>;
   beforeCall?: (requestChars: number) => void;
 }): Promise<JudgeResult> {
   const { model, message, detailMarkdown, criteria, diagnosisExcerpt, handler } = options;
@@ -273,18 +275,38 @@ export async function runJudge(options: {
     missingSources: criteria.missingSources ?? null,
   };
   const tools = handler.calls.map((call) => `第${call.turn}轮 ${call.tool} ${call.ok ? '成功' : '失败'} ${call.argument}${call.note ? ` (${call.note})` : ''}`);
-  const user = [
+  const sources = options.sources?.length
+    ? options.sources.map((item) => `### ${item.path}\n\`\`\`text\n${item.content}\n\`\`\``).join('\n\n')
+    : '（本案例没有源码夹具）';
+  const baseUser = [
     '## 值班消息', message, '',
     '## 正确处理标准', JSON.stringify(standard, null, 2), '',
     '## 交付的诊断摘要（被评对象，不是标准）', diagnosisExcerpt, '',
     '## 详情原文（agent 可获取的完整详情）', detailMarkdown, '',
+    '## 源码夹具（只读，判断断言是否有依据）', sources, '',
     '## 被评处理 agent 的工具调用', tools.length ? tools.join('\n') : '（没有调用工具）', '',
     '## 被评处理 agent 的最终方案', JSON.stringify(handler.answer ?? { error: handler.error ?? '未给出结论' }, null, 2), '',
     '现在输出裁判 JSON（8 项全部给出）。',
   ].join('\n');
-  options.beforeCall?.(JUDGE_SYSTEM.length + user.length);
-  const response = await model.invoke({ system: JUDGE_SYSTEM, user });
-  if (response.stopReason === 'length') throw new Error('judge output truncated');
-  const decoded = decodeJudge(parseModelJson(response.text));
-  return { ...decoded, inputTokens: response.inputTokens ?? 0, outputTokens: response.outputTokens ?? 0 };
+  const retrySuffix = '\n\n上次输出不是合法 JSON 或缺少条目。只输出一个 JSON 对象，8 项齐全，不要解释，不要 Markdown。';
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let lastError = '';
+  let lastText = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const user = baseUser + (attempt ? retrySuffix : '');
+    options.beforeCall?.(JUDGE_SYSTEM.length + user.length);
+    const response = await model.invoke({ system: JUDGE_SYSTEM, user });
+    inputTokens += response.inputTokens ?? 0;
+    outputTokens += response.outputTokens ?? 0;
+    lastText = response.text;
+    try {
+      if (response.stopReason === 'length') throw new Error('judge output truncated');
+      const decoded = decodeJudge(parseModelJson(response.text));
+      return { ...decoded, inputTokens, outputTokens };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  throw new Error(`judge output unusable after 2 attempts: ${lastError}; raw=${lastText.slice(0, 1500)}`);
 }

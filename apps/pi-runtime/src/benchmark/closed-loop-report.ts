@@ -41,7 +41,8 @@ export function renderClosedLoopReport(input: {
     '|---|---|---:|---:|---:|---|---|---|---:|---:|',
   ];
   for (const item of results) {
-    lines.push(`| ${item.caseId} | ${item.diagnosis.status}${item.diagnosis.reportHardPass ? '' : '（自动检查未过）'} | ${item.message?.bytes ?? '无'} | ${item.detail?.bytes ?? '无'} | ${item.handler.turns} | ${item.verdict} | ${item.failedItems.join('、') || '无'} | ${item.primaryGap ? gapLabel(item.primaryGap) : '无'} | ${item.tokens} | ${item.latencyMs} |`);
+    const label = `${item.diagnosis.status}${item.diagnosis.degraded ? '（降级）' : ''}${item.diagnosis.reportHardPass ? '' : '（自动检查未过）'}`;
+    lines.push(`| ${item.caseId} | ${label} | ${item.message?.bytes ?? '无'} | ${item.detail?.bytes ?? '无'} | ${item.handler.turns} | ${item.verdict} | ${item.failedItems.join('、') || '无'} | ${item.primaryGap ? gapLabel(item.primaryGap) : '无'} | ${item.tokens} | ${item.latencyMs} |`);
   }
   lines.push('', '## 卡点分类', '', '按证据分类。一个案例可以有多个卡点，表里取优先级最高的一个。');
   if (!results.some((item) => item.gaps.length)) lines.push('', '本批没有未闭环案例，所有卡点列为空。');
@@ -50,7 +51,7 @@ export function renderClosedLoopReport(input: {
     lines.push(`- ${item.caseId}：${item.gaps.map(gapLabel).join('、')}${item.error ? `（${item.error}）` : ''}`);
   }
   for (const item of results) {
-    lines.push('', `## ${item.caseId}`, '', `判定：**${item.verdict}**。诊断状态 ${item.diagnosis.status}，消息 ${item.message?.bytes ?? 0} 字节，详情 ${item.detail?.bytes ?? 0} 字节。`, '');
+    lines.push('', `## ${item.caseId}`, '', `判定：**${item.verdict}**。诊断状态 ${item.diagnosis.status}${item.diagnosis.degraded ? '（降级）' : ''}，消息 ${item.message?.bytes ?? 0} 字节，详情 ${item.detail?.bytes ?? 0} 字节。`, '');
     lines.push('### 企微消息原文', '', '```text', item.message?.content ?? '未生成（诊断未完成或种子失败）', '```');
     lines.push('', '### 处理 agent 工具调用', '');
     if (!item.handler.calls.length) lines.push('没有调用工具。');

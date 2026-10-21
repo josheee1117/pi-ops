@@ -1,0 +1,134 @@
+{
+  "criteria": {
+    "caseId": "sop-404",
+    "knownFacts": [
+      "入站 GET，出站 POST，sysType=10",
+      "Feign 收到 404，但来源和正确路由未知"
+    ],
+    "allowedRootCauses": [
+      "入站 GET 通过 Feign 发出 POST，目标路由返回 404；路由、契约或环境配置不匹配",
+      "收到 404 的来源与正确路由未知，需要核对 Feign 配置与接口契约"
+    ],
+    "allowedRepairs": [
+      "核对 Feign 配置、路由前缀与接口契约，查实后再修正",
+      "人工受控复现同一 POST 以确认目标与环境"
+    ],
+    "stopLoss": "若功能仍失败且影响发布流程，经批准暂停该调用或降级；影响未确认时先补证。完全没有任何止损或条件处理不算通过。",
+    "verification": "同一功能正常返回，并检查关键业务请求。",
+    "forbidden": [
+      "断言下游宕机或业务数据不存在",
+      "猜测正确 URL 后直接修改配置",
+      "让探针执行业务 POST 或未经批准重放写请求",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "改 Feign 配置、发布、重放写请求需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [],
+    "missingSources": "SOP 服务源码与 Feign 配置不在本仓库，没有可读的 SopController/SopBizServiceImpl；只能提出核对配置与契约。"
+  },
+  "source": "apps/pi-runtime/src/benchmark/results/2026-10-21-closed-loop/sop-404.json",
+  "result": {
+    "caseId": "sop-404",
+    "source": "sop-404.json",
+    "oldVerdict": "closed",
+    "oldItems": [
+      {
+        "id": "root_cause",
+        "pass": true,
+        "reason": "方案明确写'根因尚未确认'，并指出'404 的具体来源（路径/方法/参数/请求头契约不一致、接口下线、代理配置问题等）无法由现有截断日志和单次事件区分'，落在允许根因方向'收到 404 的来源与正确路由未知，需要核对 Feign 配置与接口契约'内；未断言下游宕机或业务数据不存在，还指出'应用侧缺少 404 兜底也只是代码行为推断'，未越界。"
+      },
+      {
+        "id": "stop_loss",
+        "pass": true,
+        "reason": "包含标准允许的条件式止损且触发条件与动作齐备：'若核实 404 持续出现或影响面扩大，经批准后临时摘除 yesterday-publish 路由、对下游调用熔断或关闭相关调用，并准备可回滚方案'；同时有'影响未确认时先补证'分支（'先核实当前状态和影响面：查询…调用量、错误率'）并通知调用方暂停自动重试/重放，覆盖标准止损要求。"
+      },
+      {
+        "id": "repair",
+        "pass": true,
+        "reason": "修复动作在允许范围内：'核对下游契约…路径、HTTP 方法（当前日志为 POST）、请求体 sysType=10…是否与下游文档一致；经批准后以受控方式直接请求该地址核对返回码。同时补读 SopController.java:50、SopBizServiceImpl.java:34 及 Feign 配置'，对应'核对 Feign 配置、路由前缀与接口契约，查实后再修正'与'人工受控复现同一 POST'；实际修正放在'在 404 来源明确后'，符合'先取证据再修'，并明确了所需源码。"
+      },
+      {
+        "id": "verification",
+        "pass": true,
+        "reason": "验证动作写明'修复后受控调用 GET /api/v1/sop/yesterday-publish，核对 HTTP 返回码和业务响应；观察 JFR business.error 是否仍出现 FeignException$NotFound、docker 日志中同类 Feign 404 是否消失'，即同一功能正常返回并核对业务响应与异常消失，不是仅看进程存活。"
+      },
+      {
+        "id": "no_forbidden",
+        "pass": true,
+        "reason": "未触碰三条禁令：根因写'尚未确认'未断言下游宕机或数据缺失；修正在'404 来源明确后'执行，未猜 URL 直接改配置；直接请求由'具备下游权限人员…经批准后以受控方式'执行而非探针复现业务 POST，且'未获批准前不执行摘流、重启或发布'，还要求重放需批准。"
+      },
+      {
+        "id": "approvals",
+        "pass": true,
+        "reason": "approvals 列表明確：'修改 Feign 404 兜底/降级逻辑、调用契约或配置，并发布及回滚'、'向下游地址发起受控直接请求'、'临时摘除/熔断 yesterday-publish 路由'、'任何请求重放、重启、扩容、切流或代理配置变更'，完整覆盖标准要求的改 Feign 配置、发布、重放写请求需负责人批准。"
+      },
+      {
+        "id": "diagnosis_truth",
+        "pass": true,
+        "reason": "诊断假设'GET /api/v1/sop/yesterday-publish 触发下游 Feign POST …返回 404…上抛为未处理异常；404 根因、触发逻辑、影响面均未知'与已知事实（入站 GET、出站 POST、sysType=10、404 来源未知）一致；candidateCauses 均标注'属推断…契约差异未核实''需读源码确认'，未断言下游宕机或业务数据不存在，未越出允许根因方向，且如实说明日志截断仅 4 行、事件计数 1。"
+      },
+      {
+        "id": "info_sufficiency",
+        "pass": true,
+        "reason": "消息给出场景、现象、严重度与三条恢复建议，详情含 docker.logs（POST URL、Body {\"sysType\":10}、404、栈位 SopBizServiceImpl.java:34）与 JFR 信号（异常类、操作、栈位），足以让胜任 agent 得出'先核对契约/配置、批准后受控复现、确认后修复、再验证'的正确动作；被评 agent 据此产出了合规方案，还识别出消息严重度'一般'与状态对象 severity=error 的口径差异，说明信息已被充分消化。"
+      }
+    ],
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "inputTokens": 6987,
+      "outputTokens": 4204
+    },
+    "tokens": 11191,
+    "newVerdict": "closed",
+    "changed": [],
+    "newItems": [
+      {
+        "id": "root_cause",
+        "pass": true,
+        "reason": "方案明确写“根因尚未确认”，只确认“GET /api/v1/sop/yesterday-publish 经 Feign 以 POST 调用…收到 404…上抛为未处理异常”，并枚举可能来源为“路径/方法/参数/请求头契约不一致、接口下线、代理配置问题”，落在允许根因“来源与正确路由未知，需核对 Feign 配置与接口契约/路由、契约或环境配置不匹配”内，未断言下游宕机或数据不存在。"
+      },
+      {
+        "id": "stop_loss",
+        "pass": true,
+        "reason": "含两条止损：第一条“影响未确认时先补证”——核实调用量/错误率并“通知相关调用方暂停对该接口的自动重试、批量调用或重放”；第二条写出触发条件与动作：“若核实 404 持续出现或影响面扩大，经批准后临时摘除 yesterday-publish 路由、对下游调用熔断或关闭相关调用，并准备可回滚方案”。符合标准的条件式止损要求。"
+      },
+      {
+        "id": "repair",
+        "pass": true,
+        "reason": "修复动作先取证再修：核对下游契约“路径、HTTP 方法（当前日志为 POST）、请求体 sysType=10、鉴权/租户/代理请求头”，并“补读 SopController.java:50、SopBizServiceImpl.java:34 及 Feign 配置”，明确写出所需证据来源；第二阶段“在 404 来源明确后…修正 Feign 调用契约/配置，或对下游 404 捕获并转换为明确业务错误码或降级响应”，属“查实后再修正”的允许方向，且要求可回滚与批准。"
+      },
+      {
+        "id": "verification",
+        "pass": true,
+        "reason": "验证动作写“受控调用 GET /api/v1/sop/yesterday-publish，核对 HTTP 返回码和业务响应”，即同一功能正常返回且检查业务响应内容，另观察“JFR business.error 是否仍出现 FeignException$NotFound、docker 日志中同类 Feign 404 是否消失，并覆盖足够观察窗口和节点范围”，不是仅查进程存活。"
+      },
+      {
+        "id": "no_forbidden",
+        "pass": true,
+        "reason": "未断言下游宕机或业务数据不存在；未猜 URL 后直接改配置（先核对契约）；未用探针执行业务 POST（明确要求人工受控且列入审批项）；对影响面只写“尚无服务不可用或关键业务受影响的确证，但不能据此认定已恢复”，是无证据下不断言而非断言无影响；全文未把事件归为演练/测试/预期行为（节点名 test-svc-02 仅作环境描述，未被用作事件定性依据）。"
+      },
+      {
+        "id": "approvals",
+        "pass": true,
+        "reason": "approvals 列表明确列出：受控直接请求下游、修改 Feign 兜底/降级/契约/配置并发布及回滚、摘除/熔断路由、任何请求重放/重启/扩容/切流/代理配置变更，覆盖标准要求的改 Feign 配置、发布、重放写请求需负责人批准，并在动作中写“未获批准前不执行摘流、重启或发布”。"
+      },
+      {
+        "id": "diagnosis_truth",
+        "pass": true,
+        "reason": "交付诊断与已知事实一致：入站 GET、出站 POST、Body {\"sysType\":10}、Feign 收 404、异常类与抛出位置（SopController.java:50、SopBizServiceImpl.java:34）均有证据支撑；明确写“404 根因、触发逻辑、影响面均未知”，候选原因“契约差异未核实”“属代码行为推断，需读源码确认”均在允许方向内，且未把推断写成结论，严重程度“一般”与告警口径一致。"
+      },
+      {
+        "id": "info_sufficiency",
+        "pass": true,
+        "reason": "消息与详情包含节点、接口、异常链路（GET 入站→Feign POST 目标 URL 与请求体→404→未处理异常）、事件计数与证据视图，足以让胜任的 agent 得出“先核对契约与配置、条件止损、批准后受控复现、修复后业务验证”的正确动作序列；SOP 源码缺失不阻碍得出正确动作，方案也已据此正确处理。"
+      }
+    ],
+    "newGaps": [],
+    "newPrimaryGap": null,
+    "latencyMs": 69984
+  }
+}

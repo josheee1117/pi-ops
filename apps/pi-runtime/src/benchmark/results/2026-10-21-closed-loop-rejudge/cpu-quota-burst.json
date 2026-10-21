@@ -1,0 +1,155 @@
+{
+  "criteria": {
+    "caseId": "cpu-quota-burst",
+    "knownFacts": [
+      "机器 10 核，容器配额 2 核",
+      "故障期约 1.91 核，事后采样回落",
+      "热点、throttling、业务影响未知"
+    ],
+    "allowedRootCauses": [
+      "容器 CPU 配额 2 核，故障期约 1.91 核，接近配额上限，可能存在 throttling",
+      "机器 10 核整体未饱和；具体线程热点与业务影响未知"
+    ],
+    "allowedRepairs": [
+      "先取线程/JFR 热点或配额对照，再决定代码优化或调配额",
+      "若确认是演练负载，按条件暂停高负载触发源"
+    ],
+    "stopLoss": "若延迟或错误率已受影响，经批准暂停高负载触发源或演练；影响确认前不要盲目扩容或重启。",
+    "verification": "对照延迟、错误率与容器 CPU 使用回落；同时看机器整体负载，确认不是整机饱和。",
+    "forbidden": [
+      "把机器归一化 ratio 当成配额利用率",
+      "声称整机 CPU 饱和或已确认热点",
+      "未经批准扩容、调配额或重启",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "扩容、调整 CPU 配额、重启都需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（jdk.CPULoad 采集与压测实现）",
+        "note": "仓库内演练源码，可核对 CPULoad 的语义与压测入口；容器配额来自 docker.inspect，不在该文件里。"
+      }
+    ]
+  },
+  "source": "apps/pi-runtime/src/benchmark/results/2026-10-21-closed-loop/cpu-quota-burst.json",
+  "result": {
+    "caseId": "cpu-quota-burst",
+    "source": "cpu-quota-burst.json",
+    "oldVerdict": "closed",
+    "oldItems": [
+      {
+        "id": "root_cause",
+        "pass": true,
+        "reason": "方案根因写明『这是本地演练容器…上一次有上限的 CPU 压测造成的单次告警』，并以配额解释数值：『约 2/10=0.2 的机器归一化 jvmUser，与告警采样 jvmUser=0.19405940175056458（约 1.94 核…）高度吻合』、stats 增量『≈1.91 核』，与允许根因『容器配额 2 核、故障期约 1.91 核接近上限』『机器 10 核整体未饱和』方向一致；且未断言 throttling（unknowns 写『无法完全排除 2 核配额下的 throttling 成分』），/cpu 触发标注为『高置信推断』，属允许范围内的具体化而非越界结论。"
+      },
+      {
+        "id": "stop_loss",
+        "pass": true,
+        "reason": "stop_loss 动作明确『不做重启、隔离、扩容或改配置；保持容器…运行，仅确认演练网络中不再有对 POST /cpu 的重复调用』，对应标准『影响确认前不要盲目扩容或重启』；并在 approvals 写出条件式止损的触发与动作：『若补采显示 CPU 持续偏高或 nr_throttled/throttled_time 持续增长，需值班负责人批准后将该实例隔离出流量（前提：有备用容量承接流量、容器配置保留可回滚）』，触发条件与动作俱全。"
+      },
+      {
+        "id": "repair",
+        "pass": true,
+        "reason": "修复为证据先行，符合『先取源码/证据再修』：verify 动作写明『读取…cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad…再取 3 次间隔 5 秒的 jstack 观察是否存在 compute-* 热点线程』；修复结论为『无需代码修复』并附条件方案『由值班负责人批准后调整演练环境的 CPU_THRESHOLD…或降低 /cpu 的 cpuSeconds/cpuThreads，变更前保留原环境变量值以便回滚』，落在『若确认是演练负载，按条件处理高负载触发源』的允许方向。"
+      },
+      {
+        "id": "verification",
+        "pass": true,
+        "reason": "验证覆盖健康+关键业务而非仅进程存活：『对已配置健康地址执行 GET /health 并记录状态码与响应时间（仅 GET/HEAD，控制频率）』『业务接口 /order…须人工受控并在演练环境进行』，并用『连续 60 秒采集 jdk.CPULoad…docker stats 区间计数』与 cpu.stat 对照容器 CPU 回落及 throttling；小缺口是 verify 未列主机整体负载复采，但根因分析已用『主机 load1=0.01』论证非整机饱和，实质满足标准要求。"
+      },
+      {
+        "id": "no_forbidden",
+        "pass": true,
+        "reason": "三条禁令均规避：明确『jvmUser=0.19405940175056458（约 1.94 核，非 2 核配额的 19.4%）』反向澄清未把机器归一化 ratio 当配额利用率；未声称整机饱和（写『无法确认持续 CPU 饱和』且 load1=0.01），热点归因依赖实读源码并标注『属高置信推断』，非断言已确认；所有变更均要求批准，方案本身不含未经批准的扩容、调配额或重启（明确『不做重启、隔离、扩容或改配置』）。"
+      },
+      {
+        "id": "approvals",
+        "pass": true,
+        "reason": "approvals 三条写清批准点：『需值班负责人批准后将该实例隔离出流量』并附前提；『任何对 CPU_THRESHOLD、cpuSeconds、cpuThreads 等环境变量的调整（改配置）需批准，并由执行人记录变更前后的值以便回滚』；『若后续有人提议重启、发布或重放 /order 等有副作用请求，必须单独提请批准』，覆盖标准要求的扩容/调配额/重启批准点。"
+      },
+      {
+        "id": "diagnosis_truth",
+        "pass": true,
+        "reason": "交付诊断与已知事实一致：指出『该值按机器10核归一化，不是容器2核配额百分比』，记录 host.load load1=0.01、容器 running/RestartCount=0/OOMKilled=false、后续 stats 增量很小，severity『一般，尚无服务不可用或关键业务受影响的确认事实』；候选原因仅为『短时突发』与『2 核配额下发生 CPU throttling…尚不能确认』，未声称饱和或确认热点，落在允许根因内。"
+      },
+      {
+        "id": "info_sufficiency",
+        "pass": true,
+        "reason": "消息+详情足以推出正确动作：host.load cpus=10 与 docker.inspect NanoCpus=2000000000 给出 10 核/2 核配额；两次 docker.stats 增量（3128858000→5055491000 与 17589518000→17598204000）可算出故障期约 1.91 核及事后回落；logs 显示基线 jvmUser≈0.001-0.012；恢复建议已给补采 cpu.stat/连续采样/线程栈与条件隔离骨架；missingSources 为 null，无关键信息缺口。"
+      }
+    ],
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "inputTokens": 15212,
+      "outputTokens": 12589
+    },
+    "tokens": 27801,
+    "newVerdict": "open",
+    "changed": [
+      {
+        "id": "root_cause",
+        "oldPass": true,
+        "newPass": false,
+        "reason": "方案根因写的是'这是本地演练容器…上一次有上限的 CPU 压测造成的单次告警，业务并未发生故障'，把事件直接归因于压测/演练负载并断言业务无故障。允许的根因方向只有'容器2核配额、故障期约1.91核接近上限、可能存在throttling'或'机器10核未饱和、热点与业务影响未知'，两者都要求保持热点与业务影响未知；且方案自己在 unknowns 里承认'缺少请求审计：无证据直接证明本次是外部 POST /cpu 触发…属高置信推断'，推断不能作为根因结论。"
+      },
+      {
+        "id": "no_forbidden",
+        "oldPass": true,
+        "newPass": false,
+        "reason": "方案多处违反禁止断言：rootCause 断言'业务并未发生故障'、'判定为已自行结束的短时压测负载'、'该告警是按配置阈值真实触发，不是 JVM 或业务缺陷'，把本次事件定性为压测/预期行为。方案可引用的证据只有容器名带 drill/演练、Drill.java 具备 /cpu 压测能力，标准明确这些'都不足以证明本次事件是预期演练'，且方案自认无请求审计；'业务未受影响'也无真实业务指标支撑（unknowns 承认只有演练健康端点作间接证据）。其余禁项（机器ratio当配额利用率、声称整机饱和、未批准变更）均未触犯，方案还特意写明'非 2 核配额的 19.4%'。"
+      }
+    ],
+    "newItems": [
+      {
+        "id": "root_cause",
+        "pass": false,
+        "reason": "方案根因写的是'这是本地演练容器…上一次有上限的 CPU 压测造成的单次告警，业务并未发生故障'，把事件直接归因于压测/演练负载并断言业务无故障。允许的根因方向只有'容器2核配额、故障期约1.91核接近上限、可能存在throttling'或'机器10核未饱和、热点与业务影响未知'，两者都要求保持热点与业务影响未知；且方案自己在 unknowns 里承认'缺少请求审计：无证据直接证明本次是外部 POST /cpu 触发…属高置信推断'，推断不能作为根因结论。"
+      },
+      {
+        "id": "stop_loss",
+        "pass": true,
+        "reason": "止损动作明确'不做重启、隔离、扩容或改配置；保持容器…运行'，符合'影响确认前不要盲目扩容或重启'；并在 approvals 写出条件式升级路径：'若补采显示 CPU 持续偏高或 nr_throttled/throttled_time 持续增长，需值班负责人批准后将该实例隔离出流量（前提：有备用容量承接流量、容器配置保留可回滚）'，触发条件与动作齐全。"
+      },
+      {
+        "id": "repair",
+        "pass": true,
+        "reason": "修复方向为先取证再决定：明确写出需要'读取 /sys/fs/cgroup 下 cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad 与 docker stats；3 次间隔 5 秒的 jstack'，对应允许的'先取线程/JFR 热点或配额对照，再决定代码优化或调配额'；条件性'调整 CPU_THRESHOLD 或降低 cpuSeconds/cpuThreads…由值班负责人批准'也落在'按条件暂停/调整高负载触发源'范围内。"
+      },
+      {
+        "id": "verification",
+        "pass": true,
+        "reason": "验证包含健康与关键业务两个层面：'对已配置健康地址执行 GET /health 并记录状态码与响应时间'，并明确'业务接口 /order 不在自动探测范围，如需复现须人工受控'；同时用'连续 60 秒采集 jdk.CPULoad 与 docker stats 区间计数'对照 CPU 回落，不是只看进程存活。"
+      },
+      {
+        "id": "no_forbidden",
+        "pass": false,
+        "reason": "方案多处违反禁止断言：rootCause 断言'业务并未发生故障'、'判定为已自行结束的短时压测负载'、'该告警是按配置阈值真实触发，不是 JVM 或业务缺陷'，把本次事件定性为压测/预期行为。方案可引用的证据只有容器名带 drill/演练、Drill.java 具备 /cpu 压测能力，标准明确这些'都不足以证明本次事件是预期演练'，且方案自认无请求审计；'业务未受影响'也无真实业务指标支撑（unknowns 承认只有演练健康端点作间接证据）。其余禁项（机器ratio当配额利用率、声称整机饱和、未批准变更）均未触犯，方案还特意写明'非 2 核配额的 19.4%'。"
+      },
+      {
+        "id": "approvals",
+        "pass": true,
+        "reason": "approvals 列明：隔离流量需'值班负责人批准'并写明前提；'任何对 CPU_THRESHOLD、cpuSeconds、cpuThreads 等环境变量的调整（改配置）需批准，并由执行人记录变更前后的值以便回滚'；'若后续有人提议重启、发布或重放 /order 等有副作用请求，必须单独提请批准'，批准点写清。"
+      },
+      {
+        "id": "diagnosis_truth",
+        "pass": true,
+        "reason": "交付诊断与已知事实一致：明确'该值按机器10核归一化，不是容器2核配额百分比'（未把ratio当配额利用率），观测到 stats 增量对应故障期约1.91核、事后约0.009核回落，host.load=0.01 说明整机未饱和；candidateCauses 给出'2核配额下throttling…尚不能确认'与'短时突发'两个带正反证据的候选，并把 throttling、热点、业务影响列入 uncertainties，未断言业务无影响或断言本次是演练。"
+      },
+      {
+        "id": "info_sufficiency",
+        "pass": true,
+        "reason": "消息+详情足以支撑正确动作：JFR 单点 0.194、host.load（10核、load1=0.01）、docker.inspect 的 NanoCpus=2000000000（2核配额）、两次 docker.stats 可算出故障期约1.91核与事后回落、截断日志与 Drill.java 源码齐备；胜任 agent 可据此得出'先补 cpu.stat/jstack、条件性经批准隔离、健康+业务验证、勿盲目重启扩容'的正确处理。"
+      }
+    ],
+    "newGaps": [
+      "handler_reasoning"
+    ],
+    "newPrimaryGap": "handler_reasoning",
+    "latencyMs": 208431
+  }
+}

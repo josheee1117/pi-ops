@@ -30,6 +30,7 @@ export interface ClosedLoopCaseResult {
     tokens: number;
     reportHardPass: boolean;
     messageHardPass: boolean;
+    degraded: boolean;
     error?: string;
     report?: unknown;
     modelCalls?: Array<{ role: string; status: string; stopReason?: string; inputTokens?: number; outputTokens?: number; text?: string }>;
@@ -135,6 +136,16 @@ function numbered(text: string): string {
   return text.split('\n').slice(0, 2000).map((line, index) => `${index + 1}: ${line}`).join('\n');
 }
 
+export function loadSourceFixtures(repoRoot: string, criteria: ClosedLoopCriteria): Array<{ path: string; content: string }> {
+  return criteria.sources.flatMap((item) => {
+    try {
+      return [{ path: item.path, content: readFileSync(resolve(repoRoot, item.path), 'utf8').slice(0, 60_000) }];
+    } catch {
+      return [];
+    }
+  });
+}
+
 function sourceDigest(repoRoot: string, sources: SourceFixture[]): ClosedLoopCaseResult['sources'] {
   return sources.map((item) => {
     try {
@@ -187,6 +198,7 @@ export async function runClosedLoopCase(benchmarkCase: BenchmarkCase, options: C
     latencyMs: diagnosis.latencyMs, tokens: reportTokens,
     reportHardPass: diagnosis.evaluation?.hardPass === true,
     messageHardPass: diagnosis.messageEvaluation?.hardPass === true,
+    degraded: diagnosis.evaluation?.degraded === true || diagnosis.messageEvaluation?.degraded === true,
     ...(diagnosis.error ? { error: diagnosis.error } : {}),
     ...(report ? { report } : {}),
     modelCalls: (diagnosis.modelCalls ?? []).map((call) => ({
@@ -244,6 +256,7 @@ export async function runClosedLoopCase(benchmarkCase: BenchmarkCase, options: C
         judge = await runJudge({
           model: options.judgeModel, message: agent.message, detailMarkdown: agent.detailMarkdown,
           criteria, diagnosisExcerpt: diagnosisExcerpt(report), handler,
+          sources: loadSourceFixtures(repoRoot, criteria),
           ...(options.beforeCall ? { beforeCall: options.beforeCall } : {}),
         });
       } catch (error) {

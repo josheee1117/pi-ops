@@ -41,6 +41,10 @@ function facts(caseId: string): string[] {
   return benchmarkCase.messageOracle.expectedFacts;
 }
 
+/** Applies to every case. A claim needs evidence from this incident, not from a name or a capability. */
+export const GENERAL_FORBIDDEN =
+  '没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。';
+
 export const CLOSED_LOOP_CRITERIA: ClosedLoopCriteria[] = [
   {
     caseId: 'dataasset-197',
@@ -218,7 +222,7 @@ export const CLOSED_LOOP_CRITERIA: ClosedLoopCriteria[] = [
 export function criteriaFor(caseId: string): ClosedLoopCriteria {
   const found = CLOSED_LOOP_CRITERIA.find((item) => item.caseId === caseId);
   if (!found) throw new Error(`missing closed-loop criteria: ${caseId}`);
-  return found;
+  return { ...found, forbidden: [...found.forbidden, GENERAL_FORBIDDEN] };
 }
 
 export type JudgeItemId =

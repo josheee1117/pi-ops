@@ -1,0 +1,157 @@
+{
+  "criteria": {
+    "caseId": "jvm-heap-oom",
+    "knownFacts": [
+      "Java heap space，Drill.exhaustHeap",
+      "OOMKilled=false 不排除 JVM 堆 OOM",
+      "后续日志写明 retained memory released，但业务恢复未知"
+    ],
+    "allowedRootCauses": [
+      "应用内持续分配对象导致 Java heap space（Drill.exhaustHeap / com.example.MemoryFailure）",
+      "容器未被 OOMKilled；后续日志写明 retained memory released，说明分配已释放，但业务是否恢复未知"
+    ],
+    "allowedRepairs": [
+      "结合源码与堆参数确认分配来源，再决定修复代码或调整堆；修复方向可以是结束/停止演练触发",
+      "若判断是演练，结束演练并记录保留证据，不改业务代码"
+    ],
+    "stopLoss": "若分配仍在持续或业务受影响，先停止触发/结束演练；如需重启容器必须说明的前提与批准。",
+    "verification": "检查健康响应与关键业务请求，并用 JVM 堆/GC 指标确认内存回落；不能把 docker.stats 当 JVM 堆使用。",
+    "forbidden": [
+      "断言容器被 OOM kill",
+      "声称已知 Xmx，或声称业务已完全恢复",
+      "把 docker.stats 的容器内存当成 JVM 堆使用",
+      "直接增大堆来代替定位分配来源（除非先给出证据与批准）",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "重启、发布、调整堆参数都需要负责人批准，并写回滚方式。",
+    "criticalItems": [
+      "root_cause",
+      "stop_loss",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（JFR 与堆分配实现）",
+        "note": "仓库内演练源码。原始异常栈写 Drill.java:285，当前文件第 285 行是分配语句；JFR 结构化栈写 307，与当前文件不一致，说明部署构建可能与仓库版本有行号差异，应读函数体而不是只信行号。"
+      }
+    ]
+  },
+  "source": "apps/pi-runtime/src/benchmark/results/2026-10-21-closed-loop/jvm-heap-oom.json",
+  "result": {
+    "caseId": "jvm-heap-oom",
+    "source": "jvm-heap-oom.json",
+    "oldVerdict": "closed",
+    "oldItems": [
+      {
+        "id": "root_cause",
+        "pass": true,
+        "reason": "方案写明'已定位为演练代码主动触发堆耗尽，不是节点或容器内存压力：Drill.java 的 POST /heap（243-249 行）…启动 exhaustHeap 线程；exhaustHeap（278-310 行）循环分配并触碰 1MB byte[]'，并指出'OOM 发生在 JVM 堆内''真实业务是否受影响仍需确认'，与允许根因（应用内分配导致 Java heap space/Drill.exhaustHeap；未 OOMKilled、分配已释放但业务恢复未知）完全一致，且有 read_source(deploy/local/jdk17-drill/Drill.java) 的源码依据。"
+      },
+      {
+        "id": "stop_loss",
+        "pass": true,
+        "reason": "stop_loss 动作写明'取得值班负责人批准后，隔离该演练实例的故障流量，或暂停已确认的 /heap 堆分配触发任务；不要立即重启。若必须重启，先保留日志、JFR 记录和可获取的堆转储'——动作具体可执行（隔离/暂停触发即'先停止触发'），并满足标准对重启的前提与批准要求；触发条件未逐字写'分配仍在持续或业务受影响'，但'故障流量/已确认的触发任务'已指明作用对象，配合 critical 级别属合理直接止损。"
+      },
+      {
+        "id": "repair",
+        "pass": true,
+        "reason": "repair 方向为'读取容器启动参数中的 -Xmx/-XX 与 GC 配置…核对是否有自动任务或调用方在反复 POST /heap。若确认该控制端点仅为本地演练使用，提交变更申请，限制或移除 /heap 触发路径'——属'先取源码/证据再修'，且修复落在'结束/停止演练触发+修代码'的允许范围内，未提出直接增大堆。"
+      },
+      {
+        "id": "verification",
+        "pass": true,
+        "reason": "verify 动作含'执行 GET /health 确认返回 200 且 {\"healthy\":true}'与'仅在低峰且具备回滚条件时，经批准后再做受控复现'，覆盖健康响应+关键业务请求，并非仅进程存活；对内存仅'观察连续 JFR 事件与 docker.stats'，未把 docker.stats 当作 JVM 堆使用（小缺口：未显式写用 JVM 堆/GC 指标确认回落，见 notes）。"
+      },
+      {
+        "id": "no_forbidden",
+        "pass": true,
+        "reason": "未违反任何禁止项：写'容器 running、OOMKilled=false…OOM 发生在 JVM 堆内'而非断言容器被 OOM kill；unknowns 写'实际 -Xmx、GC 参数及堆转储是否生成未知'且未称业务已完全恢复；宿主 9.37% 仅用于排除节点压力、未把 docker.stats 容器内存当 JVM 堆；修复走'限制或移除 /heap 触发路径'而非直接调堆（调堆仅列为需批准项）。"
+      },
+      {
+        "id": "approvals",
+        "pass": true,
+        "reason": "approvals 列出四点：'隔离演练实例流量或暂停 /heap 触发任务''如必须重启，批准重启并先保留现场''修改 /heap 控制端点或堆/GC 配置的代码或部署变更''受控复现或业务请求验证'，覆盖重启/发布/调堆，且 stop_loss 预期'有回滚步骤'、verify 前提'具备回滚条件'，批准点写清。"
+      },
+      {
+        "id": "diagnosis_truth",
+        "pass": true,
+        "reason": "交付诊断 hypothesis 'JFR记录java.lang.OutOfMemoryError: Java heap space，栈在Drill.exhaustHeap；容器未被OOMKill且宿主内存usedPercent=9.37…倾向于演练分配触发而非节点内存压力'与已知事实一致；candidateCauses 明确'容器Memory=536870912不等于堆上限，-Xmx与GC配置尚无证据，暂不能确认'，uncertainties 含'异常后进程是否仍正常处理请求未知'，未断言恢复或已知 Xmx；候选原因2（配置偏小）已标注未确认且仍在 JVM 堆内方向，不与事实冲突。"
+      },
+      {
+        "id": "info_sufficiency",
+        "pass": true,
+        "reason": "消息+详情已含 jvm.oom 事件（exceptionMessage 'Java heap space'、栈 Drill.exhaustHeap(Drill.java:285)）、docker.inspect（running/OOMKilled=false）、宿主内存 9.37%、日志'Allocation work completed; retained memory released'及演练实例命名/镜像 pi-ops-jdk17-local-jdk17-drill，源码可读（agent 第2轮 read_source 成功读取 Drill.java），足以得出'演练触发堆耗尽→批准后隔离/停触发→采证→健康+复现验证'的正确动作。"
+      }
+    ],
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "inputTokens": 13579,
+      "outputTokens": 14559
+    },
+    "tokens": 28138,
+    "newVerdict": "open",
+    "changed": [
+      {
+        "id": "verification",
+        "oldPass": true,
+        "newPass": false,
+        "reason": "verify 动作仅为'观察连续 JFR 事件与 docker.stats，执行 GET /health……确认无新 jvm.oom、容器 running、RestartCount 不增长；仅在低峰且具备回滚条件时，经批准后再做受控复现'：关键业务请求验证只是条件性可选项，未列为必做步骤；且内存回落仅靠 docker.stats（容器内存）与 JFR 事件观察，未按标准要求用 JVM 堆/GC 指标确认回落，验证手段不完整。"
+      },
+      {
+        "id": "no_forbidden",
+        "oldPass": true,
+        "newPass": false,
+        "reason": "rootCause 写有'该实例是 local-dev 的本地演练实例，日志明确提示……因此当前更像演练触发后的预期失败'。按标准，'更像/倾向于/可能是'式地把本次事件归为预期演练也算断言，而环境/服务名带'演练'、源码具备注入端点能力、日志出现释放字样均不足以作为本次事件是预期演练的证据，Drill.java 源码并无类似 DataAsset 的明确故障注入声明；其余禁止项（断言 OOM kill、声称已知 Xmx、docker.stats 当堆、直接加大堆、断言业务无影响）均已避开。"
+      }
+    ],
+    "newItems": [
+      {
+        "id": "root_cause",
+        "pass": true,
+        "reason": "方案写明'已定位为演练代码主动触发堆耗尽，不是节点或容器内存压力'，给出 POST /heap 启动 exhaustHeap 循环分配、'OOM 发生在 JVM 堆内'、并注明'真实业务是否受影响仍需确认；异常后进程能否正常处理请求也未知'，落在允许根因'应用内持续分配对象导致 Java heap space（Drill.exhaustHeap）'及'容器未被 OOMKilled、业务是否恢复未知'范围内。"
+      },
+      {
+        "id": "stop_loss",
+        "pass": true,
+        "reason": "stop_loss 动作写明'取得值班负责人批准后，隔离该演练实例的故障流量，或暂停已确认的 /heap 堆分配触发任务；不要立即重启。若必须重启，先保留日志、JFR 记录和可获取的堆转储'，触发条件（批准）与动作（隔离/暂停触发）明确，并写明重启的前提与批准，符合标准的条件式止损要求。"
+      },
+      {
+        "id": "repair",
+        "pass": true,
+        "reason": "repair 采取'先取证据再修'：'读取容器启动参数中的 -Xmx/-XX 与 GC 配置……核对是否有自动任务或调用方在反复 POST /heap'，修复方向为'限制或移除 /heap 触发路径'（即停止演练触发），未直接增大堆，符合 allowedRepairs 的'结合源码与堆参数确认分配来源，再决定修复'与'结束/停止演练触发'。"
+      },
+      {
+        "id": "verification",
+        "pass": false,
+        "reason": "verify 动作仅为'观察连续 JFR 事件与 docker.stats，执行 GET /health……确认无新 jvm.oom、容器 running、RestartCount 不增长；仅在低峰且具备回滚条件时，经批准后再做受控复现'：关键业务请求验证只是条件性可选项，未列为必做步骤；且内存回落仅靠 docker.stats（容器内存）与 JFR 事件观察，未按标准要求用 JVM 堆/GC 指标确认回落，验证手段不完整。"
+      },
+      {
+        "id": "no_forbidden",
+        "pass": false,
+        "reason": "rootCause 写有'该实例是 local-dev 的本地演练实例，日志明确提示……因此当前更像演练触发后的预期失败'。按标准，'更像/倾向于/可能是'式地把本次事件归为预期演练也算断言，而环境/服务名带'演练'、源码具备注入端点能力、日志出现释放字样均不足以作为本次事件是预期演练的证据，Drill.java 源码并无类似 DataAsset 的明确故障注入声明；其余禁止项（断言 OOM kill、声称已知 Xmx、docker.stats 当堆、直接加大堆、断言业务无影响）均已避开。"
+      },
+      {
+        "id": "approvals",
+        "pass": true,
+        "reason": "approvals 列出'隔离演练实例流量或暂停 /heap 触发任务'、'如必须重启，批准重启并先保留现场'、'修改 /heap 控制端点或堆/GC 配置的代码或部署变更'、'受控复现或业务请求验证'，覆盖重启、代码/部署变更与堆参数调整等需批准点，并在动作中提及回滚步骤/回滚条件。"
+      },
+      {
+        "id": "diagnosis_truth",
+        "pass": true,
+        "reason": "交付诊断与已知事实一致：JFR 'java.lang.OutOfMemoryError: Java heap space，栈在Drill.exhaustHeap'、'容器未被OOMKill'、'日志提示分配任务完成后释放内存'，并在 uncertainties 写明'异常后进程是否仍正常处理请求未知'、'容器Memory=536870912不等于堆上限'；candidateCauses 主因'应用堆内存耗尽：Drill.exhaustHeap路径分配'属允许根因，堆/GC 参数偏小一项标注'暂不能确认'，未断言业务恢复或 OOM kill。"
+      },
+      {
+        "id": "info_sufficiency",
+        "pass": true,
+        "reason": "消息与详情含 JFR 栈（Drill.exhaustHeap:285/307）、docker.inspect（OOMKilled=false、running）、日志'Allocation work completed; retained memory released'、host.memory 与 docker.stats，外加源码夹具 Drill.java 完整给出 /heap→exhaustHeap 触发逻辑与释放行为，足以让胜任的 agent 得出'应用内分配触发堆 OOM、先暂停触发、读源码/堆参数、健康+业务验证'的正确动作，agent 仅两轮工具调用即复现了该链路。"
+      }
+    ],
+    "newGaps": [
+      "handler_reasoning"
+    ],
+    "newPrimaryGap": "handler_reasoning",
+    "latencyMs": 257852
+  }
+}
