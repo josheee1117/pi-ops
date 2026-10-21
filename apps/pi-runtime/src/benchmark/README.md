@@ -133,6 +133,97 @@ PI_CODING_AGENT_DIR="$PWD/apps/pi-runtime/src/benchmark/results/2026-10-21-outpu
 
 运行 `capture-request.ts <输出路径>` 可用 fake fetch 捕获 SDK 的白名单请求字段，不调用上游。`probe-budget.ts` 会实际调用上游两次，对照默认思考与显式关闭，单次最大128 token。两者都不保存 key 或思维链正文。适配器结果新增 stopReason、thinkingChars 及白名单 requestParameters，旧结果不存在这些字段。
 
+## 闭环评测：把消息交给处理 agent
+
+回答第二个问题：**把发出的企微消息交给一个 agent，它能不能照着把问题解决？**
+
+每个案例先跑真实诊断链路，把结构化报告存进一个真实的 agent 服务，用生产渲染器生成企微消息，再把消息原文交给处理 agent。处理 agent 只能通过消息里的详情地址取详情，或读取本案例提供的只读源码夹具。它输出根因、止损、修复、验证和需要批准的点，最后由另一个模型按事先写好的标准逐条判定。
+
+诊断链路和 `message-cli` 相同，企微消息仍然只被本机 fetch 捕获，不发外网。详情地址指向本机临时启动的 agent 服务，真实经过 Bearer 鉴权。
+
+### 一条命令
+
+```bash
+pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live
+```
+
+默认写入 `artifacts/closed-loop/<时间戳>`，不覆盖已提交的记录。要指定目录用 `--out`。2026-10-21 的首批结果、逐例理由和限制见 `results/2026-10-21-closed-loop/review.md`。
+
+默认值：诊断模型取 `artifacts/real-dataasset-lab/central/runtime-secrets.env`，诊断模型目录取 `results/2026-10-21-output-budget/pi-agent`（与生产 `deploy/docker/models.json` 一致），处理 agent 用 `cpa/deepseek-flash-latest`，裁判用 `cpa/glm-latest`。处理 agent 与裁判是不同模型家族。生产诊断模型不变。
+
+处理 agent 和裁判的模型目录默认 `~/.pi/agent`，可用 `--model-catalog` 改。`cpa` 是本机代理，处理与裁判不经过诊断模型的 ark 额度。`--handler` 与 `--judge` 接收 `provider/id`。
+
+```bash
+# 只估算，不调用模型、不写文件
+pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live --dry-run
+
+# fake 模式：只验证装置，不调用任何真实模型
+pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --out artifacts/closed-loop-fake
+```
+
+`--case <id>` 只跑一个案例。`--resume` 读取同一输出目录已有案例，只跑剩下的，并把已用 token 计入预算。默认拒绝覆盖已存在的案例文件。`--budget` 默认 1000000 token。每例预留 95000 token。预算在每次模型调用前检查，不是只做事后统计。
+
+### 处理 agent 能看到什么
+
+- 企微消息原文，含场景、发生了什么、严重程度、恢复建议、编号、详情地址和鉴权方式。
+- `fetch_details`：只能取消息里那个地址，地址不一致会被拒绝。Bearer 令牌由工具注入，不进入模型上下文。
+- `read_source`：只能读本案例登记过的仓库内路径。未登记路径被拒绝，并返回本案例缺少什么。
+
+处理 agent 没有任何写权限或执行工具，最多 8 轮，每轮只输出一个 JSON 对象。全部原始输出和工具调用都会落盘。
+
+### 源码夹具
+
+| 案例 | 夹具 | 说明 |
+|---|---|---|
+| dataasset-197 | `fixtures/closed-loop/dataasset-197/LabFaultController.java` | 从 `artifacts/real-dataasset-lab/app/src/...` 逐字节复制，sha256 `e8d24166…`；异常栈第 25 行与文件一致 |
+| jvm-heap-oom | `deploy/local/jdk17-drill/Drill.java` | 仓库内演练源码；原始异常栈第 285 行与当前文件一致，JFR 结构化栈写 307，存在行号漂移 |
+| cpu-quota-burst | `deploy/local/jdk17-drill/Drill.java` | 只能核对 `jdk.CPULoad` 语义与压测入口，配额来自 docker.inspect |
+| tag-group-502 / sop-404 / health-503 | 无 | 对应服务源码与响应体不在本仓库，评测里如实返回缺失原因 |
+| stack-overflow | 无 | 该异常来自合成测试输入，仓库没有 `com.example.Recurse` 的部署源码，不伪造 `Recurse.java` |
+
+### 判定
+
+`closed-loop-cases.ts` 在看任何处理结果之前写死每个案例的允许根因、允许修复方向、必须有的止损、验证、禁止操作、批准点和 critical 项。无人值守的处理结果不能反过来定义标准。
+
+裁判对 8 项逐条给 pass 和理由，并引用被评方案的原句：
+
+- 处理方案的 6 项：`root_cause`、`stop_loss`、`repair`、`verification`、`no_forbidden`、`approvals`。
+- 用于归因的 2 项：`diagnosis_truth`（交付的诊断本身是否符合已知事实）、`info_sufficiency`（消息加详情是否足以得出正确动作）。
+
+判定规则是确定的，不采用裁判的自由总评：6 项全过为闭环；案例声明的 critical 项（根因、止损、禁止操作，按案例）任一失败为未闭环；其余为部分闭环。
+
+没闭环时按证据归类卡点，一个案例可以有多个，表里取优先级最高的一个：
+
+1. 详情取不到
+2. 缺源码等外部能力
+3. 诊断本身错
+4. 消息信息不够
+5. 诊断未生成
+6. 处理 agent 没给出可用结论
+7. 处理方案本身有问题
+
+诊断未完成或案例种子失败时，不把该案例算成通过。
+
+### 输出
+
+`report.md` 是总表与逐例明细：消息原文、工具调用、处理结论、裁判理由、卡点、源码夹具散列。
+`summary.json` 汇总配置、codeHashes 和全部结果。每例还有 `<case>.json`，保存完整诊断报告、诊断调用原文、详情原文、处理 agent 每轮原文、裁判理由和用量。`report.md` 里的 token 是 provider 回报的 input 加 output，不含缓存读取，也不是账单金额。
+
+`closed-loop.test.ts` 用 fake 模型覆盖：消息进详情接口、越权地址被拒、未登记源码被拒、处理 agent 无结论判未闭环、判定与卡点规则。
+
+```bash
+pnpm --filter @pi-ops/pi-runtime test
+pnpm --filter @pi-ops/pi-runtime typecheck
+```
+
+### 限制
+
+- 7 例各跑一次，不证明稳定成功率。
+- 处理 agent 是本评测的无状态 JSON 工具循环，不是 Pi 全功能会话。换实现会影响闭环率。
+- 裁判也是模型，只能证明“按这份标准，方案是否成立”，不是客观真值。
+- 详情服务是本机临时实例，用真实 HTTP 接口和鉴权，但没有外部网络、通知排程和恢复状态机。
+- 处理 agent 只输出方案，没有执行任何变更。
+
 ## 边界
 
 - fake 模式只证明 harness / fixtures / evaluator 稳定，**不能证明诊断质量**
