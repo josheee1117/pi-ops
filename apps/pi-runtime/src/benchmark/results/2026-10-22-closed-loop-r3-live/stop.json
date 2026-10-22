@@ -1,0 +1,7 @@
+{
+  "stop": "tag-group-502",
+  "reason": "remaining below CLI reserve",
+  "remaining": 66454,
+  "spent": 333546,
+  "budget": 400000
+}
