@@ -1,6 +1,7 @@
 import { deterministicSummary } from '@pi-ops/protocol';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   EVIDENCE_QUERY_TYPES,
   MAX_SPECIALISTS_PER_INVESTIGATION,
@@ -63,6 +64,18 @@ const evidenceRow = (id: string, kind: string, incidentId = 'inc-1') => ({
 });
 
 describe('bounded multi-agent coordinator', () => {
+  const echoCoordinatorModel = (text: string): RuntimeModel => ({
+    provider: 'test', model: 'recorded', networkCalls: 0,
+    async invoke(request) {
+      return { text: request.system.includes('COORDINATOR_SYNTHESIS') ? text : validFinding('container_host', ['evd-health-503-http.probe']), provider: 'test', model: 'recorded' };
+    },
+  });
+
+  const investigateHealth503 = (text: string) => investigate(context({
+    incident: { id: 'inc-1', type: 'health.failure', service: 'data-asset-service' },
+    evidence: [{ id: 'evd-health-503-http.probe', kind: 'http.probe' }],
+  }), { model: echoCoordinatorModel(text) });
+
   it('fake model delay completes locally and stops when aborted', async () => {
     const model = createFakeRuntimeModel({ delayMs: 1 });
     const request = { system: 'SPECIALIST_ROLE=container_host', user: JSON.stringify(context()) };
@@ -99,6 +112,24 @@ describe('bounded multi-agent coordinator', () => {
     assert.match(outcome.report?.hypothesis ?? '', /injected finding/);
     assert.ok(model.invocations > 0);
     assert.equal(model.networkCalls, 0);
+  });
+
+  it('moves summary fields written flat on diagnosis into diagnosis.summary', async () => {
+    const recorded = JSON.parse(readFileSync(
+      new URL('../benchmark/results/2026-10-22-closed-loop-r3-prod/health-503.json', import.meta.url), 'utf8',
+    )) as { result: { diagnosis: { modelCalls: Array<{ role: string; text: string }> } } };
+    const text = recorded.result.diagnosis.modelCalls.filter((call) => call.role === 'coordinator').at(-1)!.text;
+    const flat = (JSON.parse(text) as { diagnosis: Record<string, unknown> }).diagnosis;
+    const outcome = await investigateHealth503(text);
+    assert.equal(outcome.status, 'completed');
+    assert.doesNotMatch(outcome.report?.hypothesis ?? '', /^诊断不完整/);
+    assert.deepEqual(outcome.report?.diagnosis?.summary, {
+      scene: flat['scene'], whatHappened: flat['whatHappened'], severity: flat['severity'], recovery: flat['recovery'],
+    });
+    const partial = JSON.parse(text) as { diagnosis: Record<string, unknown> };
+    delete partial.diagnosis['severity'];
+    const rejected = await investigateHealth503(JSON.stringify(partial));
+    assert.match(rejected.report?.hypothesis ?? '', /^诊断不完整/);
   });
 
   it('requests readable Chinese findings and synthesis without changing protocol keys', async () => {

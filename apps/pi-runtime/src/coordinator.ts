@@ -494,6 +494,22 @@ function normalizeReportPayload(data: unknown): unknown {
   }
   record.supportingEvidenceIds = asIdList(record.supportingEvidenceIds);
   record.contradictingEvidenceIds = asIdList(record.contradictingEvidenceIds);
+  record.diagnosis = liftFlatSummary(record.diagnosis);
+  return record;
+}
+
+const SUMMARY_KEYS = ['scene', 'whatHappened', 'severity', 'recovery'] as const;
+
+function liftFlatSummary(diagnosis: unknown): unknown {
+  if (!diagnosis || typeof diagnosis !== 'object' || Array.isArray(diagnosis)) return diagnosis;
+  const record = { ...(diagnosis as Record<string, unknown>) };
+  if (record.summary !== undefined || !SUMMARY_KEYS.every((key) => key in record)) return record;
+  const summary: Record<string, unknown> = {};
+  for (const key of SUMMARY_KEYS) {
+    summary[key] = record[key];
+    delete record[key];
+  }
+  record.summary = summary;
   return record;
 }
 

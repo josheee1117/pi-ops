@@ -88,6 +88,26 @@ it('keeps the second suggestion mitigation when merging repair uncertainty into 
   assert.match(plainSummary(payload).recovery[2]!, /^修复尚未确定/);
 });
 
+it('turns the fallback template repair line into the undetermined repair instead of stacking prefixes', () => {
+  const incident = { ...notification.incident, type: 'health.failure' };
+  const fallback = deterministicSummary(incident);
+  const payload: NotificationPayload = { ...notification, incident, analysis: {
+    investigationSessionId: 's-1', reasoningResultId: 'r-1',
+    hypothesis: '诊断不完整。健康检查返回 503，容器状态、应用日志与主机资源均未知，根因和业务影响尚未确认。',
+    recommendation: '诊断不完整，以下仅供人工核对，修复尚未确定。先补采容器状态、应用日志与主机负载。', confidence: 0.3,
+    diagnosis: { summary: fallback, observations: [], candidateCauses: [{ cause: '原因待核实。', supportingEvidenceIds: ['ev-1'], contradictingEvidenceIds: [] }],
+      uncertainties: ['诊断不完整，修复尚未确定。'],
+      actions: [
+        { purpose: 'mitigation', target: 'orders', preconditions: ['经批准'], operation: '摘除故障流量。', expectedResult: '降低失败请求', risk: '可能中断请求', requiresApproval: true, evidenceIds: ['ev-1'] },
+        { purpose: 'evidence_collection', target: 'orders', preconditions: ['只读'], operation: '采集容器状态与日志。', expectedResult: '确定修复方向', risk: '只读', requiresApproval: false, evidenceIds: [] },
+      ] },
+  } };
+  const result = plainSummary(payload);
+  assert.deepEqual(result.recovery, [fallback.recovery[0], '修复尚未确定：核对健康检查响应、应用日志和依赖状态。', fallback.recovery[2]]);
+  assert.doesNotMatch(result.recovery.join('\n'), /修复尚未确定：修复：/);
+  assert.match(formatWeComMarkdown(payload), /2\. 修复尚未确定：核对健康检查响应/);
+});
+
 it('uses deterministic copy for old, incomplete and manual-confirmation reports', () => {
   for (const hypothesis of ['旧格式长诊断'.repeat(200), '诊断不完整：模型输出截断。']) {
     const result = plainSummary({ ...notification, analysis: { investigationSessionId: 's-1', reasoningResultId: 'r-1', hypothesis, recommendation: '旧格式长建议'.repeat(200), confidence: 0.3 } });

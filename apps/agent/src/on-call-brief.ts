@@ -29,7 +29,7 @@ export function plainSummary(notification: NotificationPayload): InvestigationSu
       && (words[purpose].test(step) || step.includes(action.target)));
     const isMitigation = (step: string) => words.mitigation.test(step) || describes(step, 'mitigation');
     const evidenceIndex = recovery.findIndex((step) => !isMitigation(step) && describes(step, 'evidence_collection'));
-    const merged = evidenceIndex < 0 ? '' : `修复尚未确定：${recovery[evidenceIndex]}`;
+    const merged = evidenceIndex < 0 ? '' : `修复尚未确定：${recovery[evidenceIndex]!.replace(/^修复：/, '')}`;
     if (merged && merged.length <= 100) recovery[evidenceIndex] = merged;
     else if (recovery.length < 3) recovery.push(line);
     else {
