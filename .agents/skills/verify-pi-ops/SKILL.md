@@ -78,8 +78,13 @@ curl -X POST http://127.0.0.1:18088/ok
 ## Real drill (opt-in: real model, real WeCom test robot)
 
 ```bash
-.agents/skills/verify-pi-ops/scripts/drive.sh drill real --cases W2,B3 --execute
+.agents/skills/verify-pi-ops/scripts/drive.sh drill real
+.agents/skills/verify-pi-ops/scripts/drive.sh drill real --cases W2 --execute
+# Inspect W2's result before running B3.
+.agents/skills/verify-pi-ops/scripts/drive.sh drill real --cases B3 --execute
 ```
+
+Run one case at a time. Continue to B3 only after W2 passes and its runtime log and session contain no provider 402/429/503. On any such response, stop and report without switching models or retrying. `fault-drills.py` does not stop a multi-case run after a failed session, so `--cases W2,B3 --execute` cannot enforce this gate.
 
 This is the only scenario that talks to a real provider and a real WeCom robot. It does not start the `pi-ops-local` stack and does not use the local sink: it wraps `deploy/local/fault-drills.py`, which runs compose project `pi-ops-jdk17-local` with per-run data under `deploy/local/data/jdk17/`.
 
@@ -153,6 +158,8 @@ Overridable environment, for driving a stack started with other ports or tokens:
 
 - **FAKE model by default.** `deploy/local/compose.env` has `PI_OPS_REASONER_TYPE=fake` and pi-runtime starts without credentials, so it runs `createFakeRuntimeModel`. The hypothesis you will see ("memory pressure observed") is generated text, not a diagnosis. Use `drill real` for real-model evidence; it needs the gitignored credentials and the owner's authorization.
 - **A foreign listener on 18089 blocks the real drill.** 2026-10-22: an orphan `data-asset-starter` JVM from another worktree had held `*:18089` for a week, and `docker run -p 127.0.0.1:18089:8088` failed with `Bind for 0.0.0.0:18089 failed: port is already allocated`. `drive.sh drill real` now dies in the preflight and names the process. Freeing that port is the owner's call: it is not a pi-ops container, and this skill only ever stops compose project `pi-ops-jdk17-local`.
+- **B3 may stop at policy, before the model.** On 2026-10-22 at HEAD `083ff53`, the process exited 17 and inspect/logs succeeded, but `notificationDecision` was `record` with reason `container-exit-without-oom`. The reconciler skips that decision, so there was no session or notification. The driver timed out after 330s and failed. Report the blocked diagnosis/delivery goal with that decision; keep the driver's checks and do not change business policy just to pass.
+- **One W2 action can produce two Incidents.** The same 2026-10-22 run produced one `jvm.oom` for `order-service-本地演练-<runId>` and another for `order-local-drill-<runId>`. Both cited the same container and OOME, completed diagnosis, and sent an `INCIDENT_OPEN`. Compare service names and evidence before treating them as two independent faults. The driver's `ok` does not check duplicate Incidents.
 - **The real drill builds images from the working tree.** `fault-drills.py --build` always runs, so uncommitted files are baked into the image. `dirtyFiles` in the first line and `real/git-dirty.txt` say what was included; another session's work in `apps/agent` can change the brief text you see.
 - **No receipt, no proof.** A real-drill case fails unless both `notification-target-*` receipts exist with `match: true`. Groups from before those receipts existed (for example 2026-10-03) fail closed, even when the jobs say `DELIVERED`.
 - **The local sink is a different path.** `drill real` never posts to `notification-sink`, so sink history (hundreds of items in a long-lived checkout) says nothing about real delivery. Read `notifications` and `notificationJobRows` for the real case.

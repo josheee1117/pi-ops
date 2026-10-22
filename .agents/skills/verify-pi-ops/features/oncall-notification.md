@@ -32,9 +32,7 @@ Passing end state: an open message and a recovery message, both `DELIVERED`, bot
 
 ## Real WeCom delivery (opt-in)
 
-```bash
-.agents/skills/verify-pi-ops/scripts/drive.sh drill real --cases W2,B3 --execute
-```
+Follow the single-case commands and provider-error gate in `../SKILL.md`, under Real drill. Each command starts with a fresh database, so it never replays an earlier case's queue.
 
 This is the only path in this skill that sends to a real WeCom robot, and it sends only to the channel whose SHA-256 is pinned in `deploy/local/fault-drills.py`. The overlay sets `PI_OPS_NOTIFICATION_WEBHOOK_KIND=wecom`, `PI_OPS_NOTIFICATION_JOB_MAX_ATTEMPTS=1` and `PI_OPS_NOTIFICATION_JOB_BATCH_SIZE=1`: one message at a time, no retry, so a transient 45009 or 5xx shows up as a `FAILED` job instead of being papered over.
 
@@ -57,7 +55,7 @@ What it proves: the center built the message, called the pinned robot, and WeCom
 
 - **The sink stores metadata only.** `deploy/local/sink/server.mjs` keeps `receivedAt`, `idempotencyKey`, `notificationId`, `type` and discards the body. `DELIVERED` proves the sink accepted the call, not that a human saw a message. Never claim you inspected the delivered WeCom body here.
 - **Never point `compose.env` at a real group.** It targets `notification-sink`; `drive.sh doctor` fails if that changes. The JDK17 overlay reads a real robot from the gitignored `.env.jdk17`; only `drill real` may use it.
-- **Smoke is older than ADR-0030.** `deploy/local/smoke.sh` still asserts `INCIDENT_OPEN`, `INVESTIGATION_COMPLETED` and `INCIDENT_RECOVERED` together. On the current policy that can fail for a legitimate reason. Treat such a failure as a finding about the smoke, and do not edit the policy or the drill to make it pass. The same applies to the real drill: an `INVESTIGATION_COMPLETED` there is legitimate only when the report carries a structured repair action, so read `sessions[].actions` before calling it a regression.
+- **Smoke follows ADR-0030.** `deploy/local/smoke.sh` requires `INCIDENT_OPEN` and `INCIDENT_RECOVERED`, and rejects `INVESTIGATION_COMPLETED` for the FAKE report. The real drill may send a diagnosis update for a structured repair action or a new impact fact. Read the report and `notificationDecision` before judging that update.
 - **Real delivery never touches the local sink.** `drill real` posts to the pinned robot, so `notifications-sink.json` and the sink's accumulated history say nothing about it. Read `notificationJobRows` and the receipts instead.
 - **One attempt per job.** The fault-drills overlay sets `PI_OPS_NOTIFICATION_JOB_MAX_ATTEMPTS=1`, so a retryable error is not retried. A `FAILED` job with a 429/5xx or `45009` is a stop-and-report result, not something to rerun blindly: rerunning sends more messages to the group.
 - A `FAILED` job with `lastError` about a 4xx will never retry; retryable errors do. `DELIVERED` is written only after HTTP success, and for WeCom also `errcode=0`; the original response body is not persisted, so receipts are indirect.

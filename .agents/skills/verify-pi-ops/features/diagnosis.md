@@ -27,18 +27,16 @@ Passing end state: one session in `COMPLETED` with a report whose `supportingEvi
 
 ## Real-model run (opt-in)
 
-```bash
-.agents/skills/verify-pi-ops/scripts/drive.sh drill real --cases W2,B3 --execute
-```
+Follow the single-case commands and provider-error gate in `../SKILL.md`, under Real drill. Run W2 first and inspect its result before starting B3.
 
 This runs the real provider through `deploy/local/fault-drills.py` and prints, per case, `sessions[].hypothesis`, `confidence`, the diagnosis summary and action purposes, and how many evidence ids the report cited. The full report and every collected evidence item are in the copied `artifacts/settled-<incident>-detail.json`.
 
-Both cases are small. In the 2026-10-04 (W2) and 2026-10-03 (B3) runs the session completed in 35s and 19s:
+The 2026-10-22 run at HEAD `083ff53` completed two W2 sessions in about 258s and 253s. B3 had no session because policy chose `record / container-exit-without-oom`. The earlier W2/B3 timings of 35s/19s predate that policy result and do not predict this run.
 
 | Case | Injected fault (the expected root cause) | Evidence the runtime can reach |
 | --- | --- | --- |
 | W2 | heap exhausted by the drill's own retention until `OutOfMemoryError: Java heap space` | JFR signal, docker inspect, logs, stats, host memory |
-| B3 | the drill JVM exits with status 17, container stays down | docker inspect, logs |
+| B3 | the drill JVM exits with status 17, container stays down | docker inspect and logs were collected; record-only policy prevented model submission |
 
 Judge the report against the injected fault, not against polished wording:
 
