@@ -1,0 +1,77 @@
+{
+  "probedAt": "2026-10-22T06:10:51.176Z",
+  "diagnosisCatalog": "/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent",
+  "handlerCatalog": "/Users/hejiayuan/.pi/agent",
+  "note": "diagnosis uses the production env key and the default agent catalog; handler and judge use ~/.pi/agent",
+  "results": [
+    {
+      "spec": "ark/deepseek-v4.1-flash",
+      "ok": true,
+      "stopReason": "stop",
+      "errorMessage": null,
+      "usage": {
+        "input": 11,
+        "output": 1,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 0,
+        "totalTokens": 12,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "OK",
+      "latencyMs": 845
+    },
+    {
+      "spec": "cpa/deepseek-flash-latest",
+      "ok": true,
+      "stopReason": "stop",
+      "errorMessage": null,
+      "usage": {
+        "input": 37,
+        "output": 13,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 11,
+        "totalTokens": 50,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "[thinking]OK",
+      "latencyMs": 872
+    },
+    {
+      "spec": "cpa/glm-latest",
+      "ok": true,
+      "stopReason": "stop",
+      "errorMessage": null,
+      "usage": {
+        "input": 19,
+        "output": 55,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 50,
+        "totalTokens": 74,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "[thinking]OK",
+      "latencyMs": 1536
+    }
+  ]
+}
