@@ -1,0 +1,1044 @@
+{
+  "mode": "offline",
+  "modelCalls": 0,
+  "evidenceSource": "saved detail markdown",
+  "findingsSource": "last schema-valid output per specialist role",
+  "batches": [
+    {
+      "batch": "2026-10-21-closed-loop",
+      "results": [
+        {
+          "caseId": "dataasset-197",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "899 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "jvm-heap-oom",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "922 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "cpu-quota-burst",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "848 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "tag-group-502",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "826 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "sop-404",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "825 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "health-503",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "778 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "stack-overflow",
+          "oldMessageHardPass": false,
+          "messageHardPass": true,
+          "failedChecks": [],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "866 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "pass",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": true
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": true
+          }
+        }
+      ]
+    },
+    {
+      "batch": "2026-10-22-closed-loop",
+      "results": [
+        {
+          "caseId": "dataasset-197",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "853 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "jvm-heap-oom",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "969 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "cpu-quota-burst",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "898 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "tag-group-502",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "814 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "sop-404",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "mitigationInDiagnosis",
+              "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "823 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "fail",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "pass",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": false
+              },
+              "repair": {
+                "inDiagnosis": true
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "health-503",
+          "oldMessageHardPass": false,
+          "messageHardPass": false,
+          "failedChecks": [
+            {
+              "name": "repairOrUnknown",
+              "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+            }
+          ],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "928 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "fail",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": false
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": false
+          }
+        },
+        {
+          "caseId": "stack-overflow",
+          "oldMessageHardPass": false,
+          "messageHardPass": true,
+          "failedChecks": [],
+          "evaluation": {
+            "checks": {
+              "structuredDiagnosis": {
+                "status": "pass"
+              },
+              "actionsComplete": {
+                "status": "pass"
+              },
+              "citationsExist": {
+                "status": "pass"
+              },
+              "forbiddenAttributionScreen": {
+                "status": "pass",
+                "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+              },
+              "messageWithinLimit": {
+                "status": "pass",
+                "detail": "850 bytes"
+              },
+              "mitigationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。"
+              },
+              "repairOrUnknown": {
+                "status": "pass",
+                "detail": "详情须有修复动作，或消息及诊断明确说明修复尚未确定。"
+              },
+              "verificationInDiagnosis": {
+                "status": "pass",
+                "detail": "详情 diagnosis.actions 必须包含验证动作。"
+              },
+              "recoverySuggestions": {
+                "status": "pass",
+                "detail": "消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。"
+              },
+              "plainSummary": {
+                "status": "pass"
+              },
+              "detailAddress": {
+                "status": "pass"
+              },
+              "noDetailedSections": {
+                "status": "pass"
+              },
+              "diagnosisComplete": {
+                "status": "pass"
+              }
+            },
+            "purposes": {
+              "mitigation": {
+                "inDiagnosis": true
+              },
+              "repair": {
+                "inDiagnosis": true
+              },
+              "verification": {
+                "inDiagnosis": true
+              }
+            },
+            "forbiddenMatches": [],
+            "degraded": false,
+            "hardPass": true
+          }
+        }
+      ]
+    }
+  ]
+}

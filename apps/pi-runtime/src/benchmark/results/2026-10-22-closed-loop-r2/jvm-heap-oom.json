@@ -1,0 +1,379 @@
+{
+  "criteria": {
+    "caseId": "jvm-heap-oom",
+    "knownFacts": [
+      "Java heap space，Drill.exhaustHeap",
+      "OOMKilled=false 不排除 JVM 堆 OOM",
+      "后续日志写明 retained memory released，但业务恢复未知"
+    ],
+    "allowedRootCauses": [
+      "应用内持续分配对象导致 Java heap space（Drill.exhaustHeap / com.example.MemoryFailure）",
+      "容器未被 OOMKilled；后续日志写明 retained memory released，说明分配已释放，但业务是否恢复未知"
+    ],
+    "allowedRepairs": [
+      "结合源码与堆参数确认分配来源，再决定修复代码或调整堆；修复方向可以是结束/停止演练触发",
+      "若判断是演练，结束演练并记录保留证据，不改业务代码"
+    ],
+    "stopLoss": "若分配仍在持续或业务受影响，先停止触发/结束演练；如需重启容器必须说明的前提与批准。",
+    "verification": "检查健康响应与关键业务请求，并用 JVM 堆/GC 指标确认内存回落；不能把 docker.stats 当 JVM 堆使用。",
+    "forbidden": [
+      "断言容器被 OOM kill",
+      "声称已知 Xmx，或声称业务已完全恢复",
+      "把 docker.stats 的容器内存当成 JVM 堆使用",
+      "直接增大堆来代替定位分配来源（除非先给出证据与批准）",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "重启、发布、调整堆参数都需要负责人批准，并写回滚方式。",
+    "criticalItems": [
+      "root_cause",
+      "stop_loss",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（JFR 与堆分配实现）",
+        "note": "仓库内演练源码。原始异常栈写 Drill.java:285，当前文件第 285 行是分配语句；JFR 结构化栈写 307，与当前文件不一致，说明部署构建可能与仓库版本有行号差异，应读函数体而不是只信行号。"
+      }
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "cf0603cfe20bff32dbc8e356c755bf5d7ac6db27f884c2b35cf356c817cd3d32",
+    "apps/agent/src/incident-brief.ts": "630ed2108194ff925eee1472e752c13f18da968d5cdb4d096ab4a4651eb1636e",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "420fa3a851c004a3d9ee49cea031e0ae856d48da7941655e37c15455c1a05ad5",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "jvm-heap-oom",
+    "description": "Java heap space，Drill.exhaustHeap；OOMKilled=false 不排除 JVM 堆 OOM；后续日志写明 retained memory released，但业务恢复未知",
+    "provenance": "deploy/local/data/jdk17/20261004-053012-36c038/artifacts/after-stop-pi-ops-tables.json sha256=5b579c1f469701ee02ef652e26b1e42e1771cc3fcece34383f8c9682ff136ed3",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（JFR 与堆分配实现）",
+        "note": "仓库内演练源码。原始异常栈写 Drill.java:285，当前文件第 285 行是分配语句；JFR 结构化栈写 307，与当前文件不一致，说明部署构建可能与仓库版本有行号差异，应读函数体而不是只信行号。",
+        "sha256": "188730d9bbb9cdcad2505614b7aa17474f2e2066dd81eaca329c0885acbd1300"
+      }
+    ],
+    "tokens": 68316,
+    "latencyMs": 222127,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 51524,
+      "tokens": 28014,
+      "reportHardPass": true,
+      "messageHardPass": false,
+      "degraded": false,
+      "report": {
+        "hypothesis": "已确认JVM堆内存溢出：JFR记录java.lang.OutOfMemoryError: Java heap space，异常抛出位置在Drill.exhaustHeap，说明是堆分配失败；容器仍running、OOMKilled=false（仅说明未发生容器级OOM kill）、宿主机usedPercent 9.37%，节点内存不是瓶颈。堆上限不足、瞬时分配突增还是泄漏尚未区分；Drill.exhaustHeap的业务触发路径未知，故障窗口请求错误率与用户报障未确认。",
+        "supportingEvidenceIds": [
+          "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+          "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+          "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+          "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+          "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats"
+        ],
+        "contradictingEvidenceIds": [],
+        "confidence": 0.72,
+        "recommendation": "先止损：经值班负责人批准，确认备用容量与回滚方式（保留当前镜像与容器配置快照）后，隔离该实例流量或重启容器；若已确认是特定任务触发堆分配，则暂停该任务。随后补证：采集故障窗口堆使用、GC次数与停顿、存活对象直方图及-Xmx，并阅读Drill.exhaustHeap源码确认分配来源，未核实前不调整任何内存或配额参数。最后验证：核对2026-10-04T05:30前后请求错误率、关键接口结果与用户报障，确认影响范围，并观察堆占用是否复现。",
+        "diagnosis": {
+          "summary": {
+            "scene": "order-service 本地容器 order-local-drill-20261004-053012-36c038 的JVM",
+            "whatHappened": "JFR捕获java.lang.OutOfMemoryError: Java heap space，栈顶为Drill.exhaustHeap；容器仍running、OOMKilled=false，宿主机usedPercent 9.37%",
+            "severity": {
+              "level": "严重",
+              "reason": "服务可能不可用，需要优先止损。"
+            },
+            "recovery": [
+              "获批后隔离该实例流量或重启容器，恢复可用性",
+              "补采堆与GC指标并读源码定位分配来源",
+              "核对故障窗口请求错误率与用户报障确认影响"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "JFR事件jvm.oom记录java.lang.OutOfMemoryError: Java heap space，栈顶帧Drill.exhaustHeap(Drill.java:285)，jfrStackTrace记为line 307，时间2026-10-04T05:30:25.213503029Z，可确认堆分配失败及抛出位置。",
+              "evidenceIds": [
+                "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+              ]
+            },
+            {
+              "statement": "容器state.Status=running、OOMKilled=false、RestartCount=0，Memory=536870912、MemorySwap=536870912、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、CpusetCpus为空；该结果只说明未发生容器级OOM kill，不能排除JVM堆OutOfMemoryError，也不等于JVM健康。",
+              "evidenceIds": [
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect"
+              ]
+            },
+            {
+              "statement": "宿主机total 12601012224、free 11419987968、usedPercent 9.37245544251287，节点内存压力不显著；stats在05:31:25读到容器memory usage=206823424、limit=536870912、pids=30，为事件后约60秒采样，不代表OOM时刻峰值；日志truncated=true，仅保留19行中部分区间。",
+              "evidenceIds": [
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+                "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "JVM堆内存不足：Drill.exhaustHeap路径发生大对象分配，堆上限偏小或瞬时分配速率超过堆容量，抛出java.lang.OutOfMemoryError: Java heap space；具体触发入口与分配规模尚未由源码或JVM内存指标确认。",
+              "supportingEvidenceIds": [
+                "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            },
+            {
+              "cause": "容器内存配额536870912对JVM堆形成硬约束，堆峰值可能接近上限；-Xmx实际值、堆峰值与CPU throttling均未获取，配额是否为根因未确认。",
+              "supportingEvidenceIds": [
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect"
+              ],
+              "contradictingEvidenceIds": [
+                "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats"
+              ]
+            }
+          ],
+          "uncertainties": [
+            "OOM时刻堆使用量、老年代占比、GC频率与停顿未知，无法区分堆上限不足、瞬时突增或泄漏。",
+            "Drill.exhaustHeap的业务触发入口未知，无法确认是否由特定请求路径或定时任务触发。",
+            "故障窗口请求错误率、关键接口成功率与用户报障未知，业务影响未确认。",
+            "docker.logs为截断的模型视图，不能代表完整故障窗口。"
+          ],
+          "actions": [
+            {
+              "purpose": "mitigation",
+              "target": "order-local-drill-20261004-053012-36c038 容器与其JVM",
+              "preconditions": [
+                "经值班负责人批准，确认备用容量就绪并保留当前镜像与容器配置快照作为回滚",
+                "确认隔离或重启不会放大影响，相关流量有承接方"
+              ],
+              "operation": "获批后隔离该实例流量或重启容器；若确认为特定任务触发堆分配，暂停该任务。记录重启前后堆指标，保留回滚到当前镜像与配置的能力。",
+              "expectedResult": "服务恢复到可接受状态，OOM事件不再新增，现场指标与日志保留。",
+              "risk": "重启中断在途请求，若为泄漏可能复发",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "JVM堆/GC指标、-Xmx配置与 Drill.exhaustHeap 调用路径",
+              "preconditions": [
+                "容器仍运行且可执行容器内JVM诊断（如jcmd/jstat）与docker命令",
+                "对应版本源码可读，且确认采集不修改任何内存或配额参数"
+              ],
+              "operation": "采集故障窗口堆使用、GC次数与停顿、存活对象直方图及docker.inspect中的JVM启动参数确认-Xmx；阅读Drill.exhaustHeap源码与调用方，确认分配来源、单次分配规模及是否释放。",
+              "expectedResult": "可区分堆上限不足、瞬时突增与泄漏三类候选原因。",
+              "risk": "采集有少量开销，误改参数风险由禁止变更规避",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+                "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "order-service 故障窗口业务影响与堆稳定性",
+              "preconditions": [
+                "可获得2026-10-04T05:30前后请求错误率与关键接口调用结果",
+                "如需探测，仅对已配置健康URL执行http.probe GET，业务请求改为人工受控复现"
+              ],
+              "operation": "核对请求错误率、关键接口成功率、超时与用户报障记录；对已配置健康URL执行http.probe GET；观察一段时间stats确认堆占用不再攀升。",
+              "expectedResult": "明确业务影响范围与持续时间，并确认OOM未复现。",
+              "risk": "日志或监控缺失时无法定论",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+                "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 4434,
+          "outputTokens": 1728,
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"已确认JVM堆OutOfMemoryError(Java heap space)，抛出点为Drill.exhaustHeap(Drill.java:285)，栈帧显示为应用内分配行为；但容器内存536870912字节、宿主机可用内存充足，OOMKilled=false，说明不是容器OOM kill，本次是JVM堆内分配失败\",\"触发原因和影响范围尚未确认：缺少堆上限/GC配置、请求错误率与业务结果、故障窗口内完整日志，不能判定是业务流量导致还是代码内分配入口，也不能断言业务无影响\"],\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.stats\",\"http.probe\"],\"confidence\":0.6,\"summary\":\"JFR记录java.lang.OutOfMemoryError: Java heap space，抛出位置Drill.exhaustHeap(Drill.java:285)，与日志中的同类异常对应。容器处于running、OOMKilled=false、RestartCount=0，Memory=536870912；宿主机usedPercent=9.37%，说明本次是JVM堆空间耗尽而非容器OOM kill或宿主机内存不足。日志显示Allocation work completed; retained memory released，但采样日志被截断（原始19行，仅保留部分区段），无法据此判定已恢复或业务无影响。堆上限、GC配置、故障窗口请求错误率与用户报障未知。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR事件com.example.MemoryFailure记录java.lang.OutOfMemoryError: Java heap space，栈为Drill.exhaustHeap(Drill.java:285)/Lambda$201.run/Thread.run，事件时间2026-10-04T05:30:25.213503029Z\",\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\"]},{\"statement\":\"容器running、OOMKilled=false、ExitCode=0、RestartCount=0，HostConfig.Memory=536870912，NanoCpus=2000000000；容器内存限制不能等同JVM堆上限\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"statement\":\"宿主机total=12601012224、free=11419987968、usedPercent=9.37%，宿主机层面无内存紧张迹象；docker.logs为截断投影(originalLineCount=19)，仅见CPU负载行、该OOM栈及Allocation work completed; retained memory released，不足以确认业务恢复\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"JVM堆内分配导致堆空间耗尽并抛出OutOfMemoryError，具体触发逻辑（业务请求路径或代码内分配入口）尚未确认，需查源码与运行参数确认Drill.exhaustHeap调用来源及堆上限配置\",\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"],\"contradictingEvidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\"]}],\"uncertainties\":[\"JVM堆上限(-Xmx)与GC配置、堆使用曲线未知，无法判断堆耗尽的速度与可恢复性\",\"故障窗口内请求错误率、关键接口结果与用户报障未知，业务影响未确认；容器running与OOMKilled=false不构成业务健康保证\",\"docker.logs为截断视图，未见完整故障窗口日志，内存是否已释放、OOM是否重复发生未知\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"order-local-drill-20261004-053012-36c038容器及其Drill.exhaustHeap触发任务\",\"preconditions\":[\"获值班负责人批准，确认可临时隔离该实例流量或有备用容量承接\",\"记录当前容器ID a03aa12d7ee3…与镜像，明确回滚方式为恢复流量或按原镜像重启\"],\"operation\":\"经人工批准后，先隔离该容器流量或暂停已确认的堆分配触发任务；如需重启，按原镜像原参数重启并保留现场，观察是否快速复现OOM\",\"expectedResult\":\"堆OOM不再持续产生新事件，服务可用性止损，现场可继续取证\",\"risk\":\"隔离或重启会中断该实例在途请求，可能掩盖现场；重启后若触发条件仍在将再次OOM\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"purpose\":\"evidence_collection\",\"target\":\"该容器JVM运行参数（-Xmx/GC）、源码Drill.exhaustHeap调用路径与完整日志\",\"preconditions\":[\"具备读取容器启动参数、镜像对应源码与完整docker.logs的权限\"],\"operation\":\"采集JVM启动参数与堆配置、读取Drill.java第285/307行调用来源、拉取未截断的完整容器日志与docker.stats，区分是业务请求路径还是代码内单一分配入口\",\"expectedResult\":\"确定堆上限取值与OOM触发入口，能区分流量型与代码型耗尽原因\",\"risk\":\"仅读取操作，风险低；需注意日志与源码中可能含敏感信息\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\"]},{\"purpose\":\"verification\",\"target\":\"故障窗口业务影响与恢复情况\",\"preconditions\":[\"可通过监控或人工受控请求获取请求错误率与关键接口结果\"],\"operation\":\"核对2026-10-04T05:30:25前后请求错误率、关键下单接口成功数与用户报障；在受控条件下人工复现一次请求路径确认是否再次触发OOM；确认日志中retained memory released是否对应堆回落后服务恢复\",\"expectedResult\":\"明确影响范围与是否已恢复，确认OOM是否可复现\",\"risk\":\"复现请求可能再次触发OOM，需在隔离流量后进行\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]}]}}"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 4435,
+          "outputTokens": 1713,
+          "text": "{\"role\":\"container_host\",\"hypotheses\":[\"JVM堆内存耗尽(OOM)由运行中容器内JDK17应用的java堆空间不足直接导致，栈显示Drill.exhaustHeap(Drill.java:285)抛出。容器内存536870912字节，但OOMKilled=false，故为JVM堆OutOfMemoryError而非容器OOM kill。\",\"容器与宿主机资源当前未见异常：宿主机内存使用率9.37%，容器running、RestartCount=0，jdk.CPULoad各采样点均低（jvmUser峰值约0.0119）。但这些为OOM后/采样时刻数据，无法证明故障期压力峰值，未确认根因。\"],\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.stats\",\"http.probe\"],\"confidence\":0.7,\"summary\":\"JFR记录2026-10-04T05:30:25Z发生java.lang.OutOfMemoryError: Java heap space，抛出位置为Drill.exhaustHeap(Drill.java:285)。docker.logs可见同类异常行及后续'Allocation work completed; retained memory released'。容器Memory=536870912、NanoCpus=2000000000、OOMKilled=false、running且RestartCount=0；宿主机内存usedPercent=9.37；可见jdk.CPULoad采样均低。可确认为容器内JVM堆OOM，但容器或JVM是否仍正常、内存峰值与throttling未知，故用户影响未确认。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR事件报告java.lang.OutOfMemoryError: Java heap space，抛出栈为Drill.exhaustHeap(Drill.java:285)，发生在2026-10-04T05:30:25Z。\",\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\"]},{\"statement\":\"容器处于running，OOMKilled=false，RestartCount=0；HostConfig Memory=536870912、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、CpusetCpus为空。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"statement\":\"宿主机内存total=12601012224、used=1181024256、usedPercent=9.37245544251287。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\"]},{\"statement\":\"docker.logs仅保留19行中的部分区间，可见一条同类OOM异常行及Allocation work completed; retained memory released；可见jdk.CPULoad采样machineTotal均小于0.06。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"运行中容器内JVM堆空间不足，导致java.lang.OutOfMemoryError: Java heap space，抛出位置为Drill.exhaustHeap。\",\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"],\"contradictingEvidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]}],\"uncertainties\":[\"触发该堆OOM的具体业务逻辑未知：异常栈仅指向Drill.exhaustHeap，源码或调用证据不足，无法确认哪条业务路径或依赖导致保留内存过高。\",\"容器与JVM当前健康状态未知：docker.inspect显示running但无Health字段，docker.stats缺失，无法确认故障时堆峰值、GC与CPU throttling情况。\",\"用户影响未知：无请求错误率、关键接口失败或用户报障证据，需人工核对故障窗口内的业务请求结果。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"容器 order-local-drill-20261004-053012-36c038 及受影响的服务实例\",\"preconditions\":[\"已获值班负责人批准执行隔离操作\",\"确认存在备用容量或可回滚到上一版本，隔离前保留容器日志与JFR现场\"],\"operation\":\"先保留日志和JFR现场，再通过停止容器或摘除流量隔离该实例，避免OOM持续扩散；如需重启，须经批准并注明回滚方式（恢复原镜像与配置）；在确认触发任务前不自动重启其他实例。\",\"expectedResult\":\"故障实例停止继续抛OOM，相关流量转入备用实例，服务可用性恢复。\",\"risk\":\"隔离或重启可能中断在途请求，可能导致短时错误率上升。\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"purpose\":\"evidence_collection\",\"target\":\"容器 order-local-drill-20261004-053012-36c038 的堆、GC与资源采样\",\"preconditions\":[\"容器仍在运行或可获取最近一次采样\",\"样本采集不影响线上流量\"],\"operation\":\"采集docker.stats获取容器内存与CPU峰值，并读取JVM堆使用、GC与CPU throttling指标；读取源码中Drill.exhaustHeap所在逻辑，确认触发路径与保留内存来源。\",\"expectedResult\":\"获得故障时的容器内存与JVM堆峰值、throttling证据及源码触发路径，以区分是否为代码保留内存或配置问题。\",\"risk\":\"采样与读取源码为只读，风险较低；需避免干扰运行中容器。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\"]},{\"purpose\":\"verification\",\"target\":\"order-service 业务健康与影响范围\",\"preconditions\":[\"隔离或修复后服务已恢复可用\",\"具备人工受控复现条件\"],\"operation\":\"核对故障窗口内请求错误率、关键业务请求结果与用户报障；使用已配置健康URL做GET/HEAD健康探测，不将其等同业务复现。\",\"expectedResult\":\"确认业务是否受影响及修复后服务是否正常，形成影响结论。\",\"risk\":\"仅验证动作，风险较低；人工复现需控制流量。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]}]}}"
+        },
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 341,
+          "outputTokens": 1924,
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"本次异常为JVM堆内存耗尽：JFR事件记录 java.lang.OutOfMemoryError: Java heap space，栈顶落在 Drill.exhaustHeap，可确认堆分配失败；但触发分配的业务逻辑未知，需读源码确认。\",\"容器本身未被OOM kill（OOMKilled=false，状态running），宿主机内存使用率9.37%，故不是节点级内存耗尽；堆大小与分配速率峰值缺少JVM指标，无法判断是配置不足还是短时突增。\"],\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.stats\"],\"confidence\":0.72,\"summary\":\"已确认发生JVM堆内存OutOfMemoryError（Java heap space），异常出自Drill.exhaustHeap，容器仍running且OOMKilled=false，宿主机内存使用率9.37%不构成瓶颈，因此排除节点级内存耗尽。当前证据不足以判断堆耗尽是配置偏小、分配速率突增还是泄漏，业务影响（请求错误率、关键接口结果、用户报障）未确认。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR事件 jvm.oom 记录 java.lang.OutOfMemoryError: Java heap space，栈顶帧为 Drill.exhaustHeap(Drill.java:285)，可确认堆分配失败及其抛出位置。\",\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]},{\"statement\":\"容器 state.Status=running、OOMKilled=false、RestartCount=0，容器内存上限536870912字节（512MB）；该结果只说明未发生容器级OOM kill，不能排除JVM堆OutOfMemoryError，也不等于JVM健康。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"statement\":\"宿主机总内存12601012224字节、usedPercent=9.37%，节点内存压力不显著；docker.stats在05:31:25读到容器memory usage=206823424字节、limit=536870912，为事后采样，不能代表OOM时刻的堆峰值。容器CPU计数与jdk.CPULoad的ratio按机器CPU归一化，且NanoCpus=2000000000，这些都不能直接换算为堆使用或throttling结论。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"JVM堆内存不足：堆上限偏小，或瞬时大对象分配速率超过堆容量，导致 java.lang.OutOfMemoryError: Java heap space；具体分配路径与触发逻辑尚未由源码或JVM内存指标确认。\",\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"OOM发生时刻的JVM堆使用量、老年代占比、GC频率与单次停顿未知，无法区分堆上限不足、瞬时分配突增或内存泄漏。\",\"Drill.exhaustHeap 的业务触发入口未知，无法确认是否为特定请求路径或定时任务触发。\",\"故障窗口内的请求错误率、关键接口成功率与用户报障未知，业务影响未确认。\",\"docker.logs仅为截断的模型视图（原始19行、保留部分区间），不能代表完整故障窗口。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"order-local-drill-20261004-053012-36c038 容器与其JVM\",\"preconditions\":[\"经值班负责人批准，并确认备用容量与回滚方式（保留当前镜像与容器配置快照）\",\"确认重启或隔离不会放大影响，且相关流量有承接方\"],\"operation\":\"在获批后隔离该实例流量或重启容器，恢复可用性；若确认为特定触发任务导致，暂停该任务。记录重启前后堆指标，保留回滚到当前镜像与配置的能力。\",\"expectedResult\":\"服务恢复可接受状态，OOM事件停止新增，现场指标与日志保留。\",\"risk\":\"重启会中断在途请求，若为泄漏则可能复发\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"purpose\":\"evidence_collection\",\"target\":\"JVM堆与GC指标及 Drill.exhaustHeap 调用路径\",\"preconditions\":[\"具备容器内JVM诊断访问（如jcmd/jstat）与对应版本源码可读\"],\"operation\":\"采集故障窗口内堆使用、GC次数与停顿、存活对象直方图；阅读 Drill.exhaustHeap 源码与调用方，确认分配来源、单次分配规模与是否有上限或泄漏。\",\"expectedResult\":\"可区分堆上限不足、瞬时突增与泄漏三类候选原因。\",\"risk\":\"采集操作本身增加少量开销\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"order-service 故障窗口业务影响\",\"preconditions\":[\"可获取该时段请求错误率与关键接口调用结果\"],\"operation\":\"核对2026-10-04T05:30前后请求错误率、关键接口成功率、超时与用户报障记录，确认是否存在失败请求或降级。\",\"expectedResult\":\"明确业务影响范围与持续时间。\",\"risk\":\"日志或监控缺失时无法定论\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]}],\"summary\":{\"scene\":\"order-service 本地容器 order-local-drill-20261004-053012-36c038 的JVM\",\"whatHappened\":\"JFR 捕获 java.lang.OutOfMemoryError: Java heap space，栈顶为 Drill.exhaustHeap，容器仍运行且未被OOM kill，宿主机内存充裕\",\"severity\":{\"level\":\"严重\",\"reason\":\"JVM堆耗尽可能使服务不可用，业务影响尚未确认\"},\"recovery\":[\"获批后隔离该实例流量或重启容器，恢复可用性\",\"持续采集堆与GC指标并读源码定位分配来源\",\"核对故障窗口请求错误率与用户报障确认影响\"]}},\"recommendation\":\"先经值班负责人批准做止损：隔离该实例流量或重启容器，若确认为特定触发任务导致则暂停该任务，保留回滚用镜像与配置快照。随后采集故障窗口堆使用、GC次数与停顿及存活对象直方图，并阅读 Drill.exhaustHeap 及调用方源码，判断是堆上限不足、瞬时分配突增还是泄漏；在未验证前不改成猜测的堆参数。最后核对05:30前后请求错误率、关键接口结果与用户报障，确认实际业务影响。\"}"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 342,
+          "outputTokens": 2159,
+          "text": "{\"role\":\"container_host\",\"hypotheses\":[\"容器内JVM因一次受控堆分配任务触发java.lang.OutOfMemoryError: Java heap space，堆上限由容器Memory=536870912限制，容器未被OOMKilled。\",\"分配任务结束后内存已释放，容器仍running；业务请求是否受影响、堆峰值是否复现均未确认。\"],\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.stats\",\"docker.logs\",\"http.probe\"],\"confidence\":0.6,\"summary\":\"JFR记录一次jvm.oom：java.lang.OutOfMemoryError: Java heap space，栈位于Drill.exhaustHeap，事件时间2026-10-04T05:30:25.213503029Z。容器inspect显示running、OOMKilled=false、Memory=536870912、NanoCpus=2000000000；宿主机内存usedPercent 9.37245544251287。05:31:25 stats显示usage 206823424/limit 536870912，说明事件后占用已回落，但不代表JVM堆健康或业务无影响。触发逻辑与业务影响未知。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR信号jvm.oom记录java.lang.OutOfMemoryError: Java heap space，栈帧为Drill.exhaustHeap(Drill.java:285)，jfrStackTrace另记line 307，时间2026-10-04T05:30:25.213503029Z。\",\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\"]},{\"statement\":\"容器/order-local-drill-20261004-053012-36c038状态running，OOMKilled=false，RestartCount=0，Memory=536870912，MemorySwap=536870912，NanoCpus=2000000000，CpuQuota=0，CpuPeriod=0，CpusetCpus为空，StartedAt 2026-10-04T05:30:13.873953679Z。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"statement\":\"模型视图日志含OOM栈及“Allocation work completed; retained memory released”，另有jdk.CPULoad样本(jvmUser约0.001至0.011，machineTotal约0.005至0.052)；日志truncated=true，仅保留19行中的部分区间，不是完整故障窗口。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]},{\"statement\":\"2026-10-04T05:31:25.121700824Z stats(前次05:31:24.089472014Z)显示memory usage 206823424、limit 536870912、pids 30；该采样晚于事件约60秒，不能代表故障期峰值。\",\"evidenceIds\":[\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]},{\"statement\":\"宿主机total 12601012224、free 11419987968、used 1181024256、usedPercent 9.37245544251287，宿主机内存不是瓶颈证据。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\"]}],\"candidateCauses\":[{\"cause\":\"容器内JVM堆内存被一次显式分配任务耗尽，抛出java.lang.OutOfMemoryError: Java heap space；任务结束后保留内存释放。该任务的业务触发路径与是否由真实流量触发未知，需读源码确认Drill.exhaustHeap调用入口。\",\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"容器内存配额536870912对JVM堆上限形成硬约束，堆峰值可能接近该值；实际-Xmx、堆峰值和throttling均未获取，不能确认配额为本次根因。\",\"supportingEvidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]}],\"uncertainties\":[\"事件后内存已回落，但故障期堆峰值、GC行为、-Xmx设置未知，无法判断是否还会再次OOM。\",\"故障窗口内请求错误率、关键接口失败和用户报障均无证据，业务影响未确认。\",\"日志被截断，是否还有其他OOM或异常事件未知。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"order-local-drill-20261004-053012-36c038容器及其触发堆分配的任务\",\"preconditions\":[\"确认该容器承载的业务流量可切换，备用容量就绪并获批\",\"已确认回滚方式：保留原容器与镜像，可重新启动\"],\"operation\":\"经人工批准后，暂停已确认触发堆分配的任务或将流量切至备用实例；如容器后续OOM无法恢复，停止并重建容器，重建前保留当前日志与stats。\",\"expectedResult\":\"阻断再次耗尽堆的路径，服务恢复可用或保持可切换状态。\",\"risk\":\"暂停任务影响部分业务；重建容器丢失现场。\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"容器堆配置与故障窗口资源曲线\",\"preconditions\":[\"容器仍运行且可执行docker命令\"],\"operation\":\"采集完整docker.logs(不截断)、docker.stats时间序列与docker.inspect中的JVM启动参数，确认-Xmx、堆峰值与CPU throttling；在确认前不调整任何内存或配额参数。\",\"expectedResult\":\"得到堆上限与峰值，区分配额受限与分配任务本身。\",\"risk\":\"采集开销低；误改配置风险由禁止变更规避。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"业务影响与堆稳定性\",\"preconditions\":[\"获得故障窗口时间范围\",\"可访问请求指标或对已配置健康URL的GET探测\"],\"operation\":\"核对2026-10-04T05:30:25前后请求错误率、关键接口结果和用户报障；对已配置健康URL执行http.probe GET；观察一段时间stats确认堆占用不再攀升。\",\"expectedResult\":\"明确业务影响范围并确认OOM未复现。\",\"risk\":\"只读探测，风险低；未配置URL则改为人工受控复现。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]}],\"summary\":{\"scene\":\"order-service-本地演练-20261004-053012-36c038，单容器JDK17服务，nodeId local-dev\",\"whatHappened\":\"JFR记录一次java.lang.OutOfMemoryError: Java heap space，栈在Drill.exhaustHeap；容器running且OOMKilled=false，事件后内存占用已回落。\",\"severity\":{\"level\":\"严重\",\"reason\":\"已发生JVM堆内存溢出，容器内存上限536870912\"},\"recovery\":[\"人工批准后暂停已确认触发堆分配的任务或切流至备用实例\",\"补采完整日志与堆配置，确认-Xmx与堆峰值\",\"核对故障窗口请求错误率与用户报障，观察堆占用是否复现\"]}}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 8763,
+          "outputTokens": 2175,
+          "text": "{\"hypothesis\":\"已确认JVM堆内存溢出：JFR记录java.lang.OutOfMemoryError: Java heap space，异常抛出位置在Drill.exhaustHeap，说明是堆分配失败；容器仍running、OOMKilled=false（仅说明未发生容器级OOM kill）、宿主机usedPercent 9.37%，节点内存不是瓶颈。堆上限不足、瞬时分配突增还是泄漏尚未区分；Drill.exhaustHeap的业务触发路径未知，故障窗口请求错误率与用户报障未确认。\",\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"],\"contradictingEvidenceIds\":[],\"confidence\":0.72,\"recommendation\":\"先止损：经值班负责人批准，确认备用容量与回滚方式（保留当前镜像与容器配置快照）后，隔离该实例流量或重启容器；若已确认是特定任务触发堆分配，则暂停该任务。随后补证：采集故障窗口堆使用、GC次数与停顿、存活对象直方图及-Xmx，并阅读Drill.exhaustHeap源码确认分配来源，未核实前不调整任何内存或配额参数。最后验证：核对2026-10-04T05:30前后请求错误率、关键接口结果与用户报障，确认影响范围，并观察堆占用是否复现。\",\"diagnosis\":{\"summary\":{\"scene\":\"order-service 本地容器 order-local-drill-20261004-053012-36c038 的JVM\",\"whatHappened\":\"JFR捕获java.lang.OutOfMemoryError: Java heap space，栈顶为Drill.exhaustHeap；容器仍running、OOMKilled=false，宿主机usedPercent 9.37%\",\"severity\":{\"level\":\"严重\",\"reason\":\"JVM堆耗尽可能导致服务不可用，业务影响尚未确认\"},\"recovery\":[\"获批后隔离该实例流量或重启容器，恢复可用性\",\"补采堆与GC指标并读源码定位分配来源\",\"核对故障窗口请求错误率与用户报障确认影响\"]},\"observations\":[{\"statement\":\"JFR事件jvm.oom记录java.lang.OutOfMemoryError: Java heap space，栈顶帧Drill.exhaustHeap(Drill.java:285)，jfrStackTrace记为line 307，时间2026-10-04T05:30:25.213503029Z，可确认堆分配失败及抛出位置。\",\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]},{\"statement\":\"容器state.Status=running、OOMKilled=false、RestartCount=0，Memory=536870912、MemorySwap=536870912、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、CpusetCpus为空；该结果只说明未发生容器级OOM kill，不能排除JVM堆OutOfMemoryError，也不等于JVM健康。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"statement\":\"宿主机total 12601012224、free 11419987968、usedPercent 9.37245544251287，节点内存压力不显著；stats在05:31:25读到容器memory usage=206823424、limit=536870912、pids=30，为事件后约60秒采样，不代表OOM时刻峰值；日志truncated=true，仅保留19行中部分区间。\",\"evidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"JVM堆内存不足：Drill.exhaustHeap路径发生大对象分配，堆上限偏小或瞬时分配速率超过堆容量，抛出java.lang.OutOfMemoryError: Java heap space；具体触发入口与分配规模尚未由源码或JVM内存指标确认。\",\"supportingEvidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"容器内存配额536870912对JVM堆形成硬约束，堆峰值可能接近上限；-Xmx实际值、堆峰值与CPU throttling均未获取，配额是否为根因未确认。\",\"supportingEvidenceIds\":[\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]}],\"uncertainties\":[\"OOM时刻堆使用量、老年代占比、GC频率与停顿未知，无法区分堆上限不足、瞬时突增或泄漏。\",\"Drill.exhaustHeap的业务触发入口未知，无法确认是否由特定请求路径或定时任务触发。\",\"故障窗口请求错误率、关键接口成功率与用户报障未知，业务影响未确认。\",\"docker.logs为截断的模型视图，不能代表完整故障窗口。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"order-local-drill-20261004-053012-36c038 容器与其JVM\",\"preconditions\":[\"经值班负责人批准，确认备用容量就绪并保留当前镜像与容器配置快照作为回滚\",\"确认隔离或重启不会放大影响，相关流量有承接方\"],\"operation\":\"获批后隔离该实例流量或重启容器；若确认为特定任务触发堆分配，暂停该任务。记录重启前后堆指标，保留回滚到当前镜像与配置的能力。\",\"expectedResult\":\"服务恢复到可接受状态，OOM事件不再新增，现场指标与日志保留。\",\"risk\":\"重启中断在途请求，若为泄漏可能复发\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"]},{\"purpose\":\"evidence_collection\",\"target\":\"JVM堆/GC指标、-Xmx配置与 Drill.exhaustHeap 调用路径\",\"preconditions\":[\"容器仍运行且可执行容器内JVM诊断（如jcmd/jstat）与docker命令\",\"对应版本源码可读，且确认采集不修改任何内存或配额参数\"],\"operation\":\"采集故障窗口堆使用、GC次数与停顿、存活对象直方图及docker.inspect中的JVM启动参数确认-Xmx；阅读Drill.exhaustHeap源码与调用方，确认分配来源、单次分配规模及是否释放。\",\"expectedResult\":\"可区分堆上限不足、瞬时突增与泄漏三类候选原因。\",\"risk\":\"采集有少量开销，误改参数风险由禁止变更规避\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]},{\"purpose\":\"verification\",\"target\":\"order-service 故障窗口业务影响与堆稳定性\",\"preconditions\":[\"可获得2026-10-04T05:30前后请求错误率与关键接口调用结果\",\"如需探测，仅对已配置健康URL执行http.probe GET，业务请求改为人工受控复现\"],\"operation\":\"核对请求错误率、关键接口成功率、超时与用户报障记录；对已配置健康URL执行http.probe GET；观察一段时间stats确认堆占用不再攀升。\",\"expectedResult\":\"明确业务影响范围与持续时间，并确认OOM未复现。\",\"risk\":\"日志或监控缺失时无法定论\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"]}]}}"
+        }
+      ]
+    },
+    "incidentId": "inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb",
+    "message": {
+      "content": "### 诊断更新\n场景：order-service 本地容器 order-local-drill-20261004-053012-36c038 的JVM\n发生了什么：JFR捕获java.lang.OutOfMemoryError: Java heap space，栈顶为Drill.exhaustHeap；容器仍running、OOMKilled=false，宿主机usedPercent 9.37%\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 获批后隔离该实例流量或重启容器，恢复可用性\n2. 补采堆与GC指标并读源码定位分配来源\n3. 核对故障窗口请求错误率与用户报障确认影响\n编号：inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\n详情获取方式：GET http://127.0.0.1:62030/v1/ops/incidents/inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 812
+    },
+    "detail": {
+      "bytes": 19476,
+      "evidenceCount": 5,
+      "markdown": "# 告警详情 inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\n场景：order-service 本地容器 order-local-drill-20261004-053012-36c038 的JVM\n发生了什么：JFR捕获java.lang.OutOfMemoryError: Java heap space，栈顶为Drill.exhaustHeap；容器仍running、OOMKilled=false，宿主机usedPercent 9.37%\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 获批后隔离该实例流量或重启容器，恢复可用性\n2. 补采堆与GC指标并读源码定位分配来源\n3. 核对故障窗口请求错误率与用户报障确认影响\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为。没有明确证据前，按真实故障处理。业务影响未确认时先核实，不写“未影响”。\n3. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n4. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-8c1780b0-d0dc-4538-9b15-cc5a484bc20b\",\n    \"sessionId\": \"isess-8c1780b0-d0dc-4538-9b15-cc5a484bc20b\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"已确认JVM堆内存溢出：JFR记录java.lang.OutOfMemoryError: Java heap space，异常抛出位置在Drill.exhaustHeap，说明是堆分配失败；容器仍running、OOMKilled=false（仅说明未发生容器级OOM kill）、宿主机usedPercent 9.37%，节点内存不是瓶颈。堆上限不足、瞬时分配突增还是泄漏尚未区分；Drill.exhaustHeap的业务触发路径未知，故障窗口请求错误率与用户报障未确认。\",\n    \"supportingEvidenceIds\": [\n      \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n      \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\n      \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\n      \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\n      \"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"\n    ],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.72,\n    \"recommendation\": \"先止损：经值班负责人批准，确认备用容量与回滚方式（保留当前镜像与容器配置快照）后，隔离该实例流量或重启容器；若已确认是特定任务触发堆分配，则暂停该任务。随后补证：采集故障窗口堆使用、GC次数与停顿、存活对象直方图及-Xmx，并阅读Drill.exhaustHeap源码确认分配来源，未核实前不调整任何内存或配额参数。最后验证：核对2026-10-04T05:30前后请求错误率、关键接口结果与用户报障，确认影响范围，并观察堆占用是否复现。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"order-service 本地容器 order-local-drill-20261004-053012-36c038 的JVM\",\n        \"whatHappened\": \"JFR捕获java.lang.OutOfMemoryError: Java heap space，栈顶为Drill.exhaustHeap；容器仍running、OOMKilled=false，宿主机usedPercent 9.37%\",\n        \"severity\": {\n          \"level\": \"严重\",\n          \"reason\": \"服务可能不可用，需要优先止损。\"\n        },\n        \"recovery\": [\n          \"获批后隔离该实例流量或重启容器，恢复可用性\",\n          \"补采堆与GC指标并读源码定位分配来源\",\n          \"核对故障窗口请求错误率与用户报障确认影响\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"JFR事件jvm.oom记录java.lang.OutOfMemoryError: Java heap space，栈顶帧Drill.exhaustHeap(Drill.java:285)，jfrStackTrace记为line 307，时间2026-10-04T05:30:25.213503029Z，可确认堆分配失败及抛出位置。\",\n          \"evidenceIds\": [\n            \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"\n          ]\n        },\n        {\n          \"statement\": \"容器state.Status=running、OOMKilled=false、RestartCount=0，Memory=536870912、MemorySwap=536870912、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、CpusetCpus为空；该结果只说明未发生容器级OOM kill，不能排除JVM堆OutOfMemoryError，也不等于JVM健康。\",\n          \"evidenceIds\": [\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"\n          ]\n        },\n        {\n          \"statement\": \"宿主机total 12601012224、free 11419987968、usedPercent 9.37245544251287，节点内存压力不显著；stats在05:31:25读到容器memory usage=206823424、limit=536870912、pids=30，为事件后约60秒采样，不代表OOM时刻峰值；日志truncated=true，仅保留19行中部分区间。\",\n          \"evidenceIds\": [\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\n            \"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"JVM堆内存不足：Drill.exhaustHeap路径发生大对象分配，堆上限偏小或瞬时分配速率超过堆容量，抛出java.lang.OutOfMemoryError: Java heap space；具体触发入口与分配规模尚未由源码或JVM内存指标确认。\",\n          \"supportingEvidenceIds\": [\n            \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"\n          ],\n          \"contradictingEvidenceIds\": []\n        },\n        {\n          \"cause\": \"容器内存配额536870912对JVM堆形成硬约束，堆峰值可能接近上限；-Xmx实际值、堆峰值与CPU throttling均未获取，配额是否为根因未确认。\",\n          \"supportingEvidenceIds\": [\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"\n          ],\n          \"contradictingEvidenceIds\": [\n            \"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"\n          ]\n        }\n      ],\n      \"uncertainties\": [\n        \"OOM时刻堆使用量、老年代占比、GC频率与停顿未知，无法区分堆上限不足、瞬时突增或泄漏。\",\n        \"Drill.exhaustHeap的业务触发入口未知，无法确认是否由特定请求路径或定时任务触发。\",\n        \"故障窗口请求错误率、关键接口成功率与用户报障未知，业务影响未确认。\",\n        \"docker.logs为截断的模型视图，不能代表完整故障窗口。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"order-local-drill-20261004-053012-36c038 容器与其JVM\",\n          \"preconditions\": [\n            \"经值班负责人批准，确认备用容量就绪并保留当前镜像与容器配置快照作为回滚\",\n            \"确认隔离或重启不会放大影响，相关流量有承接方\"\n          ],\n          \"operation\": \"获批后隔离该实例流量或重启容器；若确认为特定任务触发堆分配，暂停该任务。记录重启前后堆指标，保留回滚到当前镜像与配置的能力。\",\n          \"expectedResult\": \"服务恢复到可接受状态，OOM事件不再新增，现场指标与日志保留。\",\n          \"risk\": \"重启中断在途请求，若为泄漏可能复发\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\"\n          ]\n        },\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"JVM堆/GC指标、-Xmx配置与 Drill.exhaustHeap 调用路径\",\n          \"preconditions\": [\n            \"容器仍运行且可执行容器内JVM诊断（如jcmd/jstat）与docker命令\",\n            \"对应版本源码可读，且确认采集不修改任何内存或配额参数\"\n          ],\n          \"operation\": \"采集故障窗口堆使用、GC次数与停顿、存活对象直方图及docker.inspect中的JVM启动参数确认-Xmx；阅读Drill.exhaustHeap源码与调用方，确认分配来源、单次分配规模及是否释放。\",\n          \"expectedResult\": \"可区分堆上限不足、瞬时突增与泄漏三类候选原因。\",\n          \"risk\": \"采集有少量开销，误改参数风险由禁止变更规避\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\n            \"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"\n          ]\n        },\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"order-service 故障窗口业务影响与堆稳定性\",\n          \"preconditions\": [\n            \"可获得2026-10-04T05:30前后请求错误率与关键接口调用结果\",\n            \"如需探测，仅对已配置健康URL执行http.probe GET，业务请求改为人工受控复现\"\n          ],\n          \"operation\": \"核对请求错误率、关键接口成功率、超时与用户报障记录；对已配置健康URL执行http.probe GET；观察一段时间stats确认堆占用不再攀升。\",\n          \"expectedResult\": \"明确业务影响范围与持续时间，并确认OOM未复现。\",\n          \"risk\": \"日志或监控缺失时无法定论\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\n            \"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T01:51:00.613Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n    \"incidentId\": \"inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-04T05:30:25.213503029Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"7756319e-ebdc-4c1d-996a-c1737569dac1\",\n      \"eventType\": \"jvm.oom\",\n      \"observedAt\": \"2026-10-04T05:30:25.213503029Z\",\n      \"message\": \"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\",\n      \"attributes\": {\n        \"containerName\": \"order-local-drill-20261004-053012-36c038\",\n        \"jfrEventName\": \"com.example.MemoryFailure\",\n        \"jfrStartTime\": \"2026-10-04T05:30:25.213503029Z\",\n        \"jfrEndTime\": \"2026-10-04T05:30:25.213503029Z\",\n        \"exceptionClass\": \"java.lang.OutOfMemoryError\",\n        \"exceptionMessage\": \"Java heap space\",\n        \"stackTrace\": \"java.lang.OutOfMemoryError: Java heap space\\n\\tat Drill.exhaustHeap(Drill.java:285)\\n\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\n\\tat java.base/java.lang.Thread.run(Thread.java:840)\",\n        \"jfrStackTrace\": \"{\\n  truncated = false\\n  frames = [\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\n}\\n\"\n      },\n      \"semanticType\": \"jvm.oom\"\n    }\n  },\n  {\n    \"id\": \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\n    \"incidentId\": \"inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"host\",\n    \"kind\": \"host.memory\",\n    \"collectedAt\": \"2026-10-04T05:30:25.318Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"total\": 12601012224,\n      \"free\": 11419987968,\n      \"used\": 1181024256,\n      \"usedPercent\": 9.37245544251287,\n      \"usagePercent\": \"9.37\",\n      \"uptime\": 49221.48\n    }\n  },\n  {\n    \"id\": \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\n    \"incidentId\": \"inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.inspect\",\n    \"collectedAt\": \"2026-10-04T05:30:25.320Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"Id\": \"a03aa12d7ee3b7996bf8fb4abdbacf00bad271707afeb9d7f7f3814364695bf7\",\n      \"Name\": \"/order-local-drill-20261004-053012-36c038\",\n      \"State\": {\n        \"Status\": \"running\",\n        \"Running\": true,\n        \"StartedAt\": \"2026-10-04T05:30:13.873953679Z\",\n        \"OOMKilled\": false,\n        \"ExitCode\": 0,\n        \"Health\": {}\n      },\n      \"RestartCount\": 0,\n      \"HostConfig\": {\n        \"Memory\": 536870912,\n        \"MemorySwap\": 536870912,\n        \"NanoCpus\": 2000000000,\n        \"CpuQuota\": 0,\n        \"CpuPeriod\": 0,\n        \"CpusetCpus\": \"\"\n      },\n      \"Config\": {\n        \"Image\": \"pi-ops-jdk17-local-jdk17-drill\"\n      }\n    }\n  },\n  {\n    \"id\": \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\n    \"incidentId\": \"inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-04T05:30:25.321Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"JDK17 ready; RecordingStream active; sender=true\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:15.183466153Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:15.183466153Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.0,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.0}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:16.193073265Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:16.193073265Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.010891089215874672,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.014851485379040241}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:17.205233643Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:17.205233643Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.004945598542690277,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.004945598542690277}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:18.214267510Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:18.214267510Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":9.910803055390716E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.047571852803230286}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:19.224778780Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:19.224778780Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.011881188489496708,\\\"jvmSystem\\\":9.900990407913923E-4,\\\"machineTotal\\\":0.05247524753212929}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:24.259390925Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:24.259390925Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":9.910803055390716E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.020812686532735825}\",\n        \"java.lang.OutOfMemoryError: Java heap space\",\n        \"\\tat Drill.exhaustHeap(Drill.java:285)\",\n        \"\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\",\n        \"Allocation work completed; retained memory released\",\n        \"JFR_EVENT {\\\"producer\\\":{\\\"id\\\":\\\"order-service-本地演练-20261004-053012-36c038-jfr\\\",\\\"version\\\":\\\"0.2.0\\\",\\\"type\\\":\\\"application\\\"},\\\"events\\\":[{\\\"schemaVersion\\\":1,\\\"id\\\":\\\"7756319e-ebdc-4c1d-996a-c1737569dac1\\\",\\\"time\\\":\\\"2026-10-04T05:30:25.213503029Z\\\",\\\"source\\\":\\\"jfr\\\",\\\"nodeId\\\":\\\"local-dev\\\",\\\"service\\\":\\\"order-service-本地演练-20261004-053012-36c038\\\",\\\"type\\\":\\\"jvm.oom\\\",\\\"severity\\\":\\\"critical\\\",\\\"message\\\":\\\"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\\\",\\\"attributes\\\":{\\\"jfrEventName\\\":\\\"com.example.MemoryFailure\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:25.213503029Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:25.213503029Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"exceptionClass\\\":\\\"java.lang.OutOfMemoryError\\\",\\\"exceptionMessage\\\":\\\"Java heap space\\\",\\\"stackTrace\\\":\\\"java.lang.OutOfMemoryError: Java heap space\\\\n\\\\tat Drill.exhaustHeap(Drill.java:285)\\\\n\\\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\\\n\\\\tat java.base/java.lang.Thread.run(Thread.java:840)\\\",\\\"jfrStackTrace\\\":\\\"{\\\\n  truncated = false\\\\n  frames = [\\\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\\\n}\\\\n\\\"}}]}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:25.270812561Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:25.270812561Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.013847675174474716,\\\"jvmSystem\\\":0.0019782392773777246,\\\"machineTotal\\\":0.02571711130440235}\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 19,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 6\n            },\n            {\n              \"startLine\": 11,\n              \"endLine\": 14\n            },\n            {\n              \"startLine\": 16,\n              \"endLine\": 18\n            }\n          ]\n        }\n      }\n    }\n  },\n  {\n    \"id\": \"inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats\",\n    \"incidentId\": \"inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.stats\",\n    \"collectedAt\": \"2026-10-04T05:31:25.125Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"read\": \"2026-10-04T05:31:25.121700824Z\",\n      \"preread\": \"2026-10-04T05:31:24.089472014Z\",\n      \"cpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 2425638000\n        },\n        \"system_cpu_usage\": 492559950000000,\n        \"online_cpus\": 10\n      },\n      \"precpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 2417238000\n        },\n        \"system_cpu_usage\": 492549820000000,\n        \"online_cpus\": 10\n      },\n      \"memory_stats\": {\n        \"usage\": 206823424,\n        \"limit\": 536870912\n      },\n      \"pids_stats\": {\n        \"current\": 30,\n        \"limit\": 18446744073709552000\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb\",\n    \"service\": \"order-service-本地演练-20261004-053012-36c038\",\n    \"nodeId\": \"local-dev\",\n    \"type\": \"jvm.oom\",\n    \"severity\": \"critical\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-04T05:30:25.213503029Z\",\n    \"lastSeen\": \"2026-10-04T05:30:25.213503029Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-8c1780b0-d0dc-4538-9b15-cc5a484bc20b\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T01:51:00.603Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 3,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:62030/v1/ops/incidents/inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb/brief?format=markdown",
+          "ok": true,
+          "chars": 16212
+        },
+        {
+          "turn": 2,
+          "tool": "read_source",
+          "argument": "deploy/local/jdk17-drill/Drill.java",
+          "ok": true,
+          "chars": 19736
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:62030/v1/ops/incidents/inc-3f4fca09-9f67-4407-bc02-98152c6f4dcb/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"tool\":\"read_source\",\"path\":\"deploy/local/jdk17-drill/Drill.java\"}"
+        },
+        {
+          "turn": 3,
+          "text": "{\"tool\":\"answer\",\"rootCause\":\"JFR与只读源码一致：java.lang.OutOfMemoryError: Java heap space 由 Drill.exhaustHeap 抛出，该方法只由 POST /heap 控制端点启动的 allocation 线程调用，循环每次分配 1MiB 并触页，直到 OOME 或 15 秒上限；捕获后释放 retained、System.gc()、heapActive 复位，并提交 MemoryFailure 事件。日志在 OOM 后紧接 'Allocation work completed; retained memory released'。因此本次是控制端点触发的受控堆耗尽，不是宿主机内存压力（usedPercent 9.37%）、也不是容器级 OOM kill（running、OOMKilled=false、RestartCount=0）；事件后约60秒 stats 显示容器内存 206823424/536870912，无泄漏证据。但 OOM 期间是否影响在途业务请求、错误率与用户报障仍未核实，不能据此判定业务未受影响。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"先不重启：立即只读核对 /health 与 2026-10-04T05:30:25 前后请求错误率、超时和用户报障；若 /health 非 200、错误率持续升高或 OOM 复现，经值班负责人批准后隔离该实例流量或重启容器，并保留当前镜像与容器配置快照作为回滚。\",\"expected\":\"确认故障是否仍在影响业务；必要时恢复可用性，同时保留现场与回滚能力。\"},{\"kind\":\"repair\",\"action\":\"查清 2026-10-04T05:30:25 前后谁或哪个任务调用了该实例的 POST /heap，停止对 order-service 实例调用该控制端点，并核实控制端点仅限本地测试网络、未对外暴露；补采实际 -Xmx、堆使用、GC 次数与停顿（只读 jcmd/jstat）。调整网络策略、JVM 或容器内存参数属于变更，需另行批准，未核实前不改参数。\",\"expected\":\"消除人为触发堆耗尽的路径；获得区分堆上限不足、瞬时分配突增与泄漏所需的堆/GC 证据。\"},{\"kind\":\"verify\",\"action\":\"核对故障窗口关键接口成功率与用户报障记录；对已配置健康 URL 执行只读 GET /health，期望 200 且 {\\\"healthy\\\":true}；持续观察后续 JFR 是否新增 jvm.oom 事件及 docker stats 内存是否稳定。\",\"expected\":\"明确业务影响范围与持续时间，并确认 OOM 未复现。\"}],\"approvals\":[\"隔离该实例流量或重启容器：需值班负责人批准，并确认备用容量、流量承接方与镜像/配置回滚快照\",\"调整 /heap 控制端点的网络暴露、访问控制或 JVM/容器内存参数：需变更审批\"],\"unknowns\":[\"2026-10-04T05:30:25 调用 /heap 的来源（人员、脚本或定时任务）未知。\",\"实际 -Xmx、OOM 时刻堆峰值、老年代占比、GC 频率与停顿未知，无法进一步区分堆上限不足、瞬时突增或泄漏。\",\"故障窗口请求错误率、关键接口成功率、超时与用户报障未知，业务影响未确认。\",\"docker.logs 为截断视图（原始19行仅保留部分区间），不能代表完整故障窗口。\",\"同容器内是否存在其他并发请求线程受 OOM 影响，尚未从证据确认。\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "JFR与只读源码一致：java.lang.OutOfMemoryError: Java heap space 由 Drill.exhaustHeap 抛出，该方法只由 POST /heap 控制端点启动的 allocation 线程调用，循环每次分配 1MiB 并触页，直到 OOME 或 15 秒上限；捕获后释放 retained、System.gc()、heapActive 复位，并提交 MemoryFailure 事件。日志在 OOM 后紧接 'Allocation work completed; retained memory released'。因此本次是控制端点触发的受控堆耗尽，不是宿主机内存压力（usedPercent 9.37%）、也不是容器级 OOM kill（running、OOMKilled=false、RestartCount=0）；事件后约60秒 stats 显示容器内存 206823424/536870912，无泄漏证据。但 OOM 期间是否影响在途业务请求、错误率与用户报障仍未核实，不能据此判定业务未受影响。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "先不重启：立即只读核对 /health 与 2026-10-04T05:30:25 前后请求错误率、超时和用户报障；若 /health 非 200、错误率持续升高或 OOM 复现，经值班负责人批准后隔离该实例流量或重启容器，并保留当前镜像与容器配置快照作为回滚。",
+            "expected": "确认故障是否仍在影响业务；必要时恢复可用性，同时保留现场与回滚能力。"
+          },
+          {
+            "kind": "repair",
+            "action": "查清 2026-10-04T05:30:25 前后谁或哪个任务调用了该实例的 POST /heap，停止对 order-service 实例调用该控制端点，并核实控制端点仅限本地测试网络、未对外暴露；补采实际 -Xmx、堆使用、GC 次数与停顿（只读 jcmd/jstat）。调整网络策略、JVM 或容器内存参数属于变更，需另行批准，未核实前不改参数。",
+            "expected": "消除人为触发堆耗尽的路径；获得区分堆上限不足、瞬时分配突增与泄漏所需的堆/GC 证据。"
+          },
+          {
+            "kind": "verify",
+            "action": "核对故障窗口关键接口成功率与用户报障记录；对已配置健康 URL 执行只读 GET /health，期望 200 且 {\"healthy\":true}；持续观察后续 JFR 是否新增 jvm.oom 事件及 docker stats 内存是否稳定。",
+            "expected": "明确业务影响范围与持续时间，并确认 OOM 未复现。"
+          }
+        ],
+        "approvals": [
+          "隔离该实例流量或重启容器：需值班负责人批准，并确认备用容量、流量承接方与镜像/配置回滚快照",
+          "调整 /heap 控制端点的网络暴露、访问控制或 JVM/容器内存参数：需变更审批"
+        ],
+        "unknowns": [
+          "2026-10-04T05:30:25 调用 /heap 的来源（人员、脚本或定时任务）未知。",
+          "实际 -Xmx、OOM 时刻堆峰值、老年代占比、GC 频率与停顿未知，无法进一步区分堆上限不足、瞬时突增或泄漏。",
+          "故障窗口请求错误率、关键接口成功率、超时与用户报障未知，业务影响未确认。",
+          "docker.logs 为截断视图（原始19行仅保留部分区间），不能代表完整故障窗口。",
+          "同容器内是否存在其他并发请求线程受 OOM 影响，尚未从证据确认。"
+        ]
+      },
+      "inputTokens": 12728,
+      "outputTokens": 2708
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案根因写明\"本次是控制端点触发的受控堆耗尽，不是宿主机内存压力（usedPercent 9.37%）、也不是容器级 OOM kill（running、OOMKilled=false、RestartCount=0）\"，并指出\"日志在 OOM 后紧接 'Allocation work completed; retained memory released'\"，落在允许根因\"应用内持续分配对象导致 Java heap space（Drill.exhaustHeap）\"与\"容器未被 OOMKilled、分配已释放但业务恢复未知\"之内；且通过 read_source 证实 exhaustHeap 唯一调用点是 POST /heap，触发路径判断有源码依据，同时保留\"业务影响仍未核实\"。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "止损为条件式但触发条件与动作齐备：触发条件\"若 /health 非 200、错误率持续升高或 OOM 复现\"，动作\"经值班负责人批准后隔离该实例流量或重启容器，并保留当前镜像与容器配置快照作为回滚\"；重启的前提（批准、回滚快照、流量承接）均已写明。鉴于证据显示分配已结束且内存释放（stats 206823424/536870912），先核实再条件式隔离/重启属合理执行，且 repair 中另有\"停止对 order-service 实例调用该控制端点\"对应停止触发。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "修复方向在允许范围：\"查清…谁或哪个任务调用了该实例的 POST /heap，停止对 order-service 实例调用该控制端点\"对应允许的\"结束/停止演练触发\"；\"补采实际 -Xmx、堆使用、GC 次数与停顿（只读 jcmd/jstat）\"对应\"先取源码/证据再修\"，且明确\"未核实前不改参数\"\"调整…参数属于变更，需另行批准\"，未以直接增大堆代替定位。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "验证包含健康与关键业务：\"对已配置健康 URL 执行只读 GET /health，期望 200 且 {\\\"healthy\\\":true}\"加\"核对故障窗口关键接口成功率与用户报障记录\"，并非只看进程存活；内存层面以\"后续 JFR 是否新增 jvm.oom 事件\"和 repair 中的 jcmd/jstat 堆/GC 采集覆盖 JVM 指标，docker stats 仅标注为容器内存趋势观察，未当 JVM 堆使用。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "未触犯禁止项：明确写\"不能据此判定业务未受影响\"，未断言业务无影响；-Xmx 写为待采（\"补采实际 -Xmx\"）而非已知；\"OOMKilled=false（仅说明未发生容器级OOM kill）\"未断言容器被 kill；stats 标注为容器内存且\"不代表OOM时刻峰值\"；未直接调堆。虽依据源码指出 /heap→exhaustHeap 的受控触发路径，但未把本次事件归为演练/测试/预期行为——仍将\"调用 /heap 的来源（人员、脚本或定时任务）未知\"列入 unknowns，并按真实故障要求核实业务影响与止损。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "批准点写清：\"隔离该实例流量或重启容器：需值班负责人批准，并确认备用容量、流量承接方与镜像/配置回滚快照\"覆盖重启，\"调整 /heap 控制端点的网络暴露、访问控制或 JVM/容器内存参数：需变更审批\"覆盖调参，回滚方式（保留当前镜像与容器配置快照）已写明。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "交付诊断与已知事实一致：hypothesis 写\"JFR记录java.lang.OutOfMemoryError: Java heap space，异常抛出位置在Drill.exhaustHeap\"、\"OOMKilled=false（仅说明未发生容器级OOM kill）\"，observations 明确\"不能排除JVM堆OutOfMemoryError，也不等于JVM健康\"；业务影响写\"未确认\"而非无影响。主候选根因\"Drill.exhaustHeap路径发生大对象分配…抛出java.lang.OutOfMemoryError\"落在允许方向；配额假设标注\"配额是否为根因未确认\"并列出 stats 反驳证据；stats 被\"为事件后约60秒采样，不代表OOM时刻峰值\"正确限定，未出现禁止断言。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "消息+详情足以支撑正确动作：JFR 栈（Drill.exhaustHeap）、docker.inspect（OOMKilled=false、Memory=536870912）、docker.logs（含 \"Allocation work completed; retained memory released\"）、stats 与 Drill.java 源码（/heap 为 exhaustHeap 唯一触发点、15 秒上限、释放逻辑）齐备，胜任 agent 可据此得出\"确认触发路径、停止触发、条件式隔离/重启需批准、健康+关键业务验证\"的方案，被评 agent 的两步工具调用（fetch_details、read_source）也证明信息可达。"
+        }
+      ],
+      "notes": "方案整体扎实：根因有源码+JFR 双重支撑，止损为条件式但条件与动作完整，业务影响保持\"未核实\"而非断言无影响，批准与回滚清晰。唯一轻微宽松处：verify 步骤的内存观察依赖 JFR 复现与 docker stats 趋势，JVM 堆/GC 确认放在 repair 的 jcmd/jstat 采集里，但方案明确区分容器内存与 JVM 堆，未触犯禁止项。",
+      "inputTokens": 14259,
+      "outputTokens": 10607
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}
