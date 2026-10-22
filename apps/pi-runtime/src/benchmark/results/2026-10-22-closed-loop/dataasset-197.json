@@ -1,0 +1,365 @@
+{
+  "criteria": {
+    "caseId": "dataasset-197",
+    "knownFacts": [
+      "原始日志 197 行，第 133 行有故障头",
+      "IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault"
+    ],
+    "allowedRootCauses": [
+      "请求命中了演练/故障注入端点 GET /auth/lab/server-fault，异常是显式注入，不是业务代码缺陷",
+      "该注入端点被意外暴露或被真实流量调用；若确认是演练，则不是生产故障"
+    ],
+    "allowedRepairs": [
+      "结合部署版本源码与访问日志确认端点是 lab-only、当前激活的 profile/开关，再决定限制或移除",
+      "结束演练并通知演练方；核实不需要修改业务代码"
+    ],
+    "stopLoss": "先确认该路径是否仍被调用、是否影响真实业务；若仍在触发，经批准限制/下线该端点或结束演练窗口。只说“进一步分析”不算止损。",
+    "verification": "确认同一路径不再产生注入异常，且关键业务接口正常。",
+    "forbidden": [
+      "把 RocketMQ 初始化栈当成本次请求根因",
+      "断言数据库、库存或外部依赖故障",
+      "未经批准直接下线端点、改生产配置、发布或重启",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "下线或限制端点、修改 profile/配置、发布、重启都需要负责人批准，并写回滚方式。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "apps/pi-runtime/src/benchmark/fixtures/closed-loop/dataasset-197/LabFaultController.java",
+        "label": "演练注入控制器源码（与真实 lab 构建一致）",
+        "note": "原文件在 artifacts/real-dataasset-lab/app/src/...（artifacts 不进仓库），逐字节复制，sha256 e8d24166…。异常栈的行号 25 与文件一致。"
+      }
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "cf0603cfe20bff32dbc8e356c755bf5d7ac6db27f884c2b35cf356c817cd3d32",
+    "apps/agent/src/incident-brief.ts": "8bd6e538cc4569f914e6e99a198ab3124799aa3d2940161b43ce2b20f8a63897",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "420fa3a851c004a3d9ee49cea031e0ae856d48da7941655e37c15455c1a05ad5",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "dataasset-197",
+    "description": "原始日志 197 行，第 133 行有故障头；IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault",
+    "provenance": "artifacts/real-dataasset-lab/model-phase-notify/snapshots/final-agent.json sha256=0af69498b8a186da5b8b7c9254d4ecfb1d543338b8eb869b707efba40e062bb0",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [
+      {
+        "path": "apps/pi-runtime/src/benchmark/fixtures/closed-loop/dataasset-197/LabFaultController.java",
+        "label": "演练注入控制器源码（与真实 lab 构建一致）",
+        "note": "原文件在 artifacts/real-dataasset-lab/app/src/...（artifacts 不进仓库），逐字节复制，sha256 e8d24166…。异常栈的行号 25 与文件一致。",
+        "sha256": "e8d241669facac9de1902cf33f8eabdd61ac299733389f53f08c21a5205f379c"
+      }
+    ],
+    "tokens": 40616,
+    "latencyMs": 124778,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 24282,
+      "tokens": 15213,
+      "reportHardPass": true,
+      "messageHardPass": false,
+      "degraded": false,
+      "report": {
+        "hypothesis": "事件集中在2026-10-14T03:40:12.880，GET /auth/lab/server-fault 在 LabFaultController.serverFault(LabFaultController.java:25) 抛出 java.lang.IllegalStateException，日志文本为“Real DataAsset lab fault injection”，来源 lab-fault-fixture.jar，被 GlobalExceptionHandler 拦截。属应用层显式异常，但触发条件与调用方未知；容器 running、OOMKilled=false、RestartCount=0，03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表当前容器状态。业务影响未确认。",
+        "supportingEvidenceIds": [
+          "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+          "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs",
+          "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+          "inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats"
+        ],
+        "contradictingEvidenceIds": [],
+        "confidence": 0.55,
+        "recommendation": "先只读补证：核对 GET /auth/lab/server-fault 的调用来源、故障窗口请求错误率、关键业务请求结果与用户报障，并阅读与运行时 jar 对应的 LabFaultController.java:25 源码确认抛出条件；http.probe 仅支持已配置健康URL的 GET/HEAD，不能等价复现业务请求。若确认该入口为对外业务或错误率上升，再经审批由人工隔离该入口流量或暂停相关触发任务，并保留回滚步骤；若仅限内部入口且无业务错误，记录结论后关闭并持续观察。",
+        "diagnosis": {
+          "summary": {
+            "scene": "rdl-dataasset-6dfb8e88，GET /auth/lab/server-fault 接口业务异常",
+            "whatHappened": "03:40:12 记录2次 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，容器运行中、未重启、未 OOMKilled。",
+            "severity": {
+              "level": "一般",
+              "reason": "尚无服务不可用或关键业务受影响的确认事实。"
+            },
+            "recovery": [
+              "只读核查该接口调用来源、故障窗口错误率与用户报障",
+              "确认对外或有错误率上升后，经审批隔离该入口流量",
+              "验证关键业务请求恢复并记录结论"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "JFR 与 docker.logs 均记录 03:40:12.879/880 的 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，被 GlobalExceptionHandler 拦截。",
+              "evidenceIds": [
+                "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+              ]
+            },
+            {
+              "statement": "日志异常文本为“Real DataAsset lab fault injection”，来源 lab-fault-fixture.jar，未说明调用方与触发条件。",
+              "evidenceIds": [
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+              ]
+            },
+            {
+              "statement": "容器 03:39:59 启动、运行中、OOMKilled=false、RestartCount=0；03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表当前容器观测。",
+              "evidenceIds": [
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+                "inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "应用内该接口在 LabFaultController.serverFault 处显式抛出 IllegalStateException，属应用层异常，而非容器 OOM kill 或重启所致。",
+              "supportingEvidenceIds": [
+                "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs",
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "该接口是否对外业务、调用方与请求量未知，业务影响未确认。",
+            "故障窗口请求错误率、关键业务请求结果与用户报障缺证据。",
+            "容器内存未耗尽、CPU 统计仅一段区间，不能推断故障期负载峰值或 throttling。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "rdl-dataasset-6dfb8e88 该接口的调用来源与故障窗口错误率",
+              "preconditions": [
+                "具备该服务日志或监控的只读查询权限"
+              ],
+              "operation": "核查 GET /auth/lab/server-fault 的调用来源、故障前后请求错误率、关键业务接口成功率及用户报障；http.probe 仅支持已配置健康URL的 GET/HEAD，不得用于业务请求复现。",
+              "expectedResult": "明确该入口是否为对外业务及是否波及真实流量。",
+              "risk": "只读查询，无数据修改风险。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "LabFaultController.java:25 源码与 lab-fault-fixture.jar 对应版本",
+              "preconditions": [
+                "获取部署镜像对应源码或反编译信息",
+                "确认与运行时 jar 版本一致"
+              ],
+              "operation": "确认抛出 IllegalStateException 的条件分支与触发入口，区分注入分支与业务逻辑缺陷，记录出处。",
+              "expectedResult": "确定异常触发条件及入口性质。",
+              "risk": "只读审查，不影响线上。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+              ]
+            },
+            {
+              "purpose": "mitigation",
+              "target": "rdl-dataasset-6dfb8e88 的 /auth/lab/server-fault 入口",
+              "preconditions": [
+                "已确认该入口为对外业务或错误率明显上升",
+                "已获值班负责人批准并准备回滚方案",
+                "具备备用容量承接隔离后流量"
+              ],
+              "operation": "经人工审批后由人工通过网关或配置隔离该入口流量，或暂停已确认的触发任务；记录操作时间与回滚步骤，异常扩大时立即恢复。",
+              "expectedResult": "该入口异常停止产生，关键业务请求失败率不再上升。",
+              "risk": "误隔离可能影响正常业务调用，需可快速回滚。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "rdl-dataasset-6dfb8e88 业务影响结论",
+              "preconditions": [
+                "完成上述补证"
+              ],
+              "operation": "核对故障窗口关键业务请求结果与用户报障；确认仅该入口受影响则记录结论，否则按影响面升级处理。",
+              "expectedResult": "形成明确的业务影响结论并更新事件。",
+              "risk": "结论依赖补证真实性，否则仍为未确认。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+                "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 3835,
+          "outputTokens": 1547,
+          "text": "{\"role\":\"application_business\",\"hypotheses\":[\"GET /auth/lab/server-fault 在 LabFaultController.serverFault(LabFaultController.java:25) 抛出 IllegalStateException，日志明示“Real DataAsset lab fault injection”，属该端点显式注入导致的请求异常；业务影响范围未确认。\",\"异常仅来自该 lab 端点，其他业务接口与请求错误率无当前证据，不能排除同窗口其他故障。\"],\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"http.probe\",\"docker.stats\",\"docker.inspect\"],\"confidence\":0.62,\"summary\":\"事件为 GET /auth/lab/server-fault 抛出 java.lang.IllegalStateException，栈指向 LabFaultController.serverFault 第25行，docker.logs 可见“Real DataAsset lab fault injection”，说明该端点存在显式注入路径并与本次异常对应。容器 running、RestartCount=0、OOMKilled=false，仅说明容器未被重启或 OOM kill，不能证明 JVM 与业务健康。日志为截断投影（原始197行，仅保留部分行），故障窗口影响未知，需核对请求错误率、关键接口结果与用户报障。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"GET /auth/lab/server-fault 抛出 java.lang.IllegalStateException，栈顶为 com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25)，全局异常处理器记录“Real DataAsset lab fault injection”。\",\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"statement\":\"容器 /rdl-dataasset-6dfb8e88 运行中，StartedAt 2026-10-14T03:39:59.893247701Z，RestartCount=0，OOMKilled=false，Health 为空；Memory=1610612736，MemorySwap=3221225472，NanoCpus=2000000000，CpuQuota=0，CpuPeriod=0。\",\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"]},{\"statement\":\"docker.logs 为截断投影，originalLineCount=197，仅保留部分行，不能作为完整日志或完整故障窗口。\",\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"lab 端点 /auth/lab/server-fault 的显式故障注入代码路径（LabFaultController.java:25）主动抛出 IllegalStateException，与日志文本对应。\",\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"事件时间窗内整体请求错误率、关键业务接口失败情况和用户报障未知，不能判断业务影响范围。\",\"异常仅覆盖该 lab 端点；是否存在同窗其他端点异常或资源压力未见当前证据。\",\"容器资源上限与实际使用、JVM 堆状态未知，docker.inspect 的配置值不代表实际占用。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"阻断 /auth/lab/server-fault 的持续触发并保留现场\",\"preconditions\":[\"已确认该端点非业务必需或变更窗口内可关闭\",\"具备网关/入口层变更审批与回滚方案\"],\"operation\":\"经人工批准后，在入口或网关层临时隔离 /auth/lab/server-fault 路径的访问，不重启容器；保留容器与日志现场。变更需记录回滚方式。\",\"expectedResult\":\"该端点异常不再产生新事件，容器保持运行。\",\"risk\":\"误伤合法调用方；需具备快速回滚。\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"确认故障窗口业务影响与端点触发来源\",\"preconditions\":[\"具备访问网关/APM 指标与访问日志权限\"],\"operation\":\"核对 03:40 前后数分钟 /auth/lab/server-fault 的调用来源与频次、整体请求错误率、关键接口失败数与用户报障记录；必要时人工受控复现一次并比对异常栈。\",\"expectedResult\":\"得到影响范围结论与触发来源（调用方或定时任务）。\",\"risk\":\"受控复现会产生一次新的异常记录。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"验证异常是否止住及服务健康\",\"preconditions\":[\"已完成隔离或确认无需隔离\"],\"operation\":\"观察 10 至 15 分钟该端点异常计数是否归零，同时核对关键接口成功与请求错误率，并复查容器状态与日志。\",\"expectedResult\":\"异常不再新增，关键接口无新增失败；如仍有异常则升级排查。\",\"risk\":\"观察期过短可能漏判低频率触发。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"]}]}}"
+        },
+        {
+          "role": "application_business",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 394,
+          "outputTokens": 1535,
+          "text": "{\"role\":\"application_business\",\"hypotheses\":[\"GET /auth/lab/server-fault 在 LabFaultController.serverFault(LabFaultController.java:25) 抛出 IllegalStateException，日志文本为“Real DataAsset lab fault injection”，属应用内部显式抛出的业务异常；触发该分支的具体原因仅凭现有日志无法判定。\",\"容器运行中、未 OOMKilled、无重启，内存 689377280/1610612736，仅证明容器当前状态，不能证明业务请求未受影响。\"],\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"http.probe\",\"docker.stats\"],\"confidence\":0.55,\"summary\":\"事件仅 2 次，集中在 03:40:12.880，异常为 GET /auth/lab/server-fault 上 IllegalStateException，栈顶明确指向 LabFaultController.serverFault(LabFaultController.java:25)，日志文本为“Real DataAsset lab fault injection”，由全局异常处理器拦截。容器 03:39:59 启动、运行中、OOMKilled=false、无重启，内存 689377280 对 limit 1610612736。该接口是否对外业务、真实调用方及故障窗口请求错误率未知，业务影响未确认。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR 与 docker.logs 均记录 03:40:12.879/880 的 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，被 GlobalExceptionHandler 拦截。\",\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"statement\":\"日志异常文本为“Real DataAsset lab fault injection”，来源为 lab-fault-fixture.jar，但未说明调用方与触发条件。\",\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"statement\":\"容器 03:39:59 启动、Status=running、OOMKilled=false、RestartCount=0；03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表容器当前观测。\",\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\",\"inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats\"]}],\"candidateCauses\":[{\"cause\":\"应用内该接口显式抛出 IllegalStateException，属于应用层错误而非容器内存或 kill 问题。\",\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"GET /auth/lab/server-fault 是否属于对外业务接口、其调用方与请求量未知，业务影响未确认。\",\"03:40 前后故障窗口的请求错误率、关键业务请求结果和用户报障尚缺证据，无法判断是否波及其他流量。\",\"容器内存未耗尽、CPU 统计仅一段区间，不能据此推断故障期间的负载峰值或 other 接口表现。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"rdl-dataasset-6dfb8e88 故障窗口请求错误率与接口对外性\",\"preconditions\":[\"具备访问该服务的抓取或日志查询权限\"],\"operation\":\"核查 GET /auth/lab/server-fault 的调用来源、故障前后错误率及关键业务接口成功率；http.probe 不适用业务 POST 或模型自选 URL，仅能用于已配置健康 URL 的 GET/HEAD，不得据此声称复现。\",\"expectedResult\":\"明确是否仅限故障演练入口，还是波及真实业务流量。\",\"risk\":\"只做只读查询，无数据修改风险。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"]},{\"purpose\":\"evidence_collection\",\"target\":\"LabFaultController.java:25 对应源码、版本与 lab-fault-fixture.jar 依赖\",\"preconditions\":[\"获取部署镜像对应的源码或反编译信息\",\"确认目标版本与运行时 jar 一致\"],\"operation\":\"确认抛出 IllegalStateException 的条件分支和触发入口，区分固定注入分支与真实业务逻辑；保存结论与出处。\",\"expectedResult\":\"确定异常是显式注入分支还是业务逻辑缺陷。\",\"risk\":\"仅只读审查，不影响线上。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"rdl-dataasset-6dfb8e88 业务影响结论\",\"preconditions\":[\"完成上述补证\"],\"operation\":\"核对故障窗口内关键业务请求结果与用户报障；若确认仅有该入口受影响，记录排查结论；否则按影响面升级处理。\",\"expectedResult\":\"形成业务影响明确结论并更新事件。\",\"risk\":\"结论依赖补证真实性，否则为未确认。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 5736,
+          "outputTokens": 2166,
+          "text": "{\"hypothesis\":\"事件集中在2026-10-14T03:40:12.880，GET /auth/lab/server-fault 在 LabFaultController.serverFault(LabFaultController.java:25) 抛出 java.lang.IllegalStateException，日志文本为“Real DataAsset lab fault injection”，来源 lab-fault-fixture.jar，被 GlobalExceptionHandler 拦截。属应用层显式异常，但触发条件与调用方未知；容器 running、OOMKilled=false、RestartCount=0，03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表当前容器状态。业务影响未确认。\",\"summary\":\"服务 rdl-dataasset-6dfb8e88 在03:40:12记录2次业务异常，栈顶指向 LabFaultController.serverFault(LabFaultController.java:25)，异常为 IllegalStateException，日志文本“Real DataAsset lab fault injection”。容器运行中、无重启、未 OOMKilled，内存 689377280/1610612736。该接口是否对外业务、调用来源、故障窗口错误率与用户报障均未知，影响未确认。\",\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\",\"inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats\"],\"contradictingEvidenceIds\":[],\"confidence\":0.55,\"recommendation\":\"先只读补证：核对 GET /auth/lab/server-fault 的调用来源、故障窗口请求错误率、关键业务请求结果与用户报障，并阅读与运行时 jar 对应的 LabFaultController.java:25 源码确认抛出条件；http.probe 仅支持已配置健康URL的 GET/HEAD，不能等价复现业务请求。若确认该入口为对外业务或错误率上升，再经审批由人工隔离该入口流量或暂停相关触发任务，并保留回滚步骤；若仅限内部入口且无业务错误，记录结论后关闭并持续观察。\",\"diagnosis\":{\"summary\":{\"scene\":\"rdl-dataasset-6dfb8e88，GET /auth/lab/server-fault 接口业务异常\",\"whatHappened\":\"03:40:12 记录2次 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，容器运行中、未重启、未 OOMKilled。\",\"severity\":{\"level\":\"一般\",\"reason\":\"尚无服务不可用或关键业务受影响的确认事实。\"},\"recovery\":[\"只读核查该接口调用来源、故障窗口错误率与用户报障\",\"确认对外或有错误率上升后，经审批隔离该入口流量\",\"验证关键业务请求恢复并记录结论\"]},\"observations\":[{\"statement\":\"JFR 与 docker.logs 均记录 03:40:12.879/880 的 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，被 GlobalExceptionHandler 拦截。\",\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"statement\":\"日志异常文本为“Real DataAsset lab fault injection”，来源 lab-fault-fixture.jar，未说明调用方与触发条件。\",\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"statement\":\"容器 03:39:59 启动、运行中、OOMKilled=false、RestartCount=0；03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表当前容器观测。\",\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\",\"inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats\"]}],\"candidateCauses\":[{\"cause\":\"应用内该接口在 LabFaultController.serverFault 处显式抛出 IllegalStateException，属应用层异常，而非容器 OOM kill 或重启所致。\",\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"该接口是否对外业务、调用方与请求量未知，业务影响未确认。\",\"故障窗口请求错误率、关键业务请求结果与用户报障缺证据。\",\"容器内存未耗尽、CPU 统计仅一段区间，不能推断故障期负载峰值或 throttling。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"rdl-dataasset-6dfb8e88 该接口的调用来源与故障窗口错误率\",\"preconditions\":[\"具备该服务日志或监控的只读查询权限\"],\"operation\":\"核查 GET /auth/lab/server-fault 的调用来源、故障前后请求错误率、关键业务接口成功率及用户报障；http.probe 仅支持已配置健康URL的 GET/HEAD，不得用于业务请求复现。\",\"expectedResult\":\"明确该入口是否为对外业务及是否波及真实流量。\",\"risk\":\"只读查询，无数据修改风险。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"]},{\"purpose\":\"evidence_collection\",\"target\":\"LabFaultController.java:25 源码与 lab-fault-fixture.jar 对应版本\",\"preconditions\":[\"获取部署镜像对应源码或反编译信息\",\"确认与运行时 jar 版本一致\"],\"operation\":\"确认抛出 IllegalStateException 的条件分支与触发入口，区分注入分支与业务逻辑缺陷，记录出处。\",\"expectedResult\":\"确定异常触发条件及入口性质。\",\"risk\":\"只读审查，不影响线上。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"rdl-dataasset-6dfb8e88 的 /auth/lab/server-fault 入口\",\"preconditions\":[\"已确认该入口为对外业务或错误率明显上升\",\"已获值班负责人批准并准备回滚方案\",\"具备备用容量承接隔离后流量\"],\"operation\":\"经人工审批后由人工通过网关或配置隔离该入口流量，或暂停已确认的触发任务；记录操作时间与回滚步骤，异常扩大时立即恢复。\",\"expectedResult\":\"该入口异常停止产生，关键业务请求失败率不再上升。\",\"risk\":\"误隔离可能影响正常业务调用，需可快速回滚。\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"rdl-dataasset-6dfb8e88 业务影响结论\",\"preconditions\":[\"完成上述补证\"],\"operation\":\"核对故障窗口关键业务请求结果与用户报障；确认仅该入口受影响则记录结论，否则按影响面升级处理。\",\"expectedResult\":\"形成明确的业务影响结论并更新事件。\",\"risk\":\"结论依赖补证真实性，否则仍为未确认。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"]}]},\"hypotheses\":[{\"hypothesis\":\"应用层显式抛出 IllegalStateException，触发逻辑待源码确认，业务影响未确认。\",\"supportingEvidenceIds\":[\"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.55}]}"
+        }
+      ]
+    },
+    "incidentId": "inc-61999961-9b5d-4f43-82f5-ff0360b6e296",
+    "message": {
+      "content": "### 诊断更新\n场景：rdl-dataasset-6dfb8e88，GET /auth/lab/server-fault 接口业务异常\n发生了什么：03:40:12 记录2次 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，容器运行中、未重启、未 OOMKilled。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 只读核查该接口调用来源、故障窗口错误率与用户报障\n2. 确认对外或有错误率上升后，经审批隔离该入口流量\n3. 验证关键业务请求恢复并记录结论\n编号：inc-61999961-9b5d-4f43-82f5-ff0360b6e296\n详情获取方式：GET http://127.0.0.1:55747/v1/ops/incidents/inc-61999961-9b5d-4f43-82f5-ff0360b6e296/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 853
+    },
+    "detail": {
+      "bytes": 19393,
+      "evidenceCount": 4,
+      "markdown": "# 告警详情 inc-61999961-9b5d-4f43-82f5-ff0360b6e296\n场景：rdl-dataasset-6dfb8e88，GET /auth/lab/server-fault 接口业务异常\n发生了什么：03:40:12 记录2次 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，容器运行中、未重启、未 OOMKilled。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 只读核查该接口调用来源、故障窗口错误率与用户报障\n2. 确认对外或有错误率上升后，经审批隔离该入口流量\n3. 验证关键业务请求恢复并记录结论\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n3. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-2d709a9c-4c00-41f3-ada5-3b86a1ad178c\",\n    \"sessionId\": \"isess-2d709a9c-4c00-41f3-ada5-3b86a1ad178c\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"事件集中在2026-10-14T03:40:12.880，GET /auth/lab/server-fault 在 LabFaultController.serverFault(LabFaultController.java:25) 抛出 java.lang.IllegalStateException，日志文本为“Real DataAsset lab fault injection”，来源 lab-fault-fixture.jar，被 GlobalExceptionHandler 拦截。属应用层显式异常，但触发条件与调用方未知；容器 running、OOMKilled=false、RestartCount=0，03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表当前容器状态。业务影响未确认。\",\n    \"supportingEvidenceIds\": [\n      \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n      \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\n      \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\",\n      \"inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats\"\n    ],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.55,\n    \"recommendation\": \"先只读补证：核对 GET /auth/lab/server-fault 的调用来源、故障窗口请求错误率、关键业务请求结果与用户报障，并阅读与运行时 jar 对应的 LabFaultController.java:25 源码确认抛出条件；http.probe 仅支持已配置健康URL的 GET/HEAD，不能等价复现业务请求。若确认该入口为对外业务或错误率上升，再经审批由人工隔离该入口流量或暂停相关触发任务，并保留回滚步骤；若仅限内部入口且无业务错误，记录结论后关闭并持续观察。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"rdl-dataasset-6dfb8e88，GET /auth/lab/server-fault 接口业务异常\",\n        \"whatHappened\": \"03:40:12 记录2次 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，容器运行中、未重启、未 OOMKilled。\",\n        \"severity\": {\n          \"level\": \"一般\",\n          \"reason\": \"尚无服务不可用或关键业务受影响的确认事实。\"\n        },\n        \"recovery\": [\n          \"只读核查该接口调用来源、故障窗口错误率与用户报障\",\n          \"确认对外或有错误率上升后，经审批隔离该入口流量\",\n          \"验证关键业务请求恢复并记录结论\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"JFR 与 docker.logs 均记录 03:40:12.879/880 的 IllegalStateException，栈顶为 LabFaultController.serverFault(LabFaultController.java:25)，被 GlobalExceptionHandler 拦截。\",\n          \"evidenceIds\": [\n            \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n          ]\n        },\n        {\n          \"statement\": \"日志异常文本为“Real DataAsset lab fault injection”，来源 lab-fault-fixture.jar，未说明调用方与触发条件。\",\n          \"evidenceIds\": [\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n          ]\n        },\n        {\n          \"statement\": \"容器 03:39:59 启动、运行中、OOMKilled=false、RestartCount=0；03:40:36 stats 内存 usage 689377280 / limit 1610612736，仅代表当前容器观测。\",\n          \"evidenceIds\": [\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\",\n            \"inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"应用内该接口在 LabFaultController.serverFault 处显式抛出 IllegalStateException，属应用层异常，而非容器 OOM kill 或重启所致。\",\n          \"supportingEvidenceIds\": [\n            \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"\n          ],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"该接口是否对外业务、调用方与请求量未知，业务影响未确认。\",\n        \"故障窗口请求错误率、关键业务请求结果与用户报障缺证据。\",\n        \"容器内存未耗尽、CPU 统计仅一段区间，不能推断故障期负载峰值或 throttling。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"rdl-dataasset-6dfb8e88 该接口的调用来源与故障窗口错误率\",\n          \"preconditions\": [\n            \"具备该服务日志或监控的只读查询权限\"\n          ],\n          \"operation\": \"核查 GET /auth/lab/server-fault 的调用来源、故障前后请求错误率、关键业务接口成功率及用户报障；http.probe 仅支持已配置健康URL的 GET/HEAD，不得用于业务请求复现。\",\n          \"expectedResult\": \"明确该入口是否为对外业务及是否波及真实流量。\",\n          \"risk\": \"只读查询，无数据修改风险。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"\n          ]\n        },\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"LabFaultController.java:25 源码与 lab-fault-fixture.jar 对应版本\",\n          \"preconditions\": [\n            \"获取部署镜像对应源码或反编译信息\",\n            \"确认与运行时 jar 版本一致\"\n          ],\n          \"operation\": \"确认抛出 IllegalStateException 的条件分支与触发入口，区分注入分支与业务逻辑缺陷，记录出处。\",\n          \"expectedResult\": \"确定异常触发条件及入口性质。\",\n          \"risk\": \"只读审查，不影响线上。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"rdl-dataasset-6dfb8e88 的 /auth/lab/server-fault 入口\",\n          \"preconditions\": [\n            \"已确认该入口为对外业务或错误率明显上升\",\n            \"已获值班负责人批准并准备回滚方案\",\n            \"具备备用容量承接隔离后流量\"\n          ],\n          \"operation\": \"经人工审批后由人工通过网关或配置隔离该入口流量，或暂停已确认的触发任务；记录操作时间与回滚步骤，异常扩大时立即恢复。\",\n          \"expectedResult\": \"该入口异常停止产生，关键业务请求失败率不再上升。\",\n          \"risk\": \"误隔离可能影响正常业务调用，需可快速回滚。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"rdl-dataasset-6dfb8e88 业务影响结论\",\n          \"preconditions\": [\n            \"完成上述补证\"\n          ],\n          \"operation\": \"核对故障窗口关键业务请求结果与用户报障；确认仅该入口受影响则记录结论，否则按影响面升级处理。\",\n          \"expectedResult\": \"形成明确的业务影响结论并更新事件。\",\n          \"risk\": \"结论依赖补证真实性，否则仍为未确认。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n            \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T01:00:27.326Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n    \"incidentId\": \"inc-61999961-9b5d-4f43-82f5-ff0360b6e296\",\n    \"nodeId\": \"rdl-6dfb8e88\",\n    \"source\": \"application\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-14T03:40:12.880Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n      \"eventType\": \"business.error\",\n      \"observedAt\": \"2026-10-14T03:40:12.880Z\",\n      \"message\": \"Unhandled request exception\",\n      \"attributes\": {\n        \"containerName\": \"rdl-dataasset-6dfb8e88\",\n        \"exceptionClass\": \"java.lang.IllegalStateException\",\n        \"operation\": \"GET /auth/lab/server-fault\",\n        \"exceptionStackTrace\": \"at com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25)\\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\\nat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\\nat java.base/java.lang.reflect.Method.invoke(Method.java:569)\\nat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205)\\nat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150)\\nat org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117)\\nat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:895)\\nat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:808)\\nat org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87)\\nat org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1071)\\nat org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:964)\\nat org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006)\\nat org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:898)\\nat javax.servlet.http.HttpServlet.service(HttpServlet.java:670)\\nat org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883)\\nat javax.servlet.http.HttpServlet.service(HttpServlet.java:779)\\nat org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:227)\\nat org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:162)\"\n      },\n      \"semanticType\": \"business.error\"\n    }\n  },\n  {\n    \"id\": \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\",\n    \"incidentId\": \"inc-61999961-9b5d-4f43-82f5-ff0360b6e296\",\n    \"nodeId\": \"rdl-6dfb8e88\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.inspect\",\n    \"collectedAt\": \"2026-10-14T03:40:13.073Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"Id\": \"f101e2c2c23909f5e1f8bdb10404734d5b834f1f70a702dc75f9d4df89b632e6\",\n      \"Name\": \"/rdl-dataasset-6dfb8e88\",\n      \"State\": {\n        \"Status\": \"running\",\n        \"Running\": true,\n        \"StartedAt\": \"2026-10-14T03:39:59.893247701Z\",\n        \"OOMKilled\": false,\n        \"ExitCode\": 0,\n        \"Health\": {}\n      },\n      \"RestartCount\": 0,\n      \"HostConfig\": {\n        \"Memory\": 1610612736,\n        \"MemorySwap\": 3221225472,\n        \"NanoCpus\": 2000000000,\n        \"CpuQuota\": 0,\n        \"CpuPeriod\": 0,\n        \"CpusetCpus\": \"\"\n      },\n      \"Config\": {\n        \"Image\": \"eclipse-temurin:17.0.18_8-jdk-jammy\"\n      }\n    }\n  },\n  {\n    \"id\": \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\",\n    \"incidentId\": \"inc-61999961-9b5d-4f43-82f5-ff0360b6e296\",\n    \"nodeId\": \"rdl-6dfb8e88\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-14T03:40:13.078Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"\\tat \\tat com.mbkj.dap.DataAssetApplication.main(DataAssetApplication.java:23)\",\n        \"2026-10-14 03:40:12.879 ERROR 1 --- [.0-28189-exec-3] c.m.d.exception.GlobalExceptionHandler   : 拦截到异常 user:anonymous,请求地址:GET /auth/lab/server-fault,异常信息:Real DataAsset lab fault injection\",\n        \"java.lang.IllegalStateException: Real DataAsset lab fault injection\",\n        \"\\tat com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25) ~[lab-fault-fixture.jar:na]\",\n        \"\\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]\",\n        \"\\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]\",\n        \"\\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]\",\n        \"\\tat java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]\",\n        \"\\tat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205) ~[spring-web-5.3.23.jar!/:5.3.23]\",\n        \"\\tat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150) ~[spring-web-5.3.23.jar!/:5.3.23]\",\n        \"\\tat org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-5.3.23.jar!/:5.3.23]\",\n        \"2026-10-14 03:40:12.979  INFO 1 --- [ Event Stream 1] com.mbkj.piops.jfr.JfrEventLogger        : [PI_OPS_JFR] {\\\"schemaVersion\\\":\\\"1.0\\\",\\\"type\\\":\\\"JVM_GC\\\",\\\"timestamp\\\":\\\"2026-10-14T03:40:12.102121354Z\\\",\\\"service\\\":\\\"rdl-dataasset-6dfb8e88\\\",\\\"durationMs\\\":5,\\\"attributes\\\":{\\\"gcId\\\":173,\\\"name\\\":\\\"DefNew\\\",\\\"cause\\\":\\\"Allocation Failure\\\"},\\\"stackTrace\\\":[]}\",\n        \"2026-10-14 03:40:12.979  INFO 1 --- [ Event Stream 1] com.mbkj.piops.jfr.JfrEventLogger        : [PI_OPS_JFR] {\\\"schemaVersion\\\":\\\"1.0\\\",\\\"type\\\":\\\"JVM_GC\\\",\\\"timestamp\\\":\\\"2026-10-14T03:40:12.319910383Z\\\",\\\"service\\\":\\\"rdl-dataasset-6dfb8e88\\\",\\\"durationMs\\\":4,\\\"attributes\\\":{\\\"gcId\\\":174,\\\"name\\\":\\\"DefNew\\\",\\\"cause\\\":\\\"Allocation Failure\\\"},\\\"stackTrace\\\":[]}\",\n        \"2026-10-14 03:40:12.979  INFO 1 --- [ Event Stream 1] com.mbkj.piops.jfr.JfrEventLogger        : [PI_OPS_JFR] {\\\"schemaVersion\\\":\\\"1.0\\\",\\\"type\\\":\\\"JVM_GC\\\",\\\"timestamp\\\":\\\"2026-10-14T03:40:12.535294121Z\\\",\\\"service\\\":\\\"rdl-dataasset-6dfb8e88\\\",\\\"durationMs\\\":4,\\\"attributes\\\":{\\\"gcId\\\":175,\\\"name\\\":\\\"DefNew\\\",\\\"cause\\\":\\\"Allocation Failure\\\"},\\\"stackTrace\\\":[]}\",\n        \"2026-10-14 03:40:12.980  INFO 1 --- [ Event Stream 1] com.mbkj.piops.jfr.JfrEventLogger        : [PI_OPS_JFR] {\\\"schemaVersion\\\":\\\"1.0\\\",\\\"type\\\":\\\"BUSINESS_ERROR\\\",\\\"timestamp\\\":\\\"2026-10-14T03:40:12.880939090Z\\\",\\\"service\\\":\\\"rdl-dataasset-6dfb8e88\\\",\\\"threadName\\\":\\\"http-nio-0.0.0.0-28189-exec-3\\\",\\\"durationMs\\\":0,\\\"attributes\\\":{\\\"businessType\\\":\\\"http\\\",\\\"operation\\\":\\\"GET /auth/lab/server-fault\\\",\\\"errorCode\\\":\\\"UNHANDLED_EXCEPTION\\\",\\\"errorCategory\\\":\\\"PROCESSING\\\",\\\"safeMessage\\\":\\\"Unhandled request exception\\\",\\\"module\\\":\\\"/auth/lab/server-fault\\\",\\\"exceptionClass\\\":\\\"java.lang.IllegalStateException\\\",\\\"exceptionStackTrace\\\":\\\"at com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25)\\\\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\\\\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\\\\nat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\\\\nat java.base/java.lang.reflect.Method.invoke(Method.java:569)\\\\nat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205)\\\\nat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150)\\\\nat org.springframework.web.servlet.mvc.method.annotation.Serv\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 197,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 36,\n              \"endLine\": 36\n            },\n            {\n              \"startLine\": 133,\n              \"endLine\": 142\n            },\n            {\n              \"startLine\": 194,\n              \"endLine\": 197\n            }\n          ],\n          \"partialLineNumbers\": [\n            197\n          ]\n        }\n      }\n    }\n  },\n  {\n    \"id\": \"inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats\",\n    \"incidentId\": \"inc-61999961-9b5d-4f43-82f5-ff0360b6e296\",\n    \"nodeId\": \"rdl-6dfb8e88\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.stats\",\n    \"collectedAt\": \"2026-10-14T03:40:36.421Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"read\": \"2026-10-14T03:40:36.419168735Z\",\n      \"preread\": \"2026-10-14T03:40:35.410678757Z\",\n      \"cpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 25745837000\n        },\n        \"system_cpu_usage\": 1586247090000000,\n        \"online_cpus\": 10\n      },\n      \"precpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 25738611000\n        },\n        \"system_cpu_usage\": 1586237010000000,\n        \"online_cpus\": 10\n      },\n      \"memory_stats\": {\n        \"usage\": 689377280,\n        \"limit\": 1610612736\n      },\n      \"pids_stats\": {\n        \"current\": 104,\n        \"limit\": 18446744073709552000\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-61999961-9b5d-4f43-82f5-ff0360b6e296/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-61999961-9b5d-4f43-82f5-ff0360b6e296\",\n    \"service\": \"rdl-dataasset-6dfb8e88\",\n    \"nodeId\": \"rdl-6dfb8e88\",\n    \"type\": \"business.error\",\n    \"severity\": \"error\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-14T03:40:12.880Z\",\n    \"lastSeen\": \"2026-10-14T03:40:12.880Z\",\n    \"eventCount\": 2\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-2d709a9c-4c00-41f3-ada5-3b86a1ad178c\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T01:00:27.322Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 3,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:55747/v1/ops/incidents/inc-61999961-9b5d-4f43-82f5-ff0360b6e296/brief?format=markdown",
+          "ok": true,
+          "chars": 16697
+        },
+        {
+          "turn": 2,
+          "tool": "read_source",
+          "argument": "apps/pi-runtime/src/benchmark/fixtures/closed-loop/dataasset-197/LabFaultController.java",
+          "ok": true,
+          "chars": 1968
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:55747/v1/ops/incidents/inc-61999961-9b5d-4f43-82f5-ff0360b6e296/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"tool\":\"read_source\",\"path\":\"apps/pi-runtime/src/benchmark/fixtures/closed-loop/dataasset-197/LabFaultController.java\"}"
+        },
+        {
+          "turn": 3,
+          "text": "{\"tool\":\"answer\",\"rootCause\":\"源码夹具显示 GET /auth/lab/server-fault 映射到 LabFaultController.serverFault，该方法在第25行无条件抛出 IllegalStateException(\\\"Real DataAsset lab fault injection\\\")，异常文本与栈顶行号同日志完全一致；该类受 @Profile(\\\"real-dataasset-lab\\\") 与 lab.fault.enabled=true 双重条件约束，属显式实验室故障注入入口，而非业务逻辑缺陷或容器故障（inspect 显示 running、RestartCount=0、OOMKilled=false，stats 内存 689377280/1610612736 仅代表 03:40:36 观测）。事件仅 2 次、lastSeen 停在 03:40:12.880，尚无服务不可用或关键业务受影响证据。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"先只读核查：确认该容器是否实际启用 real-dataasset-lab profile 与 lab.fault.enabled=true，统计 /auth/lab/server-fault 及 /auth/lab/* 的调用来源、故障窗口错误率，并核对关键业务接口成功率与用户报障；http.probe 不得用于复现业务请求。\",\"expected\":\"明确该入口是否对外暴露、是否仅有注入流量，形成业务影响结论；若未对外且错误率未上升，则不触发隔离，记录后关闭观察。\"},{\"kind\":\"stop_loss\",\"action\":\"仅当上一步确认该入口对外暴露或错误率明显上升时，经值班负责人批准后由人工在网关/配置层隔离 /auth/lab/* 入口或暂停已确认的触发任务，并预留回滚步骤与操作时间记录。\",\"expected\":\"该入口异常不再产生，关键业务请求失败率不再上升；异常扩大时可立即回滚恢复。\"},{\"kind\":\"repair\",\"action\":\"经审批后修正配置：将生产环境 lab.fault.enabled 置为 false 或移除 real-dataasset-lab profile（若该 jar 不应存在于生产，则从镜像中排除 lab-fault-fixture.jar），变更通过正常发布流程生效；不得在未批准情况下直接重启或改配置。\",\"expected\":\"该路由不再注册或不可达（预期 404），IllegalStateException 注入停止，且不影响其余业务路由。\"},{\"kind\":\"verify\",\"action\":\"变更后观察该 incident 是否新增事件（当前 eventCount=2、lastSeen=03:40:12.880），核对已配置健康 URL 的健康响应、关键业务请求成功率与用户报障，并记录修复内容、验证时间与剩余未知项。\",\"expected\":\"无新增同类异常事件，健康检查通过、关键业务请求正常，事件可结论化关闭。\"}],\"approvals\":[\"网关/配置层隔离或摘除 /auth/lab/* 入口流量\",\"修改 lab.fault.enabled 或 real-dataasset-lab profile 配置\",\"任何发布、重启或镜像调整操作\"],\"unknowns\":[\"本机源码为夹具，需确认与运行时 lab-fault-fixture.jar 版本一致（栈行号与异常文本已吻合，但未验证构建产物）\",\"该容器当前是否真的加载 real-dataasset-lab profile 且 lab.fault.enabled=true\",\"/auth/lab/server-fault 的调用方、请求量与是否对外暴露\",\"故障窗口错误率、关键业务请求结果与用户报障均缺证据\",\"故障期 CPU/内存峰值与 throttling 情况未知，stats 仅为单点区间观测\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "源码夹具显示 GET /auth/lab/server-fault 映射到 LabFaultController.serverFault，该方法在第25行无条件抛出 IllegalStateException(\"Real DataAsset lab fault injection\")，异常文本与栈顶行号同日志完全一致；该类受 @Profile(\"real-dataasset-lab\") 与 lab.fault.enabled=true 双重条件约束，属显式实验室故障注入入口，而非业务逻辑缺陷或容器故障（inspect 显示 running、RestartCount=0、OOMKilled=false，stats 内存 689377280/1610612736 仅代表 03:40:36 观测）。事件仅 2 次、lastSeen 停在 03:40:12.880，尚无服务不可用或关键业务受影响证据。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "先只读核查：确认该容器是否实际启用 real-dataasset-lab profile 与 lab.fault.enabled=true，统计 /auth/lab/server-fault 及 /auth/lab/* 的调用来源、故障窗口错误率，并核对关键业务接口成功率与用户报障；http.probe 不得用于复现业务请求。",
+            "expected": "明确该入口是否对外暴露、是否仅有注入流量，形成业务影响结论；若未对外且错误率未上升，则不触发隔离，记录后关闭观察。"
+          },
+          {
+            "kind": "stop_loss",
+            "action": "仅当上一步确认该入口对外暴露或错误率明显上升时，经值班负责人批准后由人工在网关/配置层隔离 /auth/lab/* 入口或暂停已确认的触发任务，并预留回滚步骤与操作时间记录。",
+            "expected": "该入口异常不再产生，关键业务请求失败率不再上升；异常扩大时可立即回滚恢复。"
+          },
+          {
+            "kind": "repair",
+            "action": "经审批后修正配置：将生产环境 lab.fault.enabled 置为 false 或移除 real-dataasset-lab profile（若该 jar 不应存在于生产，则从镜像中排除 lab-fault-fixture.jar），变更通过正常发布流程生效；不得在未批准情况下直接重启或改配置。",
+            "expected": "该路由不再注册或不可达（预期 404），IllegalStateException 注入停止，且不影响其余业务路由。"
+          },
+          {
+            "kind": "verify",
+            "action": "变更后观察该 incident 是否新增事件（当前 eventCount=2、lastSeen=03:40:12.880），核对已配置健康 URL 的健康响应、关键业务请求成功率与用户报障，并记录修复内容、验证时间与剩余未知项。",
+            "expected": "无新增同类异常事件，健康检查通过、关键业务请求正常，事件可结论化关闭。"
+          }
+        ],
+        "approvals": [
+          "网关/配置层隔离或摘除 /auth/lab/* 入口流量",
+          "修改 lab.fault.enabled 或 real-dataasset-lab profile 配置",
+          "任何发布、重启或镜像调整操作"
+        ],
+        "unknowns": [
+          "本机源码为夹具，需确认与运行时 lab-fault-fixture.jar 版本一致（栈行号与异常文本已吻合，但未验证构建产物）",
+          "该容器当前是否真的加载 real-dataasset-lab profile 且 lab.fault.enabled=true",
+          "/auth/lab/server-fault 的调用方、请求量与是否对外暴露",
+          "故障窗口错误率、关键业务请求结果与用户报障均缺证据",
+          "故障期 CPU/内存峰值与 throttling 情况未知，stats 仅为单点区间观测"
+        ]
+      },
+      "inputTokens": 7350,
+      "outputTokens": 1626
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案根因为『该方法在第25行无条件抛出 IllegalStateException(\"Real DataAsset lab fault injection\")……属显式实验室故障注入入口，而非业务逻辑缺陷或容器故障』，与 allowedRootCauses 第一条一致；依据是源码夹具与日志栈顶行号/异常文本吻合，且第2轮 read_source 实际读取了源码，符合标准『DataAsset 源码写明故障注入，属于有证据』的豁免；方案未断言本次事件是演练或预期行为，还在 unknowns 中保留 jar 版本一致性待确认。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "行动1先『统计 /auth/lab/server-fault 及 /auth/lab/* 的调用来源、故障窗口错误率，并核对关键业务接口成功率与用户报障』，对应标准『先确认该路径是否仍被调用、是否影响真实业务』；行动2写出触发条件『仅当上一步确认该入口对外暴露或错误率明显上升时』和动作『经值班负责人批准后由人工在网关/配置层隔离 /auth/lab/* 入口或暂停已确认的触发任务，并预留回滚步骤』，是条件式但有明确触发与可执行动作，不是空泛的『进一步分析』。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "修复方向为『将生产环境 lab.fault.enabled 置为 false 或移除 real-dataasset-lab profile（若该 jar 不应存在于生产，则从镜像中排除 lab-fault-fixture.jar）』，属允许的『限制或移除』范畴；行动1已包含『确认该容器是否实际启用 real-dataasset-lab profile 与 lab.fault.enabled=true』，unknowns 也写明需确认夹具与运行时 jar 版本一致，符合『结合部署版本源码与访问日志确认端点是 lab-only、当前激活的 profile/开关，再决定限制或移除』的先取证再修路径。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "verify 行动为『观察该 incident 是否新增事件……核对已配置健康 URL 的健康响应、关键业务请求成功率与用户报障』，expected 为『无新增同类异常事件，健康检查通过、关键业务请求正常』，同时覆盖『同一路径不再产生注入异常』（eventCount/lastSeen 监控）与『关键业务接口正常』，未把进程存活当验证。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "方案未提及 RocketMQ 栈、数据库/库存/外部依赖；修复与隔离均写明『经审批后』并强调『不得在未批准情况下直接重启或改配置』；对业务影响只写『尚无服务不可用或关键业务受影响证据』，是陈述证据缺失而非断言无影响；对端点『属显式实验室故障注入入口』的表述有源码证据（标准明确此类属有证据），全文未把本次事件归为演练/测试/预期行为。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "approvals 明确列出三点：『网关/配置层隔离或摘除 /auth/lab/* 入口流量』『修改 lab.fault.enabled 或 real-dataasset-lab profile 配置』『任何发布、重启或镜像调整操作』，覆盖标准要求的下线/限制端点、改 profile/配置、发布、重启；行动2并写明『预留回滚步骤与操作时间记录』，满足含回滚方式的要求。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "交付诊断与已知事实一致：03:40:12.880 两次 IllegalStateException、栈顶 LabFaultController.serverFault(LabFaultController.java:25)、容器 running/OOMKilled=false/RestartCount=0 均与证据相符；引用日志文本『Real DataAsset lab fault injection』与 lab-fault-fixture.jar 是对日志的事实转述；candidateCauses 归因于『该接口在 LabFaultController.serverFault 处显式抛出 IllegalStateException……而非容器 OOM kill 或重启所致』，落在允许根因内，且明确『触发条件与调用方未知』『业务影响未确认』，无越界断言。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "消息与详情给出了端点、异常类、栈顶行号、容器状态、日志文本与来源 jar（lab-fault-fixture.jar），且源码夹具可读（被评 agent 第2轮即成功 read_source），足以让胜任的 agent 推出『显式注入入口→只读核查暴露面与业务影响→条件式经审批隔离→改开关/profile 并验证健康与关键业务』的完整正确动作链，无需额外信息。"
+        }
+      ],
+      "notes": "8 项全部通过。关键点：方案对『故障注入入口』的定性引用了源码夹具并实际读取源码，符合标准对 DataAsset 源码的取证豁免；同时方案未把本次事件断言为演练/预期，业务影响仅表述为『未确认/无证据』，并在 unknowns 中保留了 jar 版本一致性、profile 实际激活状态、调用方与错误率等待核项，与诊断摘要的不确定项一致。",
+      "inputTokens": 10021,
+      "outputTokens": 6406
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}

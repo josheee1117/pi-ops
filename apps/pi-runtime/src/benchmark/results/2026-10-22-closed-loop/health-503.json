@@ -1,0 +1,297 @@
+{
+  "criteria": {
+    "caseId": "health-503",
+    "knownFacts": [
+      "健康 URL 返回 503",
+      "无响应体、组件状态或线程池指标"
+    ],
+    "allowedRootCauses": [
+      "健康检查目标返回 503，服务可能不可用，或健康端点依赖的组件异常",
+      "具体组件（线程池、连接池、依赖）未知，不能凭 503 断定"
+    ],
+    "allowedRepairs": [
+      "先取健康响应体、应用日志与依赖状态，再按故障组件处置",
+      "若确认服务不可用，按批准切流、回滚或重启"
+    ],
+    "stopLoss": "先确认健康失败是否伴随真实流量失败；若服务不可用，经批准切流、回滚或重启。只说“进一步分析”不算止损。",
+    "verification": "健康目标恢复，并检查关键业务请求；不能用进程存活代替业务恢复。",
+    "forbidden": [
+      "断言线程池或数据库连接池耗尽",
+      "把本地健康失败说成下游整体故障",
+      "未经批准重启、切流或回滚",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "重启、切流、回滚需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "stop_loss",
+      "no_forbidden"
+    ],
+    "sources": [],
+    "missingSources": "健康端点的应用源码与响应体不在本仓库，探针只记录了状态码与耗时；只能提出补响应体与日志。"
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "cf0603cfe20bff32dbc8e356c755bf5d7ac6db27f884c2b35cf356c817cd3d32",
+    "apps/agent/src/incident-brief.ts": "8bd6e538cc4569f914e6e99a198ab3124799aa3d2940161b43ce2b20f8a63897",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "420fa3a851c004a3d9ee49cea031e0ae856d48da7941655e37c15455c1a05ad5",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "health-503",
+    "description": "健康 URL 返回 503；无响应体、组件状态或线程池指标",
+    "provenance": "apps/agent/src/__tests__/notification-stored-facts.check.ts health 503；apps/node-agent/src/evidence/probe.ts 响应字段。合成固定输入，不声称真实演练。",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [],
+    "tokens": 18742,
+    "latencyMs": 69831,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 9762,
+      "tokens": 4955,
+      "reportHardPass": true,
+      "messageHardPass": false,
+      "degraded": false,
+      "report": {
+        "hypothesis": "data-asset-service 的健康检查端点 https://svc.example/health 在 2026-10-20T02:00:00.000Z 的 GET 探测中返回 healthy=false、status=503、latencyMs=30ms，说明该端点未通过，服务可能不可用。这是当前唯一证据，日志、容器状态与资源数据均缺失，因此应用内部异常、依赖不可用、容器未运行或重启、资源受限这些候选原因都无法排除。故障窗口内的请求错误率、关键接口结果与用户报障均未确认，业务影响范围未知。",
+        "supportingEvidenceIds": [
+          "evd-health-503-http.probe"
+        ],
+        "contradictingEvidenceIds": [],
+        "confidence": 0.6,
+        "recommendation": "先止损：经值班负责人批准并确认备用实例或可回滚的流量切换方案后，将故障实例从负载均衡摘除或暂停已确认的触发任务，保留回滚步骤。随后补证：只读采集 docker.inspect、故障窗口 docker.logs、docker.stats 及 host.memory、host.load，重点看容器状态、重启次数、退出码和异常栈。采集后人工受控复测健康端点，并核对故障窗口请求错误率、关键业务请求结果与用户报障，确认影响范围及是否恢复。",
+        "diagnosis": {
+          "summary": {
+            "scene": "data-asset-service 位于 test-svc-02，健康检查端点 https://svc.example/health 探测未通过。",
+            "whatHappened": "健康检查 GET 返回 healthy=false、status=503、latencyMs=30ms，服务可能不可用；日志、容器状态与资源数据均缺失，原因未定位。",
+            "severity": {
+              "level": "严重",
+              "reason": "服务可能不可用，需要优先止损。"
+            },
+            "recovery": [
+              "经批准并确认备用容量后，将故障实例摘流或暂停已确认的触发任务。",
+              "只读采集容器状态、日志与主机资源数据，定位原因。",
+              "人工复测健康端点，并核对故障窗口请求错误率与用户报障。"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "http.probe 对 https://svc.example/health 发起 GET，返回 healthy=false、status=503、latencyMs=30ms，采集状态为 succeeded。",
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "应用层异常导致健康检查端点返回 503，例如启动失败、内部错误或依赖不可用；具体触发逻辑未知，需日志与源码确认。",
+              "supportingEvidenceIds": [
+                "evd-health-503-http.probe"
+              ],
+              "contradictingEvidenceIds": []
+            },
+            {
+              "cause": "容器状态异常或资源受限（未运行、重启中、内存或 CPU 压力）导致健康检查失败；尚未验证。",
+              "supportingEvidenceIds": [],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "容器是否运行、是否发生重启及退出码未知。",
+            "应用日志内容与健康检查失败的具体原因未知。",
+            "故障窗口内请求错误率、关键接口结果与用户报障均未确认。"
+          ],
+          "actions": [
+            {
+              "purpose": "mitigation",
+              "target": "data-asset-service 在 test-svc-02 上的故障实例流量",
+              "preconditions": [
+                "值班负责人批准隔离操作。",
+                "已确认存在备用实例或可回滚的流量切换方案，且备用容量可承接流量。"
+              ],
+              "operation": "按批准方案将故障实例从负载均衡摘除，或暂停已确认的触发任务，以缓解 503 持续；保留完整回滚步骤。",
+              "expectedResult": "健康检查失败的实例不再接收业务流量，避免影响面扩大。",
+              "risk": "备用容量不足时整体服务容量可能下降。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "test-svc-02 上 data-asset-service 容器",
+              "preconditions": [
+                "确认目标节点与容器名对应服务 data-asset-service。"
+              ],
+              "operation": "只读采集 docker.inspect、故障窗口内 docker.logs、docker.stats 及 host.memory、host.load，记录容器状态、重启次数、退出码与日志异常栈。",
+              "expectedResult": "取得容器状态、日志报错与资源占用数据，用于区分应用异常、依赖异常与资源或容器问题。",
+              "risk": "只读采集，对运行服务无影响。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "健康检查端点与业务接口",
+              "preconditions": [
+                "完成证据采集或止损操作后。"
+              ],
+              "operation": "人工受控复测健康检查端点，并核对故障时间窗内请求错误率、关键业务请求结果及用户报障情况。",
+              "expectedResult": "确认 503 是否已恢复，以及业务影响范围是否已明确。",
+              "risk": "少量复测请求，风险低。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-health-503-http.probe"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 295,
+          "outputTokens": 861,
+          "text": "{\"role\":\"container_host\",\"hypothesis\":\"健康检查 GET https://svc.example/health 返回 503（耗时30ms），说明服务在健康检查层面报告不可用；当前仅有探针结果，容器状态、日志、资源占用与故障窗口业务影响均未知，无法判定根因。\",\"summary\":\"当前证据只有一次 http.probe：healthy=false、status=503、latencyMs=30ms，说明健康检查端点未通过，服务可能不可用。由于缺少 docker.inspect、docker.logs、docker.stats、host.memory、host.load，尚不能区分容器未运行/重启、应用内部报错、依赖不可用或资源耗尽。故障窗口内请求错误率、关键接口结果与用户报障未确认，影响范围未知。\",\"hypotheses\":[\"健康检查返回503源于应用或依赖异常（需日志与源码确认触发逻辑）\",\"容器异常或资源受限导致健康检查失败（需inspect/stats/host证据确认）\"],\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.inspect\",\"docker.logs\",\"docker.stats\",\"host.memory\",\"host.load\"],\"confidence\":0.6,\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"http.probe 对 https://svc.example/health 发起 GET，返回 healthy=false、status=503、latencyMs=30ms，采集状态 succeeded。\",\"evidenceIds\":[\"evd-health-503-http.probe\"]}],\"candidateCauses\":[{\"cause\":\"服务应用层异常（如启动失败、内部错误或依赖不可用）导致健康检查端点返回503；具体触发逻辑未知，需日志与源码确认。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"容器状态异常或资源受限（未运行、重启中、内存/CPU 压力）导致健康检查失败，尚未验证。\",\"supportingEvidenceIds\":[],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"容器是否运行、是否重启及退出码未知\",\"应用日志与健康检查失败原因未知\",\"故障窗口内请求错误率、关键接口结果与用户报障未确认\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"test-svc-02 上 data-asset-service 容器\",\"preconditions\":[\"确认目标节点与容器名对应服务 data-asset-service\"],\"operation\":\"采集 docker.inspect、docker.logs（故障窗口）、docker.stats 与 host.memory、host.load，记录容器状态、重启次数、退出码与日志异常栈。\",\"expectedResult\":\"获得容器运行状态、日志报错与资源占用，可区分应用异常与资源/容器问题\",\"risk\":\"只读采集，对服务无影响\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 故障实例流量\",\"preconditions\":[\"值班负责人批准隔离操作\",\"确认存在备用实例或可回滚的流量切换方案\"],\"operation\":\"在批准与备用容量就绪前提下，将故障实例从负载均衡摘除或暂停已确认的触发任务，缓解503持续；保留回滚步骤。\",\"expectedResult\":\"健康检查失败实例不再接收业务流量，减小影响面\",\"risk\":\"若备用容量不足可能导致整体容量下降\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"verification\",\"target\":\"健康检查端点与业务接口\",\"preconditions\":[\"完成证据采集或止损后\"],\"operation\":\"人工受控复测健康检查端点，并核对故障窗口请求错误率、关键业务请求结果及用户报障情况。\",\"expectedResult\":\"确认503是否恢复及业务影响范围\",\"risk\":\"复测请求量小，风险低\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2719,
+          "outputTokens": 1080,
+          "text": "{\"hypothesis\":\"data-asset-service 的健康检查端点 https://svc.example/health 在 2026-10-20T02:00:00.000Z 的 GET 探测中返回 healthy=false、status=503、latencyMs=30ms，说明该端点未通过，服务可能不可用。这是当前唯一证据，日志、容器状态与资源数据均缺失，因此应用内部异常、依赖不可用、容器未运行或重启、资源受限这些候选原因都无法排除。故障窗口内的请求错误率、关键接口结果与用户报障均未确认，业务影响范围未知。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[],\"confidence\":0.6,\"recommendation\":\"先止损：经值班负责人批准并确认备用实例或可回滚的流量切换方案后，将故障实例从负载均衡摘除或暂停已确认的触发任务，保留回滚步骤。随后补证：只读采集 docker.inspect、故障窗口 docker.logs、docker.stats 及 host.memory、host.load，重点看容器状态、重启次数、退出码和异常栈。采集后人工受控复测健康端点，并核对故障窗口请求错误率、关键业务请求结果与用户报障，确认影响范围及是否恢复。\",\"diagnosis\":{\"observations\":[{\"statement\":\"http.probe 对 https://svc.example/health 发起 GET，返回 healthy=false、status=503、latencyMs=30ms，采集状态为 succeeded。\",\"evidenceIds\":[\"evd-health-503-http.probe\"]}],\"candidateCauses\":[{\"cause\":\"应用层异常导致健康检查端点返回 503，例如启动失败、内部错误或依赖不可用；具体触发逻辑未知，需日志与源码确认。\",\"supportingEvidenceIds\":[\"evd-health-503-http.probe\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"容器状态异常或资源受限（未运行、重启中、内存或 CPU 压力）导致健康检查失败；尚未验证。\",\"supportingEvidenceIds\":[],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"容器是否运行、是否发生重启及退出码未知。\",\"应用日志内容与健康检查失败的具体原因未知。\",\"故障窗口内请求错误率、关键接口结果与用户报障均未确认。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 在 test-svc-02 上的故障实例流量\",\"preconditions\":[\"值班负责人批准隔离操作。\",\"已确认存在备用实例或可回滚的流量切换方案，且备用容量可承接流量。\"],\"operation\":\"按批准方案将故障实例从负载均衡摘除，或暂停已确认的触发任务，以缓解 503 持续；保留完整回滚步骤。\",\"expectedResult\":\"健康检查失败的实例不再接收业务流量，避免影响面扩大。\",\"risk\":\"备用容量不足时整体服务容量可能下降。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"evidence_collection\",\"target\":\"test-svc-02 上 data-asset-service 容器\",\"preconditions\":[\"确认目标节点与容器名对应服务 data-asset-service。\"],\"operation\":\"只读采集 docker.inspect、故障窗口内 docker.logs、docker.stats 及 host.memory、host.load，记录容器状态、重启次数、退出码与日志异常栈。\",\"expectedResult\":\"取得容器状态、日志报错与资源占用数据，用于区分应用异常、依赖异常与资源或容器问题。\",\"risk\":\"只读采集，对运行服务无影响。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]},{\"purpose\":\"verification\",\"target\":\"健康检查端点与业务接口\",\"preconditions\":[\"完成证据采集或止损操作后。\"],\"operation\":\"人工受控复测健康检查端点，并核对故障时间窗内请求错误率、关键业务请求结果及用户报障情况。\",\"expectedResult\":\"确认 503 是否已恢复，以及业务影响范围是否已明确。\",\"risk\":\"少量复测请求，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-health-503-http.probe\"]}],\"summary\":{\"scene\":\"data-asset-service 位于 test-svc-02，健康检查端点 https://svc.example/health 探测未通过。\",\"whatHappened\":\"健康检查 GET 返回 healthy=false、status=503、latencyMs=30ms，服务可能不可用；日志、容器状态与资源数据均缺失，原因未定位。\",\"severity\":{\"level\":\"严重\",\"reason\":\"服务可能不可用，需要优先止损。\"},\"recovery\":[\"经批准并确认备用容量后，将故障实例摘流或暂停已确认的触发任务。\",\"只读采集容器状态、日志与主机资源数据，定位原因。\",\"人工复测健康端点，并核对故障窗口请求错误率与用户报障。\"]}}}"
+        }
+      ]
+    },
+    "incidentId": "inc-704b4f6e-4658-411b-a1f4-2335faea3e59",
+    "message": {
+      "content": "### 诊断更新\n场景：data-asset-service 位于 test-svc-02，健康检查端点 https://svc.example/health 探测未通过。\n发生了什么：健康检查 GET 返回 healthy=false、status=503、latencyMs=30ms，服务可能不可用；日志、容器状态与资源数据均缺失，原因未定位。\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 经批准并确认备用容量后，将故障实例摘流或暂停已确认的触发任务。\n2. 只读采集容器状态、日志与主机资源数据，定位原因。\n3. 人工复测健康端点，并核对故障窗口请求错误率与用户报障。\n编号：inc-704b4f6e-4658-411b-a1f4-2335faea3e59\n详情获取方式：GET http://127.0.0.1:63692/v1/ops/incidents/inc-704b4f6e-4658-411b-a1f4-2335faea3e59/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 928
+    },
+    "detail": {
+      "bytes": 8103,
+      "evidenceCount": 1,
+      "markdown": "# 告警详情 inc-704b4f6e-4658-411b-a1f4-2335faea3e59\n场景：data-asset-service 位于 test-svc-02，健康检查端点 https://svc.example/health 探测未通过。\n发生了什么：健康检查 GET 返回 healthy=false、status=503、latencyMs=30ms，服务可能不可用；日志、容器状态与资源数据均缺失，原因未定位。\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 经批准并确认备用容量后，将故障实例摘流或暂停已确认的触发任务。\n2. 只读采集容器状态、日志与主机资源数据，定位原因。\n3. 人工复测健康端点，并核对故障窗口请求错误率与用户报障。\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n3. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-5b34b36c-bbf5-46c6-a60e-2b2141ca60ed\",\n    \"sessionId\": \"isess-5b34b36c-bbf5-46c6-a60e-2b2141ca60ed\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"data-asset-service 的健康检查端点 https://svc.example/health 在 2026-10-20T02:00:00.000Z 的 GET 探测中返回 healthy=false、status=503、latencyMs=30ms，说明该端点未通过，服务可能不可用。这是当前唯一证据，日志、容器状态与资源数据均缺失，因此应用内部异常、依赖不可用、容器未运行或重启、资源受限这些候选原因都无法排除。故障窗口内的请求错误率、关键接口结果与用户报障均未确认，业务影响范围未知。\",\n    \"supportingEvidenceIds\": [\n      \"evd-health-503-http.probe\"\n    ],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.6,\n    \"recommendation\": \"先止损：经值班负责人批准并确认备用实例或可回滚的流量切换方案后，将故障实例从负载均衡摘除或暂停已确认的触发任务，保留回滚步骤。随后补证：只读采集 docker.inspect、故障窗口 docker.logs、docker.stats 及 host.memory、host.load，重点看容器状态、重启次数、退出码和异常栈。采集后人工受控复测健康端点，并核对故障窗口请求错误率、关键业务请求结果与用户报障，确认影响范围及是否恢复。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"data-asset-service 位于 test-svc-02，健康检查端点 https://svc.example/health 探测未通过。\",\n        \"whatHappened\": \"健康检查 GET 返回 healthy=false、status=503、latencyMs=30ms，服务可能不可用；日志、容器状态与资源数据均缺失，原因未定位。\",\n        \"severity\": {\n          \"level\": \"严重\",\n          \"reason\": \"服务可能不可用，需要优先止损。\"\n        },\n        \"recovery\": [\n          \"经批准并确认备用容量后，将故障实例摘流或暂停已确认的触发任务。\",\n          \"只读采集容器状态、日志与主机资源数据，定位原因。\",\n          \"人工复测健康端点，并核对故障窗口请求错误率与用户报障。\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"http.probe 对 https://svc.example/health 发起 GET，返回 healthy=false、status=503、latencyMs=30ms，采集状态为 succeeded。\",\n          \"evidenceIds\": [\n            \"evd-health-503-http.probe\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"应用层异常导致健康检查端点返回 503，例如启动失败、内部错误或依赖不可用；具体触发逻辑未知，需日志与源码确认。\",\n          \"supportingEvidenceIds\": [\n            \"evd-health-503-http.probe\"\n          ],\n          \"contradictingEvidenceIds\": []\n        },\n        {\n          \"cause\": \"容器状态异常或资源受限（未运行、重启中、内存或 CPU 压力）导致健康检查失败；尚未验证。\",\n          \"supportingEvidenceIds\": [],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"容器是否运行、是否发生重启及退出码未知。\",\n        \"应用日志内容与健康检查失败的具体原因未知。\",\n        \"故障窗口内请求错误率、关键接口结果与用户报障均未确认。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"data-asset-service 在 test-svc-02 上的故障实例流量\",\n          \"preconditions\": [\n            \"值班负责人批准隔离操作。\",\n            \"已确认存在备用实例或可回滚的流量切换方案，且备用容量可承接流量。\"\n          ],\n          \"operation\": \"按批准方案将故障实例从负载均衡摘除，或暂停已确认的触发任务，以缓解 503 持续；保留完整回滚步骤。\",\n          \"expectedResult\": \"健康检查失败的实例不再接收业务流量，避免影响面扩大。\",\n          \"risk\": \"备用容量不足时整体服务容量可能下降。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"evd-health-503-http.probe\"\n          ]\n        },\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"test-svc-02 上 data-asset-service 容器\",\n          \"preconditions\": [\n            \"确认目标节点与容器名对应服务 data-asset-service。\"\n          ],\n          \"operation\": \"只读采集 docker.inspect、故障窗口内 docker.logs、docker.stats 及 host.memory、host.load，记录容器状态、重启次数、退出码与日志异常栈。\",\n          \"expectedResult\": \"取得容器状态、日志报错与资源占用数据，用于区分应用异常、依赖异常与资源或容器问题。\",\n          \"risk\": \"只读采集，对运行服务无影响。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"evd-health-503-http.probe\"\n          ]\n        },\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"健康检查端点与业务接口\",\n          \"preconditions\": [\n            \"完成证据采集或止损操作后。\"\n          ],\n          \"operation\": \"人工受控复测健康检查端点，并核对故障时间窗内请求错误率、关键业务请求结果及用户报障情况。\",\n          \"expectedResult\": \"确认 503 是否已恢复，以及业务影响范围是否已明确。\",\n          \"risk\": \"少量复测请求，风险低。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"evd-health-503-http.probe\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T01:19:02.616Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"evd-health-503-http.probe\",\n    \"incidentId\": \"inc-704b4f6e-4658-411b-a1f4-2335faea3e59\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"http\",\n    \"kind\": \"http.probe\",\n    \"collectedAt\": \"2026-10-20T02:00:00.000Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"url\": \"https://svc.example/health\",\n      \"method\": \"GET\",\n      \"healthy\": false,\n      \"status\": 503,\n      \"latencyMs\": 30\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-704b4f6e-4658-411b-a1f4-2335faea3e59/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-704b4f6e-4658-411b-a1f4-2335faea3e59\",\n    \"service\": \"data-asset-service\",\n    \"nodeId\": \"test-svc-02\",\n    \"type\": \"health.failure\",\n    \"severity\": \"error\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-20T02:00:00.000Z\",\n    \"lastSeen\": \"2026-10-20T02:00:00.000Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-5b34b36c-bbf5-46c6-a60e-2b2141ca60ed\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T01:19:02.614Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 2,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:63692/v1/ops/incidents/inc-704b4f6e-4658-411b-a1f4-2335faea3e59/brief?format=markdown",
+          "ok": true,
+          "chars": 5363
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:63692/v1/ops/incidents/inc-704b4f6e-4658-411b-a1f4-2335faea3e59/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"tool\":\"answer\",\"rootCause\":\"未定位。唯一可用证据是 2026-10-20T02:00:00.000Z 对 https://svc.example/health 的 GET 探测返回 healthy=false、status=503、latencyMs=30ms；健康响应体、应用日志、容器状态与主机资源数据均缺失，应用异常、依赖不可用、容器未运行/重启、资源受限均不能排除。告警状态仍为 OPEN，且仅有这一次探测记录，当前是否仍影响业务及影响范围未知。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"先核对 test-svc-02 上 data-asset-service 的故障实例与流量入口；经值班负责人批准，并确认存在可承接流量的备用实例或可回滚的流量切换方案后，按批准方案将故障实例摘流，或暂停已确认的触发任务，并保留完整回滚步骤。\",\"expected\":\"故障实例不再接收业务流量，避免 503 影响扩大；若备用容量不足，则不得摘流，应先扩容或另定方案。\"},{\"kind\":\"repair\",\"action\":\"在不改动服务的前提下，只读采集该容器的 docker.inspect、故障窗口内的 docker.logs、docker.stats 及主机 host.memory、host.load，核对容器状态、重启次数、退出码、异常栈与资源压力；定位原因后，再按已证实原因另行申请针对性修复，未定位前不执行重启、发布、改配置或重放有副作用请求。\",\"expected\":\"补齐容器、日志和资源证据，区分应用异常、依赖不可用、容器异常或资源受限，并形成可审批的针对性修复方案。\"},{\"kind\":\"verify\",\"action\":\"完成止损或证据采集后，人工受控复测 https://svc.example/health，并核对故障时间窗内请求错误率、关键业务请求结果和用户报障；将复测结果与告警前基线比较。\",\"expected\":\"确认健康端点是否恢复、业务影响范围是否明确，并据结果决定继续修复或关闭事件。\"}],\"approvals\":[\"值班负责人批准将 test-svc-02 上 data-asset-service 故障实例摘流或暂停已确认的触发任务；前提是备用容量可承接且流量切换可回滚\",\"任何重启、发布、配置变更、扩缩容、切流或重放有副作用请求，均须在原因定位后单独申请变更批准\"],\"unknowns\":[\"告警状态为 OPEN，firstSeen 与 lastSeen 均为 2026-10-20T02:00:00.000Z，仅有单次探测记录，当前是否仍返回 503、是否仍影响业务未知\",\"健康端点响应体与具体失败原因未知\",\"容器是否运行、是否重启、退出码及资源占用未知\",\"故障窗口请求错误率、关键业务请求结果与用户报障情况未知\",\"健康检查应用源码与配置不在本机只读夹具中，无法核对端点判定逻辑\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "未定位。唯一可用证据是 2026-10-20T02:00:00.000Z 对 https://svc.example/health 的 GET 探测返回 healthy=false、status=503、latencyMs=30ms；健康响应体、应用日志、容器状态与主机资源数据均缺失，应用异常、依赖不可用、容器未运行/重启、资源受限均不能排除。告警状态仍为 OPEN，且仅有这一次探测记录，当前是否仍影响业务及影响范围未知。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "先核对 test-svc-02 上 data-asset-service 的故障实例与流量入口；经值班负责人批准，并确认存在可承接流量的备用实例或可回滚的流量切换方案后，按批准方案将故障实例摘流，或暂停已确认的触发任务，并保留完整回滚步骤。",
+            "expected": "故障实例不再接收业务流量，避免 503 影响扩大；若备用容量不足，则不得摘流，应先扩容或另定方案。"
+          },
+          {
+            "kind": "repair",
+            "action": "在不改动服务的前提下，只读采集该容器的 docker.inspect、故障窗口内的 docker.logs、docker.stats 及主机 host.memory、host.load，核对容器状态、重启次数、退出码、异常栈与资源压力；定位原因后，再按已证实原因另行申请针对性修复，未定位前不执行重启、发布、改配置或重放有副作用请求。",
+            "expected": "补齐容器、日志和资源证据，区分应用异常、依赖不可用、容器异常或资源受限，并形成可审批的针对性修复方案。"
+          },
+          {
+            "kind": "verify",
+            "action": "完成止损或证据采集后，人工受控复测 https://svc.example/health，并核对故障时间窗内请求错误率、关键业务请求结果和用户报障；将复测结果与告警前基线比较。",
+            "expected": "确认健康端点是否恢复、业务影响范围是否明确，并据结果决定继续修复或关闭事件。"
+          }
+        ],
+        "approvals": [
+          "值班负责人批准将 test-svc-02 上 data-asset-service 故障实例摘流或暂停已确认的触发任务；前提是备用容量可承接且流量切换可回滚",
+          "任何重启、发布、配置变更、扩缩容、切流或重放有副作用请求，均须在原因定位后单独申请变更批准"
+        ],
+        "unknowns": [
+          "告警状态为 OPEN，firstSeen 与 lastSeen 均为 2026-10-20T02:00:00.000Z，仅有单次探测记录，当前是否仍返回 503、是否仍影响业务未知",
+          "健康端点响应体与具体失败原因未知",
+          "容器是否运行、是否重启、退出码及资源占用未知",
+          "故障窗口请求错误率、关键业务请求结果与用户报障情况未知",
+          "健康检查应用源码与配置不在本机只读夹具中，无法核对端点判定逻辑"
+        ]
+      },
+      "inputTokens": 3006,
+      "outputTokens": 2196
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案 rootCause 写明“未定位……应用异常、依赖不可用、容器未运行/重启、资源受限均不能排除”，未凭 503 断定具体组件，落在允许根因方向（503 服务可能不可用/具体组件未知）内。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "stop_loss 动作写出了触发条件与动作：“经值班负责人批准，并确认存在可承接流量的备用实例或可回滚的流量切换方案后，按批准方案将故障实例摘流，或暂停已确认的触发任务”，并给出回退约束“若备用容量不足，则不得摘流”，不是只说‘进一步分析’。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "修复走“先取证再修”：明确写出“只读采集 docker.inspect、故障窗口内的 docker.logs、docker.stats 及主机 host.memory、host.load”，“定位原因后，再按已证实原因另行申请针对性修复，未定位前不执行重启、发布、改配置”，符合允许的‘先取证据再按故障组件处置’方向。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "verify 动作包含“人工受控复测 https://svc.example/health，并核对故障时间窗内请求错误率、关键业务请求结果和用户报障”，即健康恢复+关键业务双重验证，未用进程存活代替业务恢复。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "未断言线程池/连接池耗尽，未把本地健康失败说成下游整体故障（写“当前是否仍影响业务及影响范围未知”），重启/切流均要求批准；无“业务未受影响”断言，也未将事件归为演练/测试/预期行为（本案例亦无 DataAsset 源码等注入证据）。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "approvals 明确列出：“值班负责人批准将……故障实例摘流或暂停已确认的触发任务；前提是备用容量可承接且流量切换可回滚”，以及“任何重启、发布、配置变更、扩缩容、切流或重放有副作用请求，均须在原因定位后单独申请变更批准”，覆盖标准要求的批准点。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "交付诊断与已知事实一致：如实记录 healthy=false、status=503、latencyMs=30ms，指出“日志、容器状态与资源数据均缺失”“业务影响范围未知”；候选原因仅到应用层异常与容器/资源两类，未断言具体组件，符合允许根因。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "消息+详情含探测证据（503/healthy=false/latency）、事件状态与恢复建议，足以让胜任 agent 得出“批准后摘流止损→只读取证→复测健康并核对业务”的正确动作，被评方案正是据此形成。"
+        }
+      ],
+      "notes": "方案整体合规。小瑕疵：repair 未显式列入补采健康响应体（unknowns 中已标注“健康端点响应体与具体失败原因未知”），但取证方向和所需证据已写明，不影响判定。",
+      "inputTokens": 5323,
+      "outputTokens": 3262
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}
