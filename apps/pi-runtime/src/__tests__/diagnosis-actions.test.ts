@@ -55,6 +55,19 @@ function scriptedModel(detail: ReturnType<typeof diagnosis>, systems: string[] =
 }
 
 describe('diagnosis and action contract', () => {
+  it('requires repair for a located source defect and an explicit unknown recovery step otherwise', async () => {
+    const systems: string[] = [];
+    await investigate({ ...context, evidence: [{ id: 'ev-config', kind: 'docker.logs',
+      data: { lines: ['OrderService.java:42 reads an unbounded list into memory; deployed source confirms the allocation.'] } }] },
+    { model: scriptedModel(diagnosis(), systems) });
+    assert.ok(systems.length >= 2);
+    for (const system of systems) {
+      assert.match(system, /证据足以定位.*源码行.*必须.*repair/);
+      assert.match(system, /改哪里.*修改方向.*验证办法/);
+      assert.match(system, /证据不足.*uncertainties.*原因/);
+      assert.match(system, /recovery.*以「修复尚未确定」开头.*补证/);
+    }
+  });
   it('preserves an evidenced conditional repair and full diagnosis without phone limits or policy prefixes', async () => {
     const systems: string[] = [];
     const model = scriptedModel(diagnosis(), systems);
