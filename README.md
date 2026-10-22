@@ -158,3 +158,7 @@ pnpm test
 ```
 
 See `CONTRIBUTING.md` for the milestone workflow and `SECURITY.md` for the security boundary.
+
+## Verifying a change
+
+`.agents/skills/verify-pi-ops/` drives the local stack and proves the fault → Incident → diagnosis → notification chain, leaving evidence outside the repo. Claude Code reads the same skill through `.claude/skills/verify-pi-ops`. Start with its `SKILL.md`; the per-feature journeys and their known limits are in `features/`.
