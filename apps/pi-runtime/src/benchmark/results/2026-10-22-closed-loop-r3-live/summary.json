@@ -27,27 +27,42 @@
     "health-503",
     "stack-overflow"
   ],
-  "estimatedTokens": 665000,
-  "budget": 400000,
+  "budget": 450000,
+  "firstBatch": {
+    "budget": 400000,
+    "spent": 333546,
+    "cases": [
+      "dataasset-197",
+      "jvm-heap-oom",
+      "cpu-quota-burst"
+    ]
+  },
+  "restBatch": {
+    "budget": 450000,
+    "spent": 0,
+    "cases": [
+      "tag-group-502",
+      "sop-404",
+      "health-503",
+      "stack-overflow"
+    ],
+    "wallMs": 46542,
+    "stop": {
+      "stop": "probe",
+      "reason": "preflight failed",
+      "failures": [
+        {
+          "spec": "cpa/deepseek-v4.1-flash",
+          "error": "503: {\"message\":\"当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道 (request id: 20261022140214707966347hcz7gAip6KZjw)\",\"type\":\"new_api_error\"}",
+          "retry": "503: {\"message\":\"当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道 (request id: 202610221403298729428244qkwl3V6h6576)\",\"type\":\"new_api_error\"}"
+        }
+      ]
+    }
+  },
+  "estimatedTokens": 380000,
   "out": "/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-live",
   "spent": 333546,
-  "wallMs": 644591,
-  "notRun": {
-    "reason": "remaining 66454 is below the CLI per-case reserve of 95000 and below the cheapest completed case (82567). Starting tag-group-502 would breach the 400000 cap.",
-    "cases": ["tag-group-502", "sop-404", "health-503", "stack-overflow"],
-    "remaining": 66454
-  },
-  "timing": {
-    "firstCaseStart": "2026-10-22T03:13:43Z",
-    "runnerWallMs": 644591,
-    "caseLatencyMs": {
-      "dataasset-197": 174376,
-      "jvm-heap-oom": 265582,
-      "cpu-quota-burst": 376534
-    },
-    "caseLatencySumMs": 816492,
-    "probeTokens": 711
-  },
+  "wallMs": 46542,
   "codeHashes": {
     "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
     "apps/agent/src/on-call-brief.ts": "b5723886ff765be41638ef9bc24bbc2856e2fb88ede8df393fb0779c148a500f",
@@ -56,6 +71,20 @@
     "apps/pi-runtime/src/specialists.ts": "3eaa6af84ea0e51687cd3834b8c65a57415882e6e68197feef056aa2142d8e3b",
     "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
   },
+  "upstream": {
+    "diagnosis": "cpa/deepseek-v4.1-flash via agentrouter. Same model as production ark/deepseek-v4.1-flash, different upstream. Rest batch did not switch back to Volcano.",
+    "handler": "cpa/deepseek-v4.1-flash via agentrouter. Previous batches used cpa/deepseek-flash-latest on Volcano. Rest batch did not switch back.",
+    "judge": "cpa/gemini-3.8-flash-high. Same judge as the first three cases. Did not switch back to cpa/glm-latest after the 13:57 reset.",
+    "thinkingRequested": "off",
+    "thinkingEffective": "Diagnosis and handler catalogs map off to unsupported, so the SDK clamps the request to low and sends reasoning_effort=low. Judge gemini-3.8-flash-high only supports high, so requested off becomes high.",
+    "comparisonNote": "同模型、不同上游。后 4 例与前 3 例同一配置，没有换回火山或 glm。"
+  },
+  "notRun": [
+    "tag-group-502",
+    "sop-404",
+    "health-503",
+    "stack-overflow"
+  ],
   "results": [
     {
       "caseId": "dataasset-197",
@@ -1051,13 +1080,5 @@
       ],
       "primaryGap": "handler_reasoning"
     }
-  ],
-  "upstream": {
-    "diagnosis": "cpa/deepseek-v4.1-flash via agentrouter. Same model as production ark/deepseek-v4.1-flash, different upstream.",
-    "handler": "cpa/deepseek-v4.1-flash via agentrouter. Previous batches used cpa/deepseek-flash-latest on Volcano.",
-    "judge": "cpa/gemini-3.8-flash-high. cpa/glm-latest returned 429 AccountQuotaExceeded, reset 2026-10-22 13:57:43 +0800.",
-    "thinkingRequested": "off",
-    "thinkingEffective": "Diagnosis and handler catalogs map off to unsupported, so the SDK clamps the request to low and sends reasoning_effort=low. Judge gemini-3.8-flash-high only supports high, so requested off becomes high.",
-    "comparisonNote": "同模型、不同上游。不要把本批诊断和火山 ark 批次当成同一上游的重复抽样。"
-  }
+  ]
 }

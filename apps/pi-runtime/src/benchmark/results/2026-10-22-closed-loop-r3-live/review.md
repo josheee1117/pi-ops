@@ -124,3 +124,11 @@ CPU 未闭环的原因在处理 agent，不在诊断。诊断 hypothesis 写的�
 2. glm-latest 仍在同一条 5 小时额度里，重置时间与上次火山 429 相同。证据是 probe-models.json。决定裁判改用 gemini-3.8-flash-high，不空等重置。
 3. 这个上游加 high 思考裁判后，单例 8 万到 13 万 token。证据是三例 json 的 tokens 和 stop.json。决定停在 3 例，不靠绕过 95000 预留去冲第 4 例。
 4. CPU 处理 agent 在没有调用证据时把 /cpu 端点写成最可能路径，裁判判 no_forbidden 失败。证据是 cpu-quota-burst.json 的 judge.items。决定保留 open，不重跑到满意，也不把它记成诊断降级。
+5. 续跑前探针两次都是 503，不是 429。代理把 cpa/deepseek-v4.1-flash 映射成 deepseek-v4-flash，当前分组 default 没有可用渠道。证据是 probe-rest.json 和 probe-rest-retry.json。同模型的非火山上游没有第二条。cpa/deepseek-flash-latest 和 ark 都是火山，本批明确不换回。决定停，不跑后 4 例。
+6. probe-adapter.ts 被 tsc 编进 pi-runtime，thinkingLevel 联合类型不能赋给字面量 off。证据是 2026-10-22 14:05 的 typecheck 错误。决定调用处改成字面量 off。tsc -p tsconfig.json 和 tsconfig.build.json 随后都通过。
+
+## 续跑
+
+2026-10-22 14:00 按同一配置补跑后 4 例，新预算 45 万。开跑前的最小请求里，裁判 gemini 可用，诊断 deepseek 503。14:03 再探一次，仍是同一条 503。没有产生新的案例 json，前 3 例文件没有改。
+
+sop-404 没有新消息。按第 21 单现在的检查，缺止损不一定 fail。evaluator.ts 里，有止损动作是 pass。没有止损时，只有服务可能不可用，或者等级是严重或高，才 fail。否则是 warn。messageHardPass 只把 fail 算失败，warn 不会让它变 false。sop-404 的证据是一次 Feign 404，不属于内存耗尽、调用栈溢出或健康检查失败。模型若把等级写成一般，缺止损是 warn，不是 fail。模型自己写成严重或高，缺止损才是 fail。这是代码口径，不是本轮实测。

@@ -2,7 +2,7 @@
 
 真实模型：诊断 cpa/deepseek-v4.1-flash（thinking off），处理 cpa/deepseek-v4.1-flash，裁判 cpa/gemini-3.8-flash-high。
 
-闭环 2/3，部分闭环 0，未闭环 1。已回报 token 333546，预算 400000。总耗时 645 秒。
+闭环 2/3，部分闭环 0，未闭环 1。已回报 token 333546，预算 400000。总耗时 816 秒。
 判定规则：裁判逐项给结果，6 项（根因、止损、修复、验证、禁止操作、批准点）全过为闭环；案例声明的 critical 项（根因/止损/禁止操作）任一失败为未闭环；其余为部分闭环。
 
 | 案例 | 诊断 | 消息字节 | 详情字节 | 处理轮次 | 闭环 | 失败项 | 主要卡点 | token | 耗时 ms |
@@ -271,3 +271,7 @@
 ### 源码夹具
 
 - deploy/local/jdk17-drill/Drill.java（本地演练应用源码（jdk.CPULoad 采集与压测实现）），sha256 188730d9bbb9cdcad2505614b7aa17474f2e2066dd81eaca329c0885acbd1300
+
+## 未跑的 4 例
+
+tag-group-502、sop-404、health-503、stack-overflow 没有新结果。2026-10-22 14:02 和 14:03 两次最小请求都返回 503，本地代理说当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道。裁判 cpa/gemini-3.8-flash-high 当时可用。没有换回火山或 glm。上表 816 秒是前 3 例耗时合计，不是续跑耗时。续跑没有产生案例 token。

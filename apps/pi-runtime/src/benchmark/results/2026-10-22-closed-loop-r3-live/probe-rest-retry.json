@@ -1,0 +1,29 @@
+{
+  "probedAt": "2026-10-22T06:03:29.809Z",
+  "catalog": "/Users/hejiayuan/.pi/agent",
+  "note": "minimal completeSimple; no runtime api key override; ark key not used",
+  "results": [
+    {
+      "spec": "cpa/deepseek-v4.1-flash",
+      "ok": false,
+      "stopReason": "error",
+      "errorMessage": "503: {\"message\":\"当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道 (request id: 202610221403298729428244qkwl3V6h6576)\",\"type\":\"new_api_error\"}",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "",
+      "latencyMs": 283
+    }
+  ]
+}

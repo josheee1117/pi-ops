@@ -31,7 +31,7 @@ async function probe(label: string, spec: { provider: string; model: string; thi
   };
 }
 
-const diagnosis = await probe('diagnosis', { provider: config.provider, model: config.model, thinkingLevel: config.thinkingLevel });
+const diagnosis = await probe('diagnosis', { provider: config.provider, model: config.model, thinkingLevel: 'off' });
 const payload = {
   probedAt: new Date().toISOString(),
   configHasApiKey: Boolean(config.apiKey),
