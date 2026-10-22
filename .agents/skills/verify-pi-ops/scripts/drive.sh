@@ -8,6 +8,7 @@
 #   ./drive.sh launch   [--no-build] [--keep-data] [--reuse] [--dry-run]
 #   ./drive.sh doctor
 #   ./drive.sh drill    health [--dry-run] [--timeout SECONDS]
+#   ./drive.sh drill    real [--cases W2,B3] [--execute]
 #   ./drive.sh evidence [--dry-run]
 #   ./drive.sh cleanup  [--dry-run] [--keep-data]
 #   ./drive.sh runs
@@ -92,10 +93,15 @@ warnings go to stderr. A failing command exits non-zero after printing
   ./drive.sh launch   [--no-build] [--keep-data] [--reuse] [--dry-run]
   ./drive.sh doctor
   ./drive.sh drill    health [--dry-run] [--timeout SECONDS]
+  ./drive.sh drill    real [--cases W2,B3] [--execute]
   ./drive.sh evidence [--dry-run]
   ./drive.sh cleanup  [--dry-run] [--keep-data]
   ./drive.sh runs
   ./drive.sh help
+
+  drill real runs deploy/local/fault-drills.py with the real model and the
+  pinned WeCom test robot, after hashing the rendered webhook. Without
+  --execute it prints the plan and sends nothing.
 USAGE
 }
 
@@ -422,6 +428,10 @@ PY
 cmd_drill() {
   local scenario=${1:-}
   shift || true
+  if [[ "$scenario" == "real" ]]; then
+    cmd_drill_real "$@"
+    return $?
+  fi
   local dry=0 timeout=240
   while (($# > 0)); do
     case "$1" in
@@ -432,7 +442,7 @@ cmd_drill() {
     shift
   done
   [[ "$scenario" == "health" ]] || die drill "unknown scenario '${scenario:-}'" \
-    "supported scenarios: health  (the WeCom/JDK17 overlay is deliberately not wired in)"
+    "supported scenarios: health, real  (real sends messages to the pinned WeCom test robot; it needs --execute)"
 
   run_load || die drill "no current run" "run: drive.sh launch"
 
@@ -643,6 +653,360 @@ PY
     state="$state" durationSeconds=$((SECONDS - started_at))
 }
 
+# ---------------------------------------------------------------- real drill
+
+# This scenario sends messages to the WeCom test robot, so the case list is
+# fixed here, not free-form: each enabled case has an owner-authorized fault
+# action and an expected Incident type. Adding one is a reviewed change.
+real_case_enabled() {
+  case "$1" in W2 | B3) return 0 ;; *) return 1 ;; esac
+}
+
+real_fault() {
+  case "$1" in
+    W2) printf '%s' 'POST /heap on the drill: allocate and retain memory until the JVM throws OutOfMemoryError: Java heap space (Xmx128m, container 512m)' ;;
+    B3) printf '%s' 'POST /exit-nonzero on the drill: the JVM exits with status 17 and restart=no, so the container stays down' ;;
+  esac
+}
+
+real_expected_incident() {
+  case "$1" in
+    W2) printf 'jvm.oom' ;;
+    B3) printf 'container.die' ;;
+  esac
+}
+
+real_recovery() {
+  case "$1" in
+    W2) printf 'none: no recovery event maps jvm.oom back to healthy, so the Incident stays OPEN (health can return 200 again)' ;;
+    B3) printf 'none: the drill does not restart, and container.die has no recovery event mapping; the Incident stays OPEN' ;;
+  esac
+}
+
+real_stack() { # real_stack <compose args...>; only ever touches project pi-ops-jdk17-local
+  FAULT_CONTAINER=unused FAULT_SERVICE=unused PI_OPS_JDK17_RUN_ID=unused FAULT_HEALTH_TARGETS='[]' \
+    docker compose -p pi-ops-jdk17-local \
+      -f "$ROOT/deploy/local/docker-compose.yml" \
+      -f "$ROOT/deploy/local/docker-compose.jdk17.yml" \
+      -f "$ROOT/deploy/local/docker-compose.fault-drills.yml" \
+      --env-file "$ROOT/deploy/local/compose.env" --env-file "$ROOT/deploy/local/.env.jdk17" "$@"
+}
+
+# These four host ports are what the fault-drills overlay publishes.
+real_check_ports() {
+  local port holder
+  if ! command -v lsof >/dev/null 2>&1; then
+    log "lsof not found: skipping the port preflight"
+    return 0
+  fi
+  for port in 18080 18081 18089 18090; do
+    holder=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR == 2 { print $1 " (pid " $2 ")" }')
+    [[ -z "$holder" ]] && continue
+    die drill.real "host port $port is already taken by $holder" \
+      "the real drill publishes 18080/18081/18089/18090 on 127.0.0.1; stop whatever holds the port, then rerun"
+  done
+}
+
+# Reads the copied artifacts of one group and prints one JSON line per case.
+# Exit status is 0 only when every case has an Incident of the expected type, a
+# COMPLETED session, all notification jobs DELIVERED, and both target receipts
+# match. It does not judge whether the diagnosis is right: that is the reader's
+# job, from the hypothesis and the evidence ids printed here.
+real_summarize() { # real_summarize <copied dir> <case=incidentType ...>
+  local dest=$1
+  shift
+  local lines rc
+  lines=$(python3 - "$dest" "$@" <<'PY'
+import glob, json, os, sys
+
+dest, *expects = sys.argv[1:]
+expected = dict(item.split('=', 1) for item in expects)
+failures = 0
+
+def load(path, default=None):
+    try:
+        with open(path) as handle:
+            return json.load(handle)
+    except Exception:
+        return default
+
+for case in expected:
+    row = {"step": "real.case", "case": case, "ok": False, "expectedIncidentType": expected[case]}
+    copies = sorted(glob.glob(os.path.join(dest, case + '-*')))
+    if not copies:
+        row["error"] = "no copied evidence directory for this case"
+        print(json.dumps(row, ensure_ascii=False))
+        failures += 1
+        continue
+    base = copies[-1]
+    art = os.path.join(base, 'artifacts')
+    result = load(os.path.join(art, 'result.json'), {}) or {}
+    truth = load(os.path.join(base, 'ground-truth.json'), {}) or {}
+    rendered = load(os.path.join(art, 'notification-target-rendered.json'), {}) or {}
+    container = load(os.path.join(art, 'notification-target-container.json'), {}) or {}
+    incidents = load(os.path.join(art, 'settled-incidents.json'), []) or []
+    job_rows = load(os.path.join(base, 'notification-jobs.json'), []) or []
+    sessions, jobs, kinds = [], [], set()
+    for path in sorted(glob.glob(os.path.join(art, 'settled-inc-*-detail.json'))):
+        body = load(path, {}) or {}
+        if isinstance(body.get('body'), str):
+            try:
+                body = json.loads(body['body'])
+            except Exception:
+                continue
+        for session in body.get('sessions') or []:
+            report = session.get('report') or {}
+            diagnosis = report.get('diagnosis') or {}
+            summary = diagnosis.get('summary')
+            sessions.append({
+                "id": session.get('id'),
+                "status": session.get('status'),
+                "confidence": report.get('confidence'),
+                "hypothesis": (report.get('hypothesis') or '')[:500],
+                "supportingEvidenceIds": len(report.get('supportingEvidenceIds') or []),
+                "diagnosisPresent": bool(report.get('diagnosis')),
+                "diagnosisSummary": json.dumps(summary, ensure_ascii=False)[:400] if summary is not None else None,
+                "actions": [a.get('purpose') for a in (diagnosis.get('actions') or [])],
+            })
+        for job in body.get('notifications') or []:
+            jobs.append({"type": job.get('type'), "status": job.get('status')})
+        for item in body.get('evidence') or []:
+            kinds.add(item.get('kind'))
+    row.update({
+        "copiedTo": base,
+        "evidenceDirectory": result.get('evidenceDirectory') or truth.get('runId'),
+        "faultActions": [{"path": a.get('path'), "status": a.get('status')} for a in truth.get('actions') or []],
+        "incidentIds": [i.get('id') for i in incidents],
+        "incidentTypes": [i.get('type') for i in incidents],
+        "incidentStates": [i.get('state') for i in incidents],
+        "sessions": sessions,
+        "evidenceKinds": sorted(k for k in kinds if k),
+        "notifications": jobs,
+        "notificationJobRows": [{"type": r.get('type'), "status": r.get('status'), "attempts": r.get('attempts'),
+                                 "lastError": r.get('last_error'), "deliveredAt": r.get('delivered_at')}
+                                for r in job_rows if 'type' in r],
+        "notificationTarget": {
+            "renderedMatch": rendered.get('match'),
+            "containerMatch": container.get('match'),
+            "kind": rendered.get('kind'),
+            "targetSha256": rendered.get('targetSha256'),
+            "senderStopped": container.get('senderStopped'),
+        },
+        "executionError": result.get('executionError'),
+        "driverResult": {k: result.get(k) for k in
+                         ('discovery', 'collection', 'diagnosis', 'notification', 'recovery', 'settleTimeout')},
+    })
+    delivered = bool(jobs) and all(job.get('status') == 'DELIVERED' for job in jobs)
+    row["checks"] = {
+        "incidentType": expected[case] in row["incidentTypes"],
+        "sessionCompleted": any(s.get('status') == 'COMPLETED' for s in sessions),
+        "allNotificationsDelivered": delivered,
+        "notificationTargetPinned": rendered.get('match') is True and container.get('match') is True,
+        "noExecutionError": not result.get('executionError'),
+    }
+    row["ok"] = all(row["checks"].values())
+    row["judgement"] = ('DELIVERED means the WeCom API returned errcode=0 for the pinned test robot; '
+                        'it does not mean a human saw the message. Read hypothesis and supportingEvidenceIds '
+                        'against the injected fault.')
+    if not row["ok"]:
+        failures += 1
+    print(json.dumps(row, ensure_ascii=False))
+
+sys.exit(0 if failures == 0 else 1)
+PY
+)
+  rc=$?
+  [[ -n "$lines" ]] && printf '%s\n' "$lines" >"$dest/cases.jsonl"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && emit_raw "$line"
+  done <<<"$lines"
+  return "$rc"
+}
+
+# real_collect <group dir> <copy dir> <case=incidentType ...>: copies one group's
+# case artifacts out of the repo, exports the notification job rows, and prints
+# the per-case summary lines. Returns the summary status.
+real_collect() {
+  local group=$1 dest=$2
+  shift 2
+  local gf case_id case_dir case_copy
+  for gf in results.json docker-version.txt git-head.txt jdk-version.txt; do
+    [[ -f "$group/$gf" ]] && cp "$group/$gf" "$dest/" 2>/dev/null
+  done
+  while IFS=$'\t' read -r case_id case_dir; do
+    [[ -n "$case_dir" && -d "$case_dir" ]] || continue
+    case_copy="$dest/$case_id-$(basename "$case_dir")"
+    rsync -a --exclude='*.jfr' --exclude='*.sqlite' --exclude='*-tables.json' --exclude='integration.diff' \
+      "$case_dir/" "$case_copy/" || log "rsync failed for $case_id"
+    # Delivery bookkeeping is not on the operator API: export just the job columns.
+    python3 - "$case_dir/pi-ops/pi-ops.sqlite" "$case_copy/notification-jobs.json" <<'PY'
+import json, os, sqlite3, sys
+
+db, out = sys.argv[1], sys.argv[2]
+rows = []
+if os.path.exists(db):
+    try:
+        conn = sqlite3.connect('file:' + db + '?mode=ro', uri=True)
+        conn.row_factory = sqlite3.Row
+        rows = [dict(row) for row in conn.execute(
+            'SELECT id, type, status, attempts, last_error, created_at, delivered_at '
+            'FROM notification_jobs ORDER BY created_at')]
+        conn.close()
+    except Exception as error:
+        rows = [{'error': type(error).__name__}]
+with open(out, 'w') as handle:
+    json.dump(rows, handle, ensure_ascii=False, indent=2)
+PY
+  done < <(python3 - "$group/results.json" <<'PY'
+import json, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+for row in rows:
+    print('%s\t%s' % (row.get('case'), row.get('evidenceDirectory') or ''))
+PY
+)
+  real_summarize "$dest" "$@"
+}
+
+cmd_drill_real() {
+  local cases=W2,B3 execute=0
+  while (($# > 0)); do
+    case "$1" in
+      --cases) cases=${2:-}; shift ;;
+      --execute) execute=1 ;;
+      --dry-run) execute=0 ;;
+      *) die drill.real "unknown option $1" "run: drive.sh help" ;;
+    esac
+    shift
+  done
+
+  local case_list c
+  case_list=${cases//,/ }
+  [[ -n "$case_list" ]] || die drill.real "--cases needs at least one case" "example: --cases W2,B3"
+  for c in $case_list; do
+    real_case_enabled "$c" || die drill.real "case '$c' is not enabled for the real drill" \
+      "enabled: W2 B3. Another case needs owner authorization, real_fault/real_expected_incident entries, and a note in features/diagnosis.md"
+  done
+
+  local fault_drills="$ROOT/deploy/local/fault-drills.py"
+  [[ -f "$fault_drills" ]] || die drill.real "deploy/local/fault-drills.py is missing" \
+    "this scenario only wraps that script; restore it from git"
+  command -v docker >/dev/null 2>&1 || die drill.real "docker not found" "start Docker/OrbStack"
+  docker info >/dev/null 2>&1 || die drill.real "Docker is not reachable" "start Docker/OrbStack, then rerun"
+  command -v python3 >/dev/null 2>&1 || die drill.real "python3 not found" "fault-drills.py is stdlib Python 3"
+  command -v rsync >/dev/null 2>&1 || die drill.real "rsync not found" \
+    "the drill copies its artifacts out of the repo with rsync"
+
+  local f missing=""
+  for f in .env .env.jdk17 .env.jdk17-models.json; do
+    [[ -f "$ROOT/deploy/local/$f" ]] || missing="$missing $f"
+  done
+  [[ -z "$missing" ]] || die drill.real "missing gitignored credential or model files:$missing" \
+    "ask the repository owner; do not create or paste these values yourself"
+
+  # One stack at a time: the real drill owns the same host ports as the local stack.
+  for f in pi-ops-local pi-ops-jdk17-local; do
+    if [[ -n "$(docker ps -q --filter "label=com.docker.compose.project=$f" 2>/dev/null)" ]]; then
+      die drill.real "compose project $f is running" \
+        "stop it first: the real drill publishes 18080/18081/18089/18090 and runs on fresh data dirs"
+    fi
+  done
+  real_check_ports
+
+  local model model_ok
+  model=${PI_OPS_JDK17_MODEL:-gpt-5.6-sol}
+  model_ok=$(python3 - "$ROOT/deploy/local/.env.jdk17-models.json" "$model" <<'PY'
+import json, sys
+path, want = sys.argv[1], sys.argv[2]
+try:
+    providers = json.load(open(path)).get('providers')
+except Exception:
+    print('false'); sys.exit()
+ids = []
+if isinstance(providers, dict):
+    for provider in providers.values():
+        for entry in (provider or {}).get('models') or []:
+            ids.append(entry.get('id') if isinstance(entry, dict) else entry)
+print('true' if want in ids else 'false')
+PY
+)
+  [[ "$model_ok" == "true" ]] || die drill.real "model $model is not configured in deploy/local/.env.jdk17-models.json" \
+    "set PI_OPS_JDK17_MODEL to a configured model id; a provider 402/429/503 is a stop-and-report, not a reason to switch models"
+
+  RUN_DIR="$EVIDENCE_ROOT/$(date -u +%Y%m%dT%H%M%SZ)-real"
+  local dirty
+  dirty=$(git -C "$ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+  local exec_bool=false
+  (( execute )) && exec_bool=true
+
+  emit drill.real ok=true execute="$exec_bool" run="$RUN_DIR" \
+    driver="deploy/local/fault-drills.py" composeProject=pi-ops-jdk17-local \
+    model="$model" modelConfigured=true dirtyFiles="$dirty" \
+    images="built from the working tree, not from HEAD: $dirty dirty file(s) are included" \
+    notificationTargetNote="fault-drills.py hashes the rendered webhook and compares it with TEST_NOTIFICATION_URL_SHA256; anything but match:true stops before any send, and drive.sh never reads the URL"
+  for c in $case_list; do
+    emit drill.real.plan case="$c" fault="$(real_fault "$c")" expectedIncidentType="$(real_expected_incident "$c")" \
+      recovery="$(real_recovery "$c")" \
+      notifications="INCIDENT_OPEN; INVESTIGATION_COMPLETED only when the report carries a repair action (ADR-0030)"
+  done
+  emit drill.real.plan phase=run action="python3 deploy/local/fault-drills.py --execute --cases $cases --build, one case at a time, fresh data dir per case under deploy/local/data/jdk17/"
+  emit drill.real.plan phase=copy action="copy each case's artifacts (no JFR binaries, no SQLite dumps) into $RUN_DIR/real/"
+  emit drill.real.plan phase=stop action="docker compose -p pi-ops-jdk17-local down --remove-orphans, whatever the outcome"
+
+  if (( execute == 0 )); then
+    emit drill.real ok=true execute=false run="$RUN_DIR" \
+      next="rerun with --execute to run it; nothing was started, nothing will be sent, and no evidence directory was created"
+    return 0
+  fi
+
+  mkdir -p "$RUN_DIR/real"
+  git_meta "$RUN_DIR/git.txt"
+  git -C "$ROOT" status --porcelain >"$RUN_DIR/real/git-dirty.txt" 2>/dev/null || true
+
+  local started=$SECONDS rc=0
+  log "real drill: $case_list with model $model; messages go to the pinned WeCom test robot"
+  log "building the images first, then one case at a time: about 5 to 15 minutes"
+  python3 "$fault_drills" --execute --cases "$cases" --build 2>&1 | tee "$RUN_DIR/fault-drills.log"
+  rc=${PIPESTATUS[0]}
+  log "fault-drills.py exit=$rc after $((SECONDS - started))s"
+
+  local group
+  group=$(grep -m1 '^Evidence group: ' "$RUN_DIR/fault-drills.log" 2>/dev/null | sed 's/^Evidence group: //')
+  if [[ -z "$group" || ! -d "$group" ]]; then
+    group=$(ls -1dt "$ROOT"/deploy/local/data/fault-drills/*/ 2>/dev/null | head -1)
+    group=${group%/}
+  fi
+  [[ -n "$group" && -d "$group" ]] || die drill.real "fault-drills.py left no evidence group" \
+    "read $RUN_DIR/fault-drills.log"
+  printf '%s\n' "$group" >"$RUN_DIR/real/source-group.txt"
+
+  local dest="$RUN_DIR/real"
+  local -a expect_args=()
+  for c in $case_list; do expect_args+=("$c=$(real_expected_incident "$c")"); done
+  local summary_rc=0
+  real_collect "$group" "$dest" "${expect_args[@]}" || summary_rc=$?
+
+  log "stopping compose project pi-ops-jdk17-local"
+  real_stack down --remove-orphans >"$RUN_DIR/real/compose-down.log" 2>&1 ||
+    log "compose down reported an error; see real/compose-down.log"
+  local left left_ok=false
+  left=$(docker ps -aq --filter 'label=com.docker.compose.project=pi-ops-jdk17-local' 2>/dev/null | wc -l | tr -d ' ')
+  [[ "$left" == "0" ]] && left_ok=true
+  emit drill.real.stack ok="$left_ok" containersLeft="$left"
+
+  if (( rc == 0 )) && (( summary_rc == 0 )); then
+    emit drill.real ok=true exitCode="$rc" cases="$cases" run="$RUN_DIR" \
+      durationSeconds=$((SECONDS - started)) \
+      next="read real/cases.jsonl and real/*/artifacts; ask the owner to confirm the WeCom test group saw the messages, the delivered body is not stored"
+    return 0
+  fi
+  emit drill.real ok=false exitCode="$rc" summaryExit="$summary_rc" cases="$cases" run="$RUN_DIR" \
+    next="read $RUN_DIR/real/cases.jsonl, real/source-group.txt and fault-drills.log; a provider 402/429/503 or a refused target is a stop-and-report"
+  return 1
+}
+
 # ---------------------------------------------------------------- evidence
 
 cmd_evidence() {
@@ -780,15 +1144,18 @@ cmd_runs() {
   done
 }
 
-command=${1:-help}
-shift || true
-case "$command" in
-  launch) cmd_launch "$@" ;;
-  doctor) cmd_doctor ;;
-  drill) cmd_drill "$@" ;;
-  evidence) cmd_evidence "$@" ;;
-  cleanup) cmd_cleanup "$@" ;;
-  runs) cmd_runs ;;
-  help | --help | -h) usage ;;
-  *) usage >&2; exit 2 ;;
-esac
+# Sourced (for testing a helper) vs executed: only the executed file dispatches.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  command=${1:-help}
+  shift || true
+  case "$command" in
+    launch) cmd_launch "$@" ;;
+    doctor) cmd_doctor ;;
+    drill) cmd_drill "$@" ;;
+    evidence) cmd_evidence "$@" ;;
+    cleanup) cmd_cleanup "$@" ;;
+    runs) cmd_runs ;;
+    help | --help | -h) usage ;;
+    *) usage >&2; exit 2 ;;
+  esac
+fi

@@ -9,7 +9,7 @@ pi-ops has no web UI. The surface is HTTP: a central agent, one node agent per h
 
 One health fault on the drill container walks the whole chain: node agent probe → `health.failure` Incident → one investigation session in pi-runtime → report back to the center → `INCIDENT_OPEN` and `INCIDENT_RECOVERED` delivered to the local sink.
 
-What this does not prove: model quality (the default stack runs a deterministic FAKE model), delivery to a real WeCom group, remote deployment, or the JDK17/DataAsset overlays. See Gotchas before claiming otherwise.
+The default stack uses a deterministic FAKE model and a local sink. The opt-in `drill real` scenario is the only path that uses a real provider and the pinned WeCom test robot, for two cases (`W2`, `B3`). Neither path proves a broader case matrix, a remote deployment, or the JDK17/DataAsset overlays, and `DELIVERED` never proves a human saw the message. See Gotchas before claiming otherwise.
 
 Every command prints one JSON object per line on stdout and exits non-zero on failure.
 
@@ -52,9 +52,9 @@ Most likely failures and what they mean:
 .agents/skills/verify-pi-ops/scripts/drive.sh drill health
 ```
 
-Scenarios: `health` only. The JDK17/WeCom overlay is deliberately not wired in because it messages a real group.
+Scenarios: `health` and `real`. `health` uses the local stack and the FAKE model. `real` is the opt-in real-model and WeCom path described in the next section.
 
-The run takes about 10 to 30 seconds with the FAKE model and prints these steps:
+The `health` run takes about 10 to 30 seconds with the FAKE model and prints these steps:
 
 | Step | What it did | What proves it worked |
 | --- | --- | --- |
@@ -75,13 +75,54 @@ curl -H 'Authorization: Bearer local-operator-token' http://127.0.0.1:18080/v1/o
 curl -X POST http://127.0.0.1:18088/ok
 ```
 
+## Real drill (opt-in: real model, real WeCom test robot)
+
+```bash
+.agents/skills/verify-pi-ops/scripts/drive.sh drill real --cases W2,B3 --execute
+```
+
+This is the only scenario that talks to a real provider and a real WeCom robot. It does not start the `pi-ops-local` stack and does not use the local sink: it wraps `deploy/local/fault-drills.py`, which runs compose project `pi-ops-jdk17-local` with per-run data under `deploy/local/data/jdk17/`.
+
+Before the sender starts, `fault-drills.py` renders the compose config, hashes `PI_OPS_NOTIFICATION_WEBHOOK_URL`, and compares it with the test-channel digest pinned in its source (`TEST_NOTIFICATION_URL_SHA256`). Anything but `match: true`, with a stopped central agent on a fresh database mount, aborts the case before any send. `drive.sh` never reads the URL. The receipts are written as `notification-target-rendered.json` and `notification-target-container.json` in the case artifacts and carry only the digest.
+
+Without `--execute` it prints the plan and exits; it creates no evidence directory and starts nothing. It refuses any case other than `W2` and `B3`: another case needs owner authorization, an entry in `real_fault`/`real_expected_incident`, and a note in `features/diagnosis.md`.
+
+Preflight, all fatal if not met:
+
+- no container running in project `pi-ops-local` or `pi-ops-jdk17-local`
+- host ports 18080, 18081, 18089, 18090 free, with the holding process named (a foreign listener blocks the compose up)
+- `deploy/local/{.env,.env.jdk17,.env.jdk17-models.json}` present
+- the model named by `PI_OPS_JDK17_MODEL` (default `gpt-5.6-sol`) listed in `.env.jdk17-models.json`
+
+| Case | Injected fault | Expected Incident | Recovery |
+| --- | --- | --- | --- |
+| W2 | `POST /heap`: retain memory until `OutOfMemoryError: Java heap space` (Xmx128m, 512m container) | `jvm.oom` | none: no recovery mapping, the Incident stays OPEN |
+| B3 | `POST /exit-nonzero`: the JVM exits with status 17, `restart: no` | `container.die` | none for the same reason |
+
+One line per case after the run:
+
+| Field | Meaning |
+| --- | --- |
+| `incidentTypes`, `incidentStates` | what the center opened |
+| `sessions[]` | status, confidence, hypothesis, supporting evidence id count, whether the report carried a structured `diagnosis` and its action purposes |
+| `evidenceKinds` | JFR, inspect, logs, stats, host memory |
+| `notifications`, `notificationJobRows` | one job per type with `status`, `attempts`, `lastError` from the jobs table |
+| `notificationTarget` | both receipts, `match: true` required |
+| `checks`, `ok` | expected type, a COMPLETED session, every job DELIVERED, both receipts pinned, no execution error |
+
+`ok` means the chain ran and the robot accepted every message. It does not mean the diagnosis is right: compare `hypothesis` and `supportingEvidenceIds` with the injected fault by hand, as `features/diagnosis.md` describes.
+
+Evidence is copied out of the repo into `~/.cache/verify-evidence/pi-ops/<timestamp>-real/real/<case>-<runId>/`: case artifacts without JFR binaries and SQLite dumps, plus `notification-jobs.json` with the job columns only. `source-group.txt` points at the original group under `deploy/local/data/fault-drills/`. Whatever the outcome, the stack is stopped with `docker compose -p pi-ops-jdk17-local down --remove-orphans` and `drill.real.stack` records the container count left behind.
+
+What it proves: a real provider produced the report, and the pinned test robot returned `errcode=0` for every job of that case. What it does not prove: that a human saw the message (the delivered body is not stored), anything about other cases or repeat stability, recovery (W2 and B3 never recover), or the remote deployment.
+
 ## Evidence
 
 ```bash
 .agents/skills/verify-pi-ops/scripts/drive.sh evidence
 ```
 
-Writes to the run directory printed by `launch`, normally `~/.cache/verify-evidence/pi-ops/<UTC timestamp>/`. `current` in that folder points at the latest run. Files: `incident-detail.json`, `incident-brief.md`, `evidence-safe.json`, `evidence-raw.json`, `notifications-sink.json`, `compose-ps.json`, `logs/<service>.log`, `data/` (SQLite copy), `run-meta.json` (model mode, branch, HEAD, dirty count), `doctor.json`, and a `README.md` index.
+Writes to the run directory printed by `launch`, normally `~/.cache/verify-evidence/pi-ops/<UTC timestamp>/`. `current` in that folder points at the latest run. Real-drill directories are named `<timestamp>-real` and `current` keeps pointing at the last launched local run. Files: `incident-detail.json`, `incident-brief.md`, `evidence-safe.json`, `evidence-raw.json`, `notifications-sink.json`, `compose-ps.json`, `logs/<service>.log`, `data/` (SQLite copy), `run-meta.json` (model mode, branch, HEAD, dirty count), `doctor.json`, and a `README.md` index.
 
 Proof standards for this repo:
 
@@ -104,16 +145,20 @@ Never kill by process name and never use `docker system prune` here: other proje
 
 ## Helpers
 
-`scripts/drive.sh` is the only helper. Subcommands: `launch`, `doctor`, `drill health`, `evidence`, `cleanup`, `runs`, `help`. Every mutating subcommand accepts `--dry-run` where it makes sense.
+`scripts/drive.sh` is the only helper. Subcommands: `launch`, `doctor`, `drill health`, `drill real`, `evidence`, `cleanup`, `runs`, `help`. Every mutating subcommand accepts `--dry-run` where it makes sense.
 
 Overridable environment, for driving a stack started with other ports or tokens: `PI_OPS`, `NODE_URL`, `RUNTIME_URL`, `DRILL`, `SINK`, `OPERATOR`, `NODE_TOKEN`, `RUNTIME_TOKEN`, `EXPECT_NODE_ID`, `PI_OPS_VERIFY_EVIDENCE_ROOT`. Defaults mirror `deploy/local/compose.env`.
 
 ## Gotchas
 
-- **FAKE model by default.** `deploy/local/compose.env` has `PI_OPS_REASONER_TYPE=fake` and pi-runtime starts without credentials, so it runs `createFakeRuntimeModel`. The hypothesis you will see ("memory pressure observed") is generated text, not a diagnosis. Real-model evidence needs a real provider and owner authorization through the JDK17 or `real-pi` overlays, which this skill does not drive.
+- **FAKE model by default.** `deploy/local/compose.env` has `PI_OPS_REASONER_TYPE=fake` and pi-runtime starts without credentials, so it runs `createFakeRuntimeModel`. The hypothesis you will see ("memory pressure observed") is generated text, not a diagnosis. Use `drill real` for real-model evidence; it needs the gitignored credentials and the owner's authorization.
+- **A foreign listener on 18089 blocks the real drill.** 2026-10-22: an orphan `data-asset-starter` JVM from another worktree had held `*:18089` for a week, and `docker run -p 127.0.0.1:18089:8088` failed with `Bind for 0.0.0.0:18089 failed: port is already allocated`. `drive.sh drill real` now dies in the preflight and names the process. Freeing that port is the owner's call: it is not a pi-ops container, and this skill only ever stops compose project `pi-ops-jdk17-local`.
+- **The real drill builds images from the working tree.** `fault-drills.py --build` always runs, so uncommitted files are baked into the image. `dirtyFiles` in the first line and `real/git-dirty.txt` say what was included; another session's work in `apps/agent` can change the brief text you see.
+- **No receipt, no proof.** A real-drill case fails unless both `notification-target-*` receipts exist with `match: true`. Groups from before those receipts existed (for example 2026-10-03) fail closed, even when the jobs say `DELIVERED`.
+- **The local sink is a different path.** `drill real` never posts to `notification-sink`, so sink history (hundreds of items in a long-lived checkout) says nothing about real delivery. Read `notifications` and `notificationJobRows` for the real case.
 - **The sink stores metadata only.** `deploy/local/sink/server.mjs` keeps `notificationId`, `type`, `receivedAt` and the idempotency key, and drops the body. Content proof comes from `GET /v1/ops/incidents/:id/brief?format=markdown`, which uses the same `plainSummary` the WeCom body is built from. Do not claim you inspected the delivered bytes.
 - **ADR-0030 changes what a notification run should expect.** Completing an investigation is not itself a notification; a diagnosis update is sent only for a structured repair action or a new impact fact. `deploy/local/smoke.sh` asserts `INCIDENT_OPEN` and `INCIDENT_RECOVERED` and forbids `INVESTIGATION_COMPLETED` on the FAKE report, which carries no repair action. If smoke sees a diagnosis update there, the notify-on-completion behaviour is back: that is a finding about the chain, not about the smoke. Do not weaken the assertion or edit business code to make smoke pass.
-- **No real WeCom traffic.** `compose.env` points the webhook at `notification-sink`. `drive.sh doctor` fails if that changes. The JDK17 overlay (`deploy/local/.env.jdk17`, `smoke-jdk17.sh`, `fault-drills.py`) needs real credentials, overlaps these ports, and sends to the configured robot: never run it as part of this skill.
+- **No real WeCom traffic on the default stack.** `compose.env` points the webhook at `notification-sink`. `drive.sh doctor` fails if that changes. Only `drill real` uses the JDK17 overlay (`deploy/local/.env.jdk17`, `fault-drills.py`) and its pinned robot; never point `compose.env` at a real group to get notification evidence.
 - **One stack at a time.** Ports and two container names are fixed. Another session editing this repo may want the same stack; ask it before `launch`.
 - **`pnpm start:local` is the foreground equivalent** of `launch` and does not isolate data. It is fine for a human, not for a verification run.
 - **Secrets.** `deploy/local/.env*` and `apps/pi-runtime/src/benchmark/results/**/auth.json` are gitignored credentials. Never read `auth.json`, never paste `.env` values into evidence or a commit.
