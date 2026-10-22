@@ -1,4 +1,5 @@
-import { deterministicSummary } from '@pi-ops/protocol';
+import { deterministicSummary, investigationReportInputSchema } from '@pi-ops/protocol';
+import { readFileSync } from 'node:fs';
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MESSAGE_CASES } from './message-cases.js';
@@ -66,7 +67,49 @@ function report(): RuntimeInvestigationReportInput {
   };
 }
 
-it('runs the real notifier with fake fetch and checks action visibility, bytes, and all diagnosis citations', async () => {
+function savedPlainMessage() {
+  const saved = JSON.parse(readFileSync(new URL('results/2026-10-22-closed-loop/stack-overflow.json', import.meta.url), 'utf8'));
+  return { report: investigationReportInputSchema.parse(saved.result.diagnosis.report), message: String(saved.result.message.content) };
+}
+
+it('accepts a recorded free-text summary with complete actions in the diagnosis', () => {
+  const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow')!;
+  const saved = savedPlainMessage();
+  assert.doesNotMatch(saved.message, /止损：|修复：|验证：/);
+  const evaluation = evaluateMessage(sample.messageOracle!, saved.report, [], sample.evidence, saved.message);
+  assert.equal(evaluation.hardPass, true, JSON.stringify(evaluation));
+});
+
+it('rejects missing mitigation even when the message still recommends stopping loss', () => {
+  const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow')!;
+  const saved = savedPlainMessage();
+  saved.report.diagnosis!.actions = saved.report.diagnosis!.actions.filter((action) => action.purpose !== 'mitigation');
+  const evaluation = evaluateMessage(sample.messageOracle!, saved.report, [], sample.evidence, saved.message);
+  assert.equal(evaluation.hardPass, false);
+  assert.equal(evaluation.checks.mitigationInDiagnosis!.status, 'fail');
+});
+
+it('checks rendered recovery bounds, detail access, and repair or explicit uncertainty', () => {
+  const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow')!;
+  const saved = savedPlainMessage();
+  const evaluate = (message: string) => evaluateMessage(sample.messageOracle!, saved.report, [], sample.evidence, message);
+  for (const message of [
+    saved.message.replace(/\n[123]\. [^\n]+/g, ''),
+    saved.message.replace('\n编号：', '\n4. 多余建议\n编号：'),
+    saved.message.replace('Bearer', 'Basic'),
+    `${saved.message}\n**依据**\n完整异常栈`,
+    'x'.repeat(4001),
+  ]) assert.equal(evaluate(message).hardPass, false, message);
+  saved.report.diagnosis!.actions = saved.report.diagnosis!.actions.filter((action) => action.purpose !== 'repair');
+  assert.equal(evaluate(saved.message).checks.repairOrUnknown!.status, 'fail');
+  assert.equal(evaluate(`${saved.message}\n修复尚未确定。`).hardPass, true);
+  saved.report.diagnosis!.uncertainties.push('修复方案尚未确定，需核对源码。');
+  assert.equal(evaluate(saved.message).hardPass, true);
+  saved.report.diagnosis!.actions = saved.report.diagnosis!.actions.filter((action) => action.purpose !== 'verification');
+  assert.equal(evaluate(saved.message).checks.verificationInDiagnosis!.status, 'fail');
+});
+
+it('runs the real notifier with fake fetch and checks action completeness, bytes, and all diagnosis citations', async () => {
   const sample = MESSAGE_CASES[3]!;
   const output = report();
   const result = await runCase(sample, {
@@ -95,7 +138,7 @@ it('runs the real notifier with fake fetch and checks action visibility, bytes, 
   assert.equal(check.checks.citationsExist!.status, 'fail');
   assert.equal(check.checks.actionsComplete!.status, 'fail');
   assert.equal(check.checks.messageWithinLimit!.status, 'fail');
-  assert.equal(check.checks.mitigationVisible!.status, 'fail');
+  assert.equal(check.checks.recoverySuggestions!.status, 'fail');
   bad.hypothesis = '确认库存不足';
   assert.equal(evaluateMessage(sample.messageOracle!, bad, [], sample.evidence, '').checks.forbiddenAttributionScreen!.status, 'fail');
 });

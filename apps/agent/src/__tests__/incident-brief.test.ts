@@ -65,6 +65,9 @@ it('reads a complete diagnosis through real HTTP after ingress, callback and SQL
     assert.equal(detail.status, 200);
     assert.equal(detail.headers.get('cache-control'), 'no-store');
     const text = await detail.text();
+    assert.match(text, /容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为/);
+    assert.match(text, /没有明确证据前，按真实故障处理/);
+    assert.match(text, /业务影响未确认时先核实，不写[“"]未影响[”"]/);
     for (const expected of [incidentId, '完整诊断', '证据摘要', diagnosis.actions[0]!.operation, diagnosis.actions[0]!.risk]) assert.ok(text.includes(expected), expected);
     const json = await fetch(`${base()}/v1/ops/incidents/${incidentId}/brief`, { headers: { Authorization: 'Bearer operator-token' } });
     assert.deepEqual((await json.json()).reports[0].diagnosis, diagnosis);
