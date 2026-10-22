@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SUMMARY_SEVERITY,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
   type SpecialistFinding,
@@ -16,7 +17,7 @@ import type { MessageOracle } from './message-cases.js';
  * deliberately NOT keyword-matched — it is exported for manual/external review.
  */
 
-export type CheckStatus = 'pass' | 'fail' | 'not_applicable';
+export type CheckStatus = 'pass' | 'fail' | 'warn' | 'not_applicable';
 
 export interface HardCheck {
   status: CheckStatus;
@@ -132,13 +133,33 @@ export function evaluateMessage(
   const recoveryText = /(?:^|\n)恢复建议：\n([\s\S]*?)\n编号：/.exec(message)?.[1] ?? '';
   const recoveryLines = recoveryText.split('\n');
   const recovery = recoveryLines.map((line, index) => line.startsWith(`${index + 1}. `) ? line.slice(3) : '');
+  const severity = report?.diagnosis?.summary?.severity.level;
+  const unavailable = evidence.some((item) => {
+    if (item.status !== 'succeeded' || !item.data || typeof item.data !== 'object') return false;
+    const data = item.data;
+    if (item.kind === 'http.probe' && 'healthy' in data && data.healthy === false) return true;
+    if (item.kind === 'docker.inspect' && 'State' in data && data.State && typeof data.State === 'object') {
+      const state = data.State;
+      return ('Running' in state && state.Running === false) || ('OOMKilled' in state && state.OOMKilled === true)
+        || ('Status' in state && ['exited', 'dead'].includes(String(state.Status)));
+    }
+    if (item.kind === 'jfr.signal') {
+      const types = ['eventType' in data ? data.eventType : undefined, 'semanticType' in data ? data.semanticType : undefined];
+      return types.some((type) => typeof type === 'string' && DEFAULT_SUMMARY_SEVERITY.unavailableTypes.includes(type));
+    }
+    return item.kind === 'docker.logs' && 'lines' in data && Array.isArray(data.lines)
+      && data.lines.some((line: unknown) => typeof line === 'string' && /(?:java\.lang\.)?(?:OutOfMemoryError|StackOverflowError)/.test(line));
+  });
+  const mitigationRequired = unavailable || severity === '严重' || severity === '高'
+    || /(?:^|\n)严重程度：(严重|高)(?:，|,|\s|$)/.test(message);
   const checks = {
     structuredDiagnosis: check(report?.diagnosis ? 'pass' : 'fail'),
     actionsComplete: check(actions.length > 0 && actions.every((action) => [action.target, action.operation, action.expectedResult].every((value) => value.trim().length > 0)) ? 'pass' : 'fail'),
     citationsExist: check(foreign.length === 0 ? 'pass' : 'fail', foreign.join(', ')),
     forbiddenAttributionScreen: check(forbiddenMatches.length === 0 ? 'pass' : 'fail', '固定断言模式筛查，不代表语义上不存在禁止归因。'),
     messageWithinLimit: check(Buffer.byteLength(message) <= 4000 ? 'pass' : 'fail', `${Buffer.byteLength(message)} bytes`),
-    mitigationInDiagnosis: check(purposes.mitigation?.inDiagnosis ? 'pass' : 'fail', '详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。'),
+    mitigationInDiagnosis: check(purposes.mitigation?.inDiagnosis ? 'pass' : mitigationRequired ? 'fail' : 'warn',
+      mitigationRequired ? '服务可能不可用或严重程度为严重/高，详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。' : '未见服务可能不可用且严重程度非严重/高，缺少止损仅作提醒。'),
     repairOrUnknown: check(purposes.repair?.inDiagnosis || repairUnknown ? 'pass' : 'fail', '详情须有修复动作，或消息及诊断明确说明修复尚未确定。'),
     verificationInDiagnosis: check(purposes.verification?.inDiagnosis ? 'pass' : 'fail', '详情 diagnosis.actions 必须包含验证动作。'),
     recoverySuggestions: check(investigationSummarySchema.shape.recovery.safeParse(recovery).success ? 'pass' : 'fail', '消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。'),

@@ -36,7 +36,7 @@ it('renders an honest bounded next step when evidence is insufficient without in
   const original = structuredClone(payload);
   const result = plainSummary(payload);
   assert.match(formatWeComMarkdown(payload), /修复尚未确定/);
-  assert.ok(result.recovery.includes('修复尚未确定：先核对orders，按详情补证动作及其前提采证后确定修复方向。'));
+  assert.ok(result.recovery.includes('修复尚未确定：核对路由。'));
   assert.doesNotMatch(JSON.stringify(result), new RegExp(next));
   assert.equal(result.recovery[0], '经批准隔离持续失败的请求。');
   assert.equal(result.recovery[2], '验证关键业务请求。');
@@ -51,6 +51,41 @@ it('renders an honest bounded next step when evidence is insufficient without in
   diagnosis.actions = [];
   diagnosis.summary!.recovery = ['核对当前影响。'];
   assert.match(plainSummary(payload).recovery.join(''), /修复尚未确定：.*源码.*配置.*契约/);
+});
+
+it('keeps the second suggestion mitigation when merging repair uncertainty into evidence collection', () => {
+  const evidence = '补证：阅读 LabFaultController.java 第25行并核对该路径调用来源与鉴权';
+  const mitigation = '止损：确认不应对外后经审批在网关限制 /auth/lab/ 匿名访问';
+  const verification = '验证：观察窗口内统计该异常是否停止新增并核对容器状态';
+  const payload: NotificationPayload = { ...notification, analysis: {
+    investigationSessionId: 's-1', reasoningResultId: 'r-1', hypothesis: '触发路径待核对。', recommendation: '先补证。', confidence: 0.4,
+    diagnosis: { summary: { ...deterministicSummary(notification.incident), recovery: [evidence, mitigation, verification] },
+      observations: [], candidateCauses: [], uncertainties: [],
+      actions: [
+        { purpose: 'evidence_collection', target: '调用来源与鉴权', preconditions: ['只读'], operation: '读取访问日志。', expectedResult: '确定来源', risk: '只读', requiresApproval: false, evidenceIds: [] },
+        { purpose: 'mitigation', target: '/auth/lab/ 匿名访问', preconditions: ['经审批'], operation: '限制匿名访问。', expectedResult: '停止异常', risk: '可能影响调用', requiresApproval: true, evidenceIds: ['ev-1'] },
+        { purpose: 'verification', target: '异常是否停止新增', preconditions: ['可读日志'], operation: '观察新增异常。', expectedResult: '不再新增', risk: '只读', requiresApproval: false, evidenceIds: ['ev-1'] },
+      ] },
+  } };
+  const original = structuredClone(payload);
+  const result = plainSummary(payload);
+  assert.equal(result.recovery[1], mitigation);
+  assert.ok(formatWeComMarkdown(payload).includes(`2. ${mitigation}`));
+  assert.equal(result.recovery[0], `修复尚未确定：${evidence}`);
+  assert.equal(result.recovery[2], verification);
+  assert.deepEqual(payload, original);
+  const diagnosis = payload.analysis!.diagnosis!;
+  diagnosis.summary!.recovery[0] = `补证：${'读取日志。'.repeat(19)}`;
+  const longEvidence = diagnosis.summary!.recovery[0];
+  const overflow = plainSummary(payload);
+  assert.equal(overflow.recovery[0], longEvidence);
+  assert.equal(overflow.recovery[1], mitigation);
+  assert.match(overflow.recovery[2]!, /^修复尚未确定/);
+  assert.equal(overflow.recovery.length, 3);
+  assert.ok(overflow.recovery.every((line) => line.length <= 100));
+  diagnosis.summary!.recovery = ['联系负责人。', '保留现场。', '继续跟进。'];
+  assert.deepEqual(plainSummary(payload).recovery.slice(0, 2), diagnosis.summary!.recovery.slice(0, 2));
+  assert.match(plainSummary(payload).recovery[2]!, /^修复尚未确定/);
 });
 
 it('uses deterministic copy for old, incomplete and manual-confirmation reports', () => {

@@ -89,6 +89,40 @@ it('rejects missing mitigation even when the message still recommends stopping l
   assert.equal(evaluation.checks.mitigationInDiagnosis!.status, 'fail');
 });
 
+it('warns instead of failing a saved ordinary sop 404 without mitigation', () => {
+  const sample = MESSAGE_CASES.find((item) => item.id === 'sop-404')!;
+  const saved = JSON.parse(readFileSync(new URL('results/2026-10-22-closed-loop/sop-404.json', import.meta.url), 'utf8')).result;
+  const diagnosis = investigationReportInputSchema.parse(saved.diagnosis.report);
+  const evaluation = evaluateMessage(sample.messageOracle!, diagnosis, [], sample.evidence, saved.message.content);
+  assert.equal(evaluation.checks.mitigationInDiagnosis!.status, 'warn');
+  assert.equal(evaluation.hardPass, true, JSON.stringify(evaluation));
+});
+
+it('requires mitigation at high severity and for unavailable evidence even with a general summary', () => {
+  const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow')!;
+  const saved = savedPlainMessage();
+  saved.report.diagnosis!.actions = saved.report.diagnosis!.actions.filter((action) => action.purpose !== 'mitigation');
+  for (const level of ['高', '严重'] as const) {
+    saved.report.diagnosis!.summary!.severity = { level, reason: '关键接口失败。' };
+    assert.equal(evaluateMessage(sample.messageOracle!, saved.report, [], sample.evidence, saved.message).checks.mitigationInDiagnosis!.status, 'fail');
+  }
+  saved.report.diagnosis!.summary!.severity = { level: '一般', reason: '模型未识别不可用风险。' };
+  const generalMessage = saved.message.replace('严重程度：严重', '严重程度：一般');
+  for (const id of ['jvm-heap-oom', 'health-503', 'stack-overflow']) {
+    const unavailable = MESSAGE_CASES.find((item) => item.id === id)!;
+    assert.equal(evaluateMessage(unavailable.messageOracle!, saved.report, [], unavailable.evidence, generalMessage).checks.mitigationInDiagnosis!.status, 'fail', id);
+  }
+});
+
+it('requires mitigation for a rendered high severity or a stopped container even when the model reports general severity', () => {
+  const sample = MESSAGE_CASES.find((item) => item.id === 'sop-404')!;
+  const diagnosis = report();
+  diagnosis.diagnosis!.actions = diagnosis.diagnosis!.actions.filter((action) => action.purpose !== 'mitigation');
+  assert.equal(evaluateMessage(sample.messageOracle!, diagnosis, [], sample.evidence, '严重程度：高，关键接口失败。').checks.mitigationInDiagnosis!.status, 'fail');
+  const stopped = [{ ...sample.evidence[0]!, kind: 'docker.inspect', data: { State: { Running: false, Status: 'exited' } } }];
+  assert.equal(evaluateMessage(sample.messageOracle!, diagnosis, [], stopped, '').checks.mitigationInDiagnosis!.status, 'fail');
+});
+
 it('checks rendered recovery bounds, detail access, and repair or explicit uncertainty', () => {
   const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow')!;
   const saved = savedPlainMessage();
