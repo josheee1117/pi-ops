@@ -7,7 +7,7 @@
  * read-only (the same logs endpoint evidence collection uses).
  */
 import type { OpsEvent } from '@pi-ops/protocol';
-import type { NodeAgentConfig } from '../config.js';
+import { serviceForContainer, type NodeAgentConfig } from '../config.js';
 import type { EventSender } from '../events/sender.js';
 import { decodeDockerLogs, fetchDockerLogs, type DockerLogFetcher } from '../evidence/docker.js';
 import { hasJfrPayload, scanContainerLog, type LogScanSource } from '../events/log-events.js';
@@ -80,7 +80,7 @@ export function createLogDetector(
     // Once a container shows JFR payloads, it reports its own exceptions.
     if (!cursor.instrumented && hasJfrPayload(decoded.lines)) cursor.instrumented = true;
 
-    const source: LogScanSource = { container, nodeId: config.nodeId, service: container };
+    const source: LogScanSource = { container, nodeId: config.nodeId, service: serviceForContainer(config, container) };
     let emitted = 0;
     const activeRecentFatal = new Set(cursor.recentFatal.keys());
     for (const event of scanContainerLog(decoded.lines, source, cursor.instrumented, activeRecentFatal)) {

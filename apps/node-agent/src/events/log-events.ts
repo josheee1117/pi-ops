@@ -39,6 +39,16 @@ const STACK_OVERFLOW_RE = /\bjava\.lang\.StackOverflowError\b/;
 const EXCEPTION_HEAD_RE = /^\s*(?:[\w$]+\.)+[\w$]*(?:Exception|Error)\b/;
 const STACK_FRAME_RE = /^\s+at\s/;
 
+/**
+ * True when a class name sits inside a quoted value, such as a JSON payload
+ * field or a JSON-encoded stack trace. That is data, not a stack head, and
+ * reading it as a head yields an event with no frames.
+ */
+function insideQuotedValue(line: string, index: number): boolean {
+  const before = index > 0 ? line[index - 1] : '';
+  return before === '"' || before === "'";
+}
+
 function stableId(parts: unknown[]): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 }
@@ -253,7 +263,7 @@ export function scanContainerLog(
     if (jfrPayload(line)) continue;
 
     const oom = OOM_RE.exec(line);
-    if (oom) {
+    if (oom && !insideQuotedValue(line, oom.index)) {
       if (fatalFromPayload.has('java.lang.OutOfMemoryError')) continue;
       const message = line.slice(oom.index + oom[0].length).replace(/^\s*[:|-]\s*/, '').trim();
       const stack: string[] = [];
@@ -265,7 +275,7 @@ export function scanContainerLog(
     }
 
     const overflow = STACK_OVERFLOW_RE.exec(line);
-    if (overflow) {
+    if (overflow && !insideQuotedValue(line, overflow.index)) {
       if (fatalFromPayload.has('java.lang.StackOverflowError')) continue;
       const message = line.slice(overflow.index + overflow[0].length).replace(/^\s*[:|-]\s*/, '').trim();
       const stack: string[] = [];

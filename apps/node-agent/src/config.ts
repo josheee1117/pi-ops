@@ -202,6 +202,20 @@ function parseHealthTargets(): HealthTarget[] {
   });
 }
 
+/**
+ * Service identity of a container. The center fingerprints an Incident by
+ * service, so a fault read from a container's logs must carry the service the
+ * container runs, not the container's own name. A health target is the only
+ * place a node declares that binding; without one the container name remains
+ * the identity.
+ */
+export function serviceForContainer(config: NodeAgentConfig, container: string): string {
+  for (const target of config.healthTargets) {
+    if (target.container === container) return target.name;
+  }
+  return container;
+}
+
 export function loadConfig(): NodeAgentConfig {
   const raw = process.env['PI_OPS_ALLOWED_CONTAINERS'] ?? '';
   const allowedContainers = new Set(
