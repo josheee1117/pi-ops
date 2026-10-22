@@ -86,7 +86,7 @@ const REMEDIATION_VOCABULARY = [
 
 export interface MessageEvaluation {
   checks: Record<string, HardCheck>;
-  purposes: Record<string, { inDiagnosis: boolean; inMessage: boolean }>;
+  purposes: Record<string, { inDiagnosis: boolean }>;
   forbiddenMatches: string[];
   degraded: boolean;
   hardPass: boolean;
@@ -123,23 +123,28 @@ export function evaluateMessage(
   const prose = [report?.hypothesis, report?.recommendation, JSON.stringify(report?.diagnosis), message,
     ...findings.flatMap((finding) => [finding.summary, ...finding.hypotheses, JSON.stringify(finding.diagnosis)])].join('\n');
   const forbiddenMatches = oracle.forbiddenClaimPatterns.flatMap((pattern) => prose.match(new RegExp(pattern, 'gi')) ?? []);
-  const labels = { mitigation: '止损', repair: '修复', verification: '验证' };
-  const purposes = Object.fromEntries(Object.entries(labels).map(([purpose, label]) => [purpose, {
+  const purposes = Object.fromEntries(['mitigation', 'repair', 'verification'].map((purpose) => [purpose, {
     inDiagnosis: actions.some((action) => action.purpose === purpose),
-    inMessage: new RegExp(`${label}(?:（需批准）)?：`).test(message),
   }]));
+  const repairUnknown = /修复(?:方案)?(?:尚未确定|未确定|未知|待确认|待核实)/.test([
+    message, report?.recommendation, ...(report?.diagnosis?.uncertainties ?? []),
+  ].join('\n'));
+  const recoveryText = /(?:^|\n)恢复建议：\n([\s\S]*?)\n编号：/.exec(message)?.[1] ?? '';
+  const recoveryLines = recoveryText.split('\n');
+  const recovery = recoveryLines.map((line, index) => line.startsWith(`${index + 1}. `) ? line.slice(3) : '');
   const checks = {
     structuredDiagnosis: check(report?.diagnosis ? 'pass' : 'fail'),
     actionsComplete: check(actions.length > 0 && actions.every((action) => [action.target, action.operation, action.expectedResult].every((value) => value.trim().length > 0)) ? 'pass' : 'fail'),
     citationsExist: check(foreign.length === 0 ? 'pass' : 'fail', foreign.join(', ')),
     forbiddenAttributionScreen: check(forbiddenMatches.length === 0 ? 'pass' : 'fail', '固定断言模式筛查，不代表语义上不存在禁止归因。'),
     messageWithinLimit: check(Buffer.byteLength(message) <= 4000 ? 'pass' : 'fail', `${Buffer.byteLength(message)} bytes`),
-    mitigationVisible: check(purposes.mitigation?.inMessage ? 'pass' : 'fail'),
-    repairOrUnknownVisible: check(purposes.repair?.inMessage || message.includes('修复尚未确定') ? 'pass' : 'fail'),
-    verificationVisible: check(purposes.verification?.inMessage ? 'pass' : 'fail'),
+    mitigationInDiagnosis: check(purposes.mitigation?.inDiagnosis ? 'pass' : 'fail', '详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。'),
+    repairOrUnknown: check(purposes.repair?.inDiagnosis || repairUnknown ? 'pass' : 'fail', '详情须有修复动作，或消息及诊断明确说明修复尚未确定。'),
+    verificationInDiagnosis: check(purposes.verification?.inDiagnosis ? 'pass' : 'fail', '详情 diagnosis.actions 必须包含验证动作。'),
+    recoverySuggestions: check(investigationSummarySchema.shape.recovery.safeParse(recovery).success ? 'pass' : 'fail', '消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。'),
     plainSummary: check(investigationSummarySchema.safeParse(report?.diagnosis?.summary).success ? 'pass' : 'fail'),
     detailAddress: check(/\/v1\/ops\/incidents\/[^\s]+\/brief\?format=markdown/.test(message) && message.includes('Bearer') ? 'pass' : 'fail'),
-    noDetailedSections: check(/\*\*(?:依据|未知|下一步)\*\*|模型自评|\n前提：|\n风险：/.test(message) ? 'fail' : 'pass'),
+    noDetailedSections: check(/\*\*(?:依据|未知|下一步)\*\*|模型自评|\n(?:前提|风险|依据|未知|下一步)：|\n#{1,6} (?:完整诊断|证据摘要|动作)|```/.test(message) ? 'fail' : 'pass'),
     diagnosisComplete: degradedCheck(report),
   };
   return { checks, purposes, forbiddenMatches, degraded: diagnosisIsDegraded(report), hardPass: Object.values(checks).every((item) => item.status !== 'fail') };

@@ -84,7 +84,7 @@ it('rejects missing mitigation even when the message still recommends stopping l
   const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow')!;
   const saved = savedPlainMessage();
   saved.report.diagnosis!.actions = saved.report.diagnosis!.actions.filter((action) => action.purpose !== 'mitigation');
-  const evaluation = evaluateMessage(sample.messageOracle!, saved.report, [], sample.evidence, saved.message);
+  const evaluation = evaluateMessage(sample.messageOracle!, saved.report, [], sample.evidence, `${saved.message}\n止损：经批准隔离流量。`);
   assert.equal(evaluation.hardPass, false);
   assert.equal(evaluation.checks.mitigationInDiagnosis!.status, 'fail');
 });
@@ -97,9 +97,17 @@ it('checks rendered recovery bounds, detail access, and repair or explicit uncer
     saved.message.replace(/\n[123]\. [^\n]+/g, ''),
     saved.message.replace('\n编号：', '\n4. 多余建议\n编号：'),
     saved.message.replace('Bearer', 'Basic'),
+    saved.message.replace('1. ', `1. ${'长'.repeat(101)}`),
     `${saved.message}\n**依据**\n完整异常栈`,
+    `${saved.message}\n## 完整诊断\n详细段落`,
+    `${saved.message}\n依据：详细证据`,
+    `${saved.message}\n\`\`\`json\n{}\n\`\`\``,
+    saved.message.replace('1. ', '2. '),
     'x'.repeat(4001),
   ]) assert.equal(evaluate(message).hardPass, false, message);
+  saved.report.diagnosis!.summary!.scene = '';
+  assert.equal(evaluate(saved.message).checks.plainSummary!.status, 'fail');
+  saved.report.diagnosis!.summary!.scene = '故障场景';
   saved.report.diagnosis!.actions = saved.report.diagnosis!.actions.filter((action) => action.purpose !== 'repair');
   assert.equal(evaluate(saved.message).checks.repairOrUnknown!.status, 'fail');
   assert.equal(evaluate(`${saved.message}\n修复尚未确定。`).hardPass, true);
@@ -149,7 +157,12 @@ it('renders all seven cases in fake mode with bounded summaries and detail links
     const result = await runCase(sample, { model, mode: 'fake', thinkingLevel: 'off' });
     assert.equal(result.status, 'completed', sample.id);
     assert.equal(result.message?.fetchCalls, 1, sample.id);
-    assert.equal(result.messageEvaluation?.hardPass, true, `${sample.id}: ${JSON.stringify(result.messageEvaluation)}`);
+    const checks = result.messageEvaluation!.checks;
+    for (const name of ['plainSummary', 'recoverySuggestions', 'detailAddress', 'noDetailedSections', 'messageWithinLimit']) {
+      assert.equal(checks[name]!.status, 'pass', `${sample.id}: ${name}`);
+    }
+    assert.equal(checks.verificationInDiagnosis!.status, 'fail');
+    assert.equal(result.messageEvaluation?.hardPass, false, 'default fake diagnosis has no verification action');
     assert.equal(model.networkCalls, 0);
     for (const label of ['场景：', '发生了什么：', '严重程度：', '恢复建议：', '编号：', 'http://127.0.0.1:8080/v1/ops/incidents/']) assert.ok(result.message!.content.includes(label), `${sample.id}: ${label}`);
   }
