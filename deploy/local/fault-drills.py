@@ -27,10 +27,18 @@ TEST_NOTIFICATION_URL_SHA256 = '6598344a5e775ded5efaf0455f05854f473409c159ec58df
 INVESTIGATION_ACTIONS = ['analyze', 'alert']
 
 
-def investigation_skipped(decision):
+def expects_session(decision, state=None):
+    if not decision or decision.get('action') is None:
+        return True
+    if state in ('RECOVERED', 'CLOSED'):
+        return False
     action = decision.get('action')
-    return (action is not None and action not in INVESTIGATION_ACTIONS
-            and 'health-binding' not in (decision.get('missing') or []))
+    return (action in INVESTIGATION_ACTIONS
+            or 'health-binding' in (decision.get('missing') or []))
+
+
+def expects_zero_notifications(decision):
+    return (decision or {}).get('action') == 'record' and 'health-binding' not in ((decision or {}).get('missing') or [])
 
 
 def notification_target_receipt(environment):
@@ -315,15 +323,28 @@ class Run:
                 detail = self.api('/v1/ops/incidents/' + incident['id'])
                 sessions = detail.get('sessions', [])
                 if not sessions:
-                    if investigation_skipped(detail.get('notificationDecision') or {}):
-                        # ADR-0030 record-only decisions never get a session; wait for evidence alone.
-                        if any(e['status'] not in ['succeeded', 'failed'] for e in detail.get('evidence', [])):
+                    decision = detail.get('notificationDecision') or {}
+                    state = (detail.get('incident') or incident).get('state')
+                    db = self.path / 'pi-ops/pi-ops.sqlite'
+                    try:
+                        conn = sqlite3.connect('file:' + str(db) + '?mode=ro', uri=True)
+                        try:
+                            jobs = [row[0] for row in conn.execute(
+                                "SELECT state FROM evidence_jobs WHERE incident_id=?",
+                                (incident['id'],),
+                            ).fetchall()]
+                        finally:
+                            conn.close()
+                    except sqlite3.OperationalError:
+                        return False
+                    if not expects_session(decision, state):
+                        # Policy does not expect a session; wait until evidence collection finishes.
+                        if not jobs or any(s not in ('COMPLETED', 'FAILED') for s in jobs):
+                            return False
+                        if any(e.get('status') not in ['succeeded', 'failed'] for e in detail.get('evidence', [])):
                             return False
                     else:
-                        db = self.path / 'pi-ops/pi-ops.sqlite'
-                        with sqlite3.connect('file:' + str(db) + '?mode=ro', uri=True) as conn:
-                            failed_job = conn.execute("SELECT count(*) FROM evidence_jobs WHERE incident_id=? AND state='FAILED'", (incident['id'],)).fetchone()[0]
-                        if not failed_job:
+                        if not any(s == 'FAILED' for s in jobs):
                             return False
                 elif any(s['status'] not in ['COMPLETED', 'FAILED'] for s in sessions):
                     return False
@@ -344,19 +365,21 @@ class Run:
         self.result['collection'] = 'PASS' if ev and all(e['status'] == 'succeeded' for e in ev) else 'GAP'
         sessions = [s for d in details for s in d.get('sessions', [])]
         decisions = [d.get('notificationDecision') or {} for d in details]
+        states = [(d.get('incident') or {}).get('state') for d in details]
         self.result['notificationDecisions'] = [
             {'incidentId': (d.get('incident') or {}).get('id'), 'action': x.get('action'), 'reason': x.get('reason')}
             for d, x in zip(details, decisions)]
-        # Policy chose not to investigate and not to notify, so no session is the expected outcome.
-        no_investigation = bool(details) and all(
-            not d.get('sessions') and investigation_skipped(x) for d, x in zip(details, decisions))
+        no_session_expected = bool(details) and all(
+            not expects_session(x, s) for x, s in zip(decisions, states))
+        zero_notifications_expected = bool(details) and all(
+            expects_zero_notifications(x) for x in decisions)
         # COMPLETED alone is not factual diagnosis acceptance; independent reviewer must score.
         self.result['diagnosis'] = 'NOT_RUN' if not sessions else ('BLOCKED' if any(s['status'] == 'COMPLETED' for s in sessions) else 'FAIL')
-        if no_investigation:
+        if no_session_expected and not sessions:
             self.result['diagnosis'] = 'NOT_EXPECTED'
         self.result['sessionStatuses'] = [s['status'] for s in sessions]
         jobs = [n for d in details for n in d.get('notifications', [])]
-        if no_investigation:
+        if zero_notifications_expected:
             self.result['notification'] = 'PASS' if not jobs else 'FAIL'
         else:
             self.result['notification'] = 'PASS' if jobs and all(n['status'] == 'DELIVERED' for n in jobs) else 'FAIL'

@@ -733,11 +733,20 @@ expected = dict(item.split('=', 1) for item in expects)
 failures = 0
 
 # Mirror investigation-reconciler.ts: only these actions start a session, and a
-# missing health binding overrides the decision. No decision at all proves nothing.
-def investigation_skipped(decision):
+# missing health binding overrides the decision. An incident in RECOVERED/CLOSED
+# never starts a session. No decision at all proves nothing.
+def expects_session(decision, state=None):
+    if not decision or decision.get('action') is None:
+        return True
+    if state in ('RECOVERED', 'CLOSED'):
+        return False
     action = decision.get('action')
-    return (action is not None and action not in ('analyze', 'alert')
-            and 'health-binding' not in (decision.get('missing') or []))
+    return (action in ('analyze', 'alert')
+            or 'health-binding' in (decision.get('missing') or []))
+
+# Only record-like decisions expect zero notifications.
+def expects_zero_notifications(decision):
+    return (decision or {}).get('action') == 'record' and 'health-binding' not in ((decision or {}).get('missing') or [])
 
 def load(path, default=None):
     try:
@@ -771,8 +780,10 @@ for case in expected:
             except Exception:
                 continue
         decision = body.get('notificationDecision') or {}
+        state = (body.get('incident') or {}).get('state')
         decisions.append({'action': decision.get('action'), 'reason': decision.get('reason'),
-                          'expectedSession': not investigation_skipped(decision)})
+                          'expectedSession': expects_session(decision, state),
+                          'expectsZeroNotifications': expects_zero_notifications(decision)})
         for session in body.get('sessions') or []:
             report = session.get('report') or {}
             diagnosis = report.get('diagnosis') or {}
@@ -818,17 +829,18 @@ for case in expected:
     })
     delivered = bool(jobs) and all(job.get('status') == 'DELIVERED' for job in jobs)
     # A record-only case proves the chain by skipping both: no session and no message.
-    no_investigation = bool(decisions) and all(not item['expectedSession'] for item in decisions)
+    no_session_expected = bool(decisions) and all(not item['expectedSession'] for item in decisions)
+    zero_notifications_expected = bool(decisions) and all(item.get('expectsZeroNotifications') for item in decisions)
     row["checks"] = {
         "incidentType": expected[case] in row["incidentTypes"],
-        "sessionCompleted": not sessions if no_investigation else any(s.get('status') == 'COMPLETED' for s in sessions),
-        "allNotificationsDelivered": not jobs if no_investigation else delivered,
+        "sessionCompleted": not sessions if no_session_expected else any(s.get('status') == 'COMPLETED' for s in sessions),
+        "allNotificationsDelivered": not jobs if zero_notifications_expected else delivered,
         "notificationTargetPinned": rendered.get('match') is True and container.get('match') is True,
         "noExecutionError": not result.get('executionError'),
     }
     row["ok"] = all(row["checks"].values())
     row["judgement"] = (('notificationDecisions say record-only, so no session and no message is the expected outcome; '
-                         if no_investigation else
+                         if (no_session_expected and zero_notifications_expected) else
                          'DELIVERED means the WeCom API returned errcode=0 for the pinned test robot; '
                          'it does not mean a human saw the message; ')
                         + 'read hypothesis and supportingEvidenceIds against the injected fault.')

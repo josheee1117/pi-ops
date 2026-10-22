@@ -183,15 +183,23 @@ class FaultDrillsSettleTest(unittest.TestCase):
             'notifications': list(notifications),
         }
 
-    def settle(self, detail, incident_state=None, failed_jobs=0):
+    def settle(self, detail, incident_state=None, failed_jobs=0, job_states=None):
         with tempfile.TemporaryDirectory() as directory, patch.object(drills, 'LOCAL', Path(directory)):
             run = drills.Run('B3', 'unit-only', 0)
             (run.path / 'pi-ops').mkdir()
-            with sqlite3.connect(run.path / 'pi-ops/pi-ops.sqlite') as conn:
+            conn = sqlite3.connect(run.path / 'pi-ops/pi-ops.sqlite')
+            try:
                 conn.execute('CREATE TABLE evidence_jobs (incident_id TEXT, state TEXT)')
-                conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', 'COMPLETED')")
-                for _ in range(failed_jobs):
-                    conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', 'FAILED')")
+                if job_states is not None:
+                    for state in job_states:
+                        conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', ?)", (state,))
+                else:
+                    conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', 'COMPLETED')")
+                    for _ in range(failed_jobs):
+                        conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', 'FAILED')")
+                conn.commit()
+            finally:
+                conn.close()
             incident = {'id': 'inc-b3', 'type': 'container.die', 'state': incident_state or detail['incident']['state']}
             def once(check, seconds=None):
                 if not check():
@@ -248,6 +256,57 @@ class FaultDrillsSettleTest(unittest.TestCase):
         self.assertEqual(result['diagnosis'], 'BLOCKED')
         self.assertEqual(result['notification'], 'PASS')
         self.assertEqual(result['sessionStatuses'], ['COMPLETED'])
+
+    def test_record_decision_with_empty_evidence_and_pending_job_does_not_settle(self):
+        detail = self.detail()
+        detail['evidence'] = []
+        result = self.settle(detail, job_states=['PENDING'])
+        self.assertTrue(result['settleTimeout'])
+
+    def test_record_decision_with_completed_job_settles(self):
+        detail = self.detail()
+        detail['evidence'] = []
+        result = self.settle(detail, job_states=['COMPLETED'])
+        self.assertNotIn('settleTimeout', result)
+        self.assertEqual(result['diagnosis'], 'NOT_EXPECTED')
+        self.assertEqual(result['notification'], 'PASS')
+
+    def test_recovered_incident_with_analyze_does_not_wait_for_session(self):
+        detail = self.detail(action='analyze', reason='sustained-impact-unknown', sessions=())
+        detail['incident']['state'] = 'RECOVERED'
+        result = self.settle(detail, incident_state='RECOVERED', job_states=['COMPLETED'])
+        self.assertNotIn('settleTimeout', result)
+        self.assertEqual(result['diagnosis'], 'NOT_EXPECTED')
+
+    def test_recover_decision_with_delivered_notification_passes(self):
+        job = {'id': 'n1', 'type': 'INCIDENT_RECOVERED', 'status': 'DELIVERED'}
+        detail = self.detail(action='recover', reason='recovered', notifications=[job], sessions=())
+        detail['incident']['state'] = 'RECOVERED'
+        result = self.settle(detail, incident_state='RECOVERED', job_states=['COMPLETED'])
+        self.assertNotIn('settleTimeout', result)
+        self.assertEqual(result['notification'], 'PASS')
+
+
+class PolicyExpectationTest(unittest.TestCase):
+    def test_expects_session(self):
+        self.assertTrue(drills.expects_session(None))
+        self.assertTrue(drills.expects_session({}))
+        self.assertTrue(drills.expects_session({'action': 'alert'}, 'OPEN'))
+        self.assertTrue(drills.expects_session({'action': 'analyze'}, 'OPEN'))
+        self.assertTrue(drills.expects_session({'action': 'record', 'missing': ['health-binding']}, 'OPEN'))
+        self.assertFalse(drills.expects_session({'action': 'record'}, 'OPEN'))
+        self.assertFalse(drills.expects_session({'action': 'analyze'}, 'RECOVERED'))
+        self.assertFalse(drills.expects_session({'action': 'alert'}, 'CLOSED'))
+        self.assertFalse(drills.expects_session({'action': 'recover'}, 'RECOVERED'))
+
+    def test_expects_zero_notifications(self):
+        self.assertTrue(drills.expects_zero_notifications({'action': 'record'}))
+        self.assertFalse(drills.expects_zero_notifications({'action': 'record', 'missing': ['health-binding']}))
+        self.assertFalse(drills.expects_zero_notifications({'action': 'alert'}))
+        self.assertFalse(drills.expects_zero_notifications({'action': 'recover'}))
+        self.assertFalse(drills.expects_zero_notifications({'action': 'analyze'}))
+        self.assertFalse(drills.expects_zero_notifications(None))
+        self.assertFalse(drills.expects_zero_notifications({}))
 
 
 if __name__ == '__main__':
