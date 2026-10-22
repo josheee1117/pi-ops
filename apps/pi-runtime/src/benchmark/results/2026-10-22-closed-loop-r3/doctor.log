@@ -1,0 +1,21 @@
+$ .agents/skills/verify-pi-ops/scripts/drive.sh doctor
+{"step": "doctor.docker", "ok": true, "detail": "reachable"}
+{"step": "doctor.service", "ok": false, "service": "pi-ops", "state": "absent"}
+{"step": "doctor.service", "ok": false, "service": "pi-runtime", "state": "absent"}
+{"step": "doctor.service", "ok": false, "service": "pi-ops-node-agent", "state": "absent"}
+{"step": "doctor.service", "ok": false, "service": "pi-ops-drill", "state": "absent"}
+{"step": "doctor.service", "ok": false, "service": "notification-sink", "state": "absent"}
+{"step": "doctor.containers", "ok": false, "unhealthy": " pi-ops(absent) pi-runtime(absent) pi-ops-node-agent(absent) pi-ops-drill(absent) notification-sink(absent)", "next": "run: drive.sh launch  (rebuilds and restarts the whole stack)"}
+{"step": "doctor.health.pi-ops", "ok": false, "url": "http://127.0.0.1:18080/health", "next": "compose logs pi-ops"}
+{"step": "doctor.health.pi-runtime", "ok": false, "url": "http://127.0.0.1:18090/health", "next": "compose logs pi-runtime"}
+{"step": "doctor.health.node-agent", "ok": false, "url": "http://127.0.0.1:18081/health", "next": "compose logs node-agent"}
+{"step": "doctor.reasoner", "ok": true, "modelMode": "unknown", "note": "runtime did not answer: cannot tell which model runs"}
+{"step": "doctor.operatorAuth", "ok": false, "detail": "operator token rejected or agent down", "next": "check PI_OPS_OPERATOR_TOKEN in deploy/local/compose.env"}
+{"step": "doctor.nodeEvidence", "ok": false, "detail": "node agent refused host.memory query", "next": "compose logs pi-ops-node-agent"}
+{"step": "doctor.sink", "ok": false, "detail": "sink unreachable", "next": "compose logs notification-sink"}
+{"step": "doctor.notificationTarget", "ok": true, "detail": "webhook points at the local sink, not a real group"}
+{"step": "doctor.build", "ok": false, "detail": "image older than the last commit that changed build inputs", "next": "run: drive.sh launch  (rebuilds the image)"}
+{"step": "doctor.worktree", "ok": true, "dirtyFiles": 12, "note": "uncommitted changes: the image may not match any commit"}
+{"step": "doctor", "ok": false, "failures": 8}
+
+exit_code=1

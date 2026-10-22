@@ -1,0 +1,10 @@
+$ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live --case jvm-heap-oom --budget 400000 --out /Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3
+{"mode":"live","configPath":"/Users/hejiayuan/code_me/pi-ops/artifacts/real-dataasset-lab/central/runtime-secrets.env","agentCatalog":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent","modelCatalog":"/Users/hejiayuan/.pi/agent","diagnosis":{"provider":"ark","model":"deepseek-v4.1-flash","thinking":"off"},"handler":{"provider":"cpa","model":"deepseek-flash-latest","thinking":"off"},"judge":{"provider":"cpa","model":"glm-latest","thinking":"off"},"cases":["jvm-heap-oom"],"estimatedTokens":95000,"budget":400000,"out":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3"}
+[pi-runtime] specialist jvm failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist container_host failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[agent] POST /v1/ops/investigations → 200 (5ms)
+[agent] POST /v1/investigation-results → 200 (3ms)
+[agent] GET /v1/ops/incidents/inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5/brief → 200 (1ms)
+{"case":"jvm-heap-oom","verdict":"open","gaps":["handler_no_answer"],"tokens":0,"ms":741,"messageBytes":936,"detailBytes":13312,"turns":3,"handler":"failed","judge":[]}
+
+exit_code=0
