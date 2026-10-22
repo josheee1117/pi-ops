@@ -36,13 +36,14 @@ it('renders an honest bounded next step when evidence is insufficient without in
   const original = structuredClone(payload);
   const result = plainSummary(payload);
   assert.match(formatWeComMarkdown(payload), /修复尚未确定/);
-  assert.ok(result.recovery.includes(`修复尚未确定：${next}`));
+  assert.ok(result.recovery.includes('修复尚未确定：先核对orders，按详情补证动作及其前提采证后确定修复方向。'));
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(next));
   assert.equal(result.recovery[0], '经批准隔离持续失败的请求。');
   assert.equal(result.recovery[2], '验证关键业务请求。');
   assert.equal(result.recovery.length, 3);
   assert.deepEqual(payload, original);
   const diagnosis = payload.analysis!.diagnosis!;
-  diagnosis.actions[0]!.operation = '核对路由与部署契约。'.repeat(30);
+  diagnosis.actions[0]!.target = '核对路由与部署契约。'.repeat(30);
   assert.ok(plainSummary(payload).recovery.every((line) => line.length <= 100));
   diagnosis.summary!.recovery[1] = '修复尚未确定：先核对部署契约。';
   assert.deepEqual(plainSummary(payload).recovery, diagnosis.summary!.recovery);

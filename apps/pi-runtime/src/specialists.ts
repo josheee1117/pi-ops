@@ -28,6 +28,8 @@ export const DIAGNOSIS_CONTRACT = [
   'actions 为 1 至 8 项，每项必须包含 {purpose,target,preconditions,operation,expectedResult,risk,requiresApproval,evidenceIds}。',
   'purpose 只能为 mitigation（止损）、repair（修复）、verification（验证）、evidence_collection（补证）。target 最多 500 字符；preconditions 为 1 至 5 条，每条最多 1000 字符；operation 最多 2000 字符；expectedResult 和 risk 各最多 1000 字符。',
   '所有引用数组最多 20 个 ID。动作引用只能来自当前证据，除补证外至少引用一个。没有可用证据时只提出补证动作，不把待采证据当成已存在。',
+  '证据足以定位修复对象时（如已核实的源码行、配置项或变更），必须给 repair 动作，写清改哪里、修改方向和验证办法；不能只列补证或泛称按根因修复。仅有异常栈行号不等于已确认源码缺陷。',
+  '证据不足以确定修复时，uncertainties 必须说明修复尚未确定的原因；coordinator 的 summary.recovery 必须有一条以「修复尚未确定」开头的建议，写清先做哪一步补证、用什么结果确定修复方向。不要把补证动作标成 repair。',
   '没有已核实的配置值、对应版本源码或接口契约，不得建议改成某个猜测值。修复尚未确定时给具体检查及能区分候选原因的结果分支。',
   '动作要写明对象、执行前提、实际操作、预期结果、风险和是否需要人工批准。重启、发布、扩容、重跑或写入必须 requiresApproval=true，必要时在操作中写回滚要求。这些都是人工建议，不代表系统有执行权限。',
 ].join('\n');
