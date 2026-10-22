@@ -23,10 +23,11 @@
 2. 容器名继续留在 `attributes.containerName`。证据采集按这个属性定位容器（`apps/agent/src/evidence-orchestrator.ts`），所以身份换了，取证目标不变。
 3. `jvm.oom` 的指纹保持**服务级**，不改成容器级。同一服务的多个副本在同一窗口内 OOM 合成一个 Incident，比按容器拆成多条告警更符合 ADR-0030「按故障影响决定通知」的方向；ADR-0030 已经把操作名和健康目标身份纳入指纹，这里补的是**生产者必须先把身份说对**，不是在指纹里加容器维度。
 4. 引用在引号里的类名（JSON 载荷字段、JSON 编码的栈）不算栈头。这类行不产生故障事件，避免同一次 OOM 由一个结构化载荷行再生成一条没有栈帧的事件。
+5. 中央通知事实（`apps/agent/src/notification-stored-facts.ts` 的 `exceptionObservation`）对 docker 来源的 `jvm.oom` / `jvm.stack_overflow` **不比较** `attributes.containerName` 与 `incident.service`。第 1 条把日志事件的 `service` 换成了服务名，容器名与它不同是常态，拿容器名否决就是丢掉整条 OOM 观察，只开日志扫描的部署发生真实 OOM 不再告警，违反 ADR-0030 第 1 条。事件自己声明的 `attributes.service` / `attributes.nodeId` 与 Incident 冲突时仍然否决；容器名只留在属性里给取证用。`container.oom` / `container.die` 的同一检查不变，那两条事件的 `service` 仍然是容器名。
 
 ## Consequences
 
 - 同一个真实故障经两条路径到达时，指纹相同，合并成一个 Incident 和一条首次通知。
 - 只开日志扫描的部署需要在健康目标里声明 `container`，否则服务身份仍是容器名。这是已知边界，不是隐藏行为。
+- 通知事实层里还有一处按「容器名等于服务名」匹配：`notification-stored-facts.ts` 的 docker inspect OOMKilled 分支要求 `evidence.data.Name` 等于 `/${incident.service}`。第 1 条之后这条匹配对日志还原的故障不再命中，OOM 观察只能来自事件本身。仍未修，另议。
 - 应用日志用 JSON 编码把整个栈写在一行（例如 `"stack_trace":"java.lang.OutOfMemoryError: …"`）时，当前识别不出这次 OOM。这类部署要先用同一条校验补一个 JSON 感知的提取器。
-- `EventStore` 通知事实里「容器名等于服务名」的假设（`apps/agent/src/notification-stored-facts.ts` 的 docker inspect OOMKilled 匹配）与本决定不一致，仍未修。

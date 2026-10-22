@@ -191,7 +191,7 @@ function ordinary(source: NotificationObservation['source']): NotificationObserv
 
 function exceptionObservation(incident: IncidentRow, event: OpsEvent): NotificationObservation | undefined {
   const raw = event.attributes;
-  if (event.source === 'docker' && metadataConflicts(incident, raw)) return undefined;
+  if (event.source === 'docker' && identityConflicts(incident, raw)) return undefined;
   const rawFatal = (event.type === 'jvm.oom' && raw.exceptionClass === 'java.lang.OutOfMemoryError')
     || (event.type === 'jvm.stack_overflow' && raw.exceptionClass === 'java.lang.StackOverflowError');
   const fields = rawFatal ? {
@@ -241,7 +241,17 @@ function dockerObservation(id: string, attributes: Record<string, unknown>): Not
 
 function metadataConflicts(incident: IncidentRow, attributes: Record<string, unknown>): boolean {
   return conflicts(attributes.containerName, incident.service)
-    || conflicts(attributes.service, incident.service)
+    || identityConflicts(incident, attributes);
+}
+
+/**
+ * A fault read from container logs carries the service the container runs, and
+ * the container name says nothing about that identity (ADR-0031). The event's
+ * own service and node must still agree with the Incident; the container name
+ * stays available for evidence collection.
+ */
+function identityConflicts(incident: IncidentRow, attributes: Record<string, unknown>): boolean {
+  return conflicts(attributes.service, incident.service)
     || conflicts(attributes.nodeId, incident.node_id);
 }
 
