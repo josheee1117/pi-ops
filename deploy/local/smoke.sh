@@ -93,8 +93,9 @@ sessions = data.get("sessions") or []
 completed = [s for s in sessions if s.get("status") == "COMPLETED"]
 assert len(sessions) == 1, sessions
 assert len(completed) == 1, sessions
+# ADR-0030 decision 3: completing an investigation is not itself a notification.
 notes = [n for n in data.get("notifications") or [] if n.get("type") == "INVESTIGATION_COMPLETED"]
-assert len(notes) == 1, notes
+assert len(notes) == 0, notes
 print("exactly one completed investigation session")
 PY
 
@@ -117,7 +118,21 @@ done
 
 echo "== notifications =="
 detail=$(curl -fsS -H "Authorization: Bearer $OPERATOR" "$PI_OPS/v1/ops/incidents/$incident_id")
-DETAIL="$detail" python3 -c 'import json,os; types={item["type"] for item in json.loads(os.environ["DETAIL"])["notifications"]}; needed={"INCIDENT_OPEN","INVESTIGATION_COMPLETED","INCIDENT_RECOVERED"}; assert needed <= types, types; print("notification types", sorted(types))'
+DETAIL="$detail" python3 - <<'PY'
+import json, os
+# ADR-0030 decision 3: the FAKE report carries no repair action and no new impact
+# fact, so the only notifications are the first alert and the recovery. A
+# diagnosis update appearing here means notify-on-completion came back.
+data = json.loads(os.environ["DETAIL"])
+types = {item["type"] for item in data["notifications"]}
+missing = {"INCIDENT_OPEN", "INCIDENT_RECOVERED"} - types
+unexpected = types & {"INVESTIGATION_COMPLETED"}
+if missing or unexpected:
+    print(json.dumps({"types": sorted(types), "missing": sorted(missing), "unexpected": sorted(unexpected),
+                      "notificationDecision": data.get("notificationDecision")}, ensure_ascii=False, indent=2))
+    raise SystemExit("notification types do not match ADR-0030 decision 3")
+print("notification types", sorted(types))
+PY
 sink=$(curl -fsS "$SINK/notifications")
 SINK_JSON="$sink" python3 -c 'import json,os; items=json.loads(os.environ["SINK_JSON"])["items"]; assert items, "no webhook deliveries";
 [item for item in items if item["idempotencyKey"]==item["notificationId"]];
