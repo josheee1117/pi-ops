@@ -49,13 +49,15 @@ Evidence per case, in the copied artifacts:
 
 `drive.sh` prints `notificationJobRows` so `attempts: 1` and `lastError: null` are visible next to `DELIVERED`. A case is not `ok` when either receipt is missing or not `match: true`.
 
+A record-only case has no jobs at all. B3 decides `record / container-exit-without-oom`, so policy sends nothing; the summary reads `notificationDecisions` and accepts an empty `notifications[]` only there. It flips to `ok: false` if a job appears for a decision that expects none.
+
 What it proves: the center built the message, called the pinned robot, and WeCom answered `errcode=0` within the timeout. What it does not prove: that a human read it, that the group is the one the on-call engineer watches, or what the message looked like. The final check is a person looking at the test group.
 
 ## Gotchas
 
 - **The sink stores metadata only.** `deploy/local/sink/server.mjs` keeps `receivedAt`, `idempotencyKey`, `notificationId`, `type` and discards the body. `DELIVERED` proves the sink accepted the call, not that a human saw a message. Never claim you inspected the delivered WeCom body here.
 - **Never point `compose.env` at a real group.** It targets `notification-sink`; `drive.sh doctor` fails if that changes. The JDK17 overlay reads a real robot from the gitignored `.env.jdk17`; only `drill real` may use it.
-- **Smoke follows ADR-0030.** `deploy/local/smoke.sh` requires `INCIDENT_OPEN` and `INCIDENT_RECOVERED`, and rejects `INVESTIGATION_COMPLETED` for the FAKE report. The real drill may send a diagnosis update for a structured repair action or a new impact fact. Read the report and `notificationDecision` before judging that update.
+- **Smoke follows ADR-0030.** `deploy/local/smoke.sh` requires `INCIDENT_OPEN` and `INCIDENT_RECOVERED`, and rejects `INVESTIGATION_COMPLETED` for the FAKE report. The real drill may send a diagnosis update for a structured repair action or a new impact fact. Read the report and `notificationDecision` before judging that update. B3 is the other direction: a `record` decision means zero messages, and the summary expects zero.
 - **Real delivery never touches the local sink.** `drill real` posts to the pinned robot, so `notifications-sink.json` and the sink's accumulated history say nothing about it. Read `notificationJobRows` and the receipts instead.
 - **One attempt per job.** The fault-drills overlay sets `PI_OPS_NOTIFICATION_JOB_MAX_ATTEMPTS=1`, so a retryable error is not retried. A `FAILED` job with a 429/5xx or `45009` is a stop-and-report result, not something to rerun blindly: rerunning sends more messages to the group.
 - A `FAILED` job with `lastError` about a 4xx will never retry; retryable errors do. `DELIVERED` is written only after HTTP success, and for WeCom also `errcode=0`; the original response body is not persisted, so receipts are indirect.

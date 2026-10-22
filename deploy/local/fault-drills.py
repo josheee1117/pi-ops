@@ -23,6 +23,14 @@ REPEAT = ['W1', 'W2', 'W3', 'B2', 'B3', 'B4', 'F1']
 HEADERS = {'Authorization': 'Bearer local-operator-token'}
 # Owner-confirmed test channel; never accept an ambient/CLI replacement for this pin.
 TEST_NOTIFICATION_URL_SHA256 = '6598344a5e775ded5efaf0455f05854f473409c159ec58dfcbb8fd40ee7876e1'
+# investigation-reconciler.ts starts a session only for these actions (or a missing health-binding).
+INVESTIGATION_ACTIONS = ['analyze', 'alert']
+
+
+def investigation_skipped(decision):
+    action = decision.get('action')
+    return (action is not None and action not in INVESTIGATION_ACTIONS
+            and 'health-binding' not in (decision.get('missing') or []))
 
 
 def notification_target_receipt(environment):
@@ -307,11 +315,16 @@ class Run:
                 detail = self.api('/v1/ops/incidents/' + incident['id'])
                 sessions = detail.get('sessions', [])
                 if not sessions:
-                    db = self.path / 'pi-ops/pi-ops.sqlite'
-                    with sqlite3.connect('file:' + str(db) + '?mode=ro', uri=True) as conn:
-                        failed_job = conn.execute("SELECT count(*) FROM evidence_jobs WHERE incident_id=? AND state='FAILED'", (incident['id'],)).fetchone()[0]
-                    if not failed_job:
-                        return False
+                    if investigation_skipped(detail.get('notificationDecision') or {}):
+                        # ADR-0030 record-only decisions never get a session; wait for evidence alone.
+                        if any(e['status'] not in ['succeeded', 'failed'] for e in detail.get('evidence', [])):
+                            return False
+                    else:
+                        db = self.path / 'pi-ops/pi-ops.sqlite'
+                        with sqlite3.connect('file:' + str(db) + '?mode=ro', uri=True) as conn:
+                            failed_job = conn.execute("SELECT count(*) FROM evidence_jobs WHERE incident_id=? AND state='FAILED'", (incident['id'],)).fetchone()[0]
+                        if not failed_job:
+                            return False
                 elif any(s['status'] not in ['COMPLETED', 'FAILED'] for s in sessions):
                     return False
                 if any(n['status'] not in ['DELIVERED', 'FAILED'] for n in detail.get('notifications', [])):
@@ -330,11 +343,23 @@ class Run:
         ev = [e for d in details for e in d.get('evidence', [])]
         self.result['collection'] = 'PASS' if ev and all(e['status'] == 'succeeded' for e in ev) else 'GAP'
         sessions = [s for d in details for s in d.get('sessions', [])]
+        decisions = [d.get('notificationDecision') or {} for d in details]
+        self.result['notificationDecisions'] = [
+            {'incidentId': (d.get('incident') or {}).get('id'), 'action': x.get('action'), 'reason': x.get('reason')}
+            for d, x in zip(details, decisions)]
+        # Policy chose not to investigate and not to notify, so no session is the expected outcome.
+        no_investigation = bool(details) and all(
+            not d.get('sessions') and investigation_skipped(x) for d, x in zip(details, decisions))
         # COMPLETED alone is not factual diagnosis acceptance; independent reviewer must score.
         self.result['diagnosis'] = 'NOT_RUN' if not sessions else ('BLOCKED' if any(s['status'] == 'COMPLETED' for s in sessions) else 'FAIL')
+        if no_investigation:
+            self.result['diagnosis'] = 'NOT_EXPECTED'
         self.result['sessionStatuses'] = [s['status'] for s in sessions]
         jobs = [n for d in details for n in d.get('notifications', [])]
-        self.result['notification'] = 'PASS' if jobs and all(n['status'] == 'DELIVERED' for n in jobs) else 'FAIL'
+        if no_investigation:
+            self.result['notification'] = 'PASS' if not jobs else 'FAIL'
+        else:
+            self.result['notification'] = 'PASS' if jobs and all(n['status'] == 'DELIVERED' for n in jobs) else 'FAIL'
         self.result['notificationJobs'] = [{'id': n['id'], 'type': n['type'], 'status': n['status']} for n in jobs]
 
     def execute(self):

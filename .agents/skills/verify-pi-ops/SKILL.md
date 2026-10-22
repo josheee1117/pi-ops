@@ -104,22 +104,25 @@ Preflight, all fatal if not met:
 | W2 | `POST /heap`: retain memory until `OutOfMemoryError: Java heap space` (Xmx128m, 512m container) | `jvm.oom` | none: no recovery mapping, the Incident stays OPEN |
 | B3 | `POST /exit-nonzero`: the JVM exits with status 17, `restart: no` | `container.die` | none for the same reason |
 
+B3 is a record-only case. Policy decides `record / container-exit-without-oom`, so neither a session nor a message is expected: `fault-drills.py` settles as soon as the evidence jobs finish, writes `diagnosis: NOT_EXPECTED` with the decision's `action`/`reason`, and passes `notification` only when nothing was sent.
+
 One line per case after the run:
 
 | Field | Meaning |
 | --- | --- |
 | `incidentTypes`, `incidentStates` | what the center opened |
 | `sessions[]` | status, confidence, hypothesis, supporting evidence id count, whether the report carried a structured `diagnosis` and its action purposes |
+| `notificationDecisions` | per Incident `action`, `reason`, and whether a session is expected at all |
 | `evidenceKinds` | JFR, inspect, logs, stats, host memory |
 | `notifications`, `notificationJobRows` | one job per type with `status`, `attempts`, `lastError` from the jobs table |
 | `notificationTarget` | both receipts, `match: true` required |
-| `checks`, `ok` | expected type, a COMPLETED session, every job DELIVERED, both receipts pinned, no execution error |
+| `checks`, `ok` | expected type, session and message outcome matching `notificationDecisions` (a record-only case expects zero of both), both receipts pinned, no execution error |
 
-`ok` means the chain ran and the robot accepted every message. It does not mean the diagnosis is right: compare `hypothesis` and `supportingEvidenceIds` with the injected fault by hand, as `features/diagnosis.md` describes.
+`ok` means the chain ran and, for a notifying case, the robot accepted every message. It does not mean the diagnosis is right: compare `hypothesis` and `supportingEvidenceIds` with the injected fault by hand, as `features/diagnosis.md` describes. For a record-only case `ok` means the decision, the missing session and the empty queue agreed.
 
 Evidence is copied out of the repo into `~/.cache/verify-evidence/pi-ops/<timestamp>-real/real/<case>-<runId>/`: case artifacts without JFR binaries and SQLite dumps, plus `notification-jobs.json` with the job columns only. `source-group.txt` points at the original group under `deploy/local/data/fault-drills/`. Whatever the outcome, the stack is stopped with `docker compose -p pi-ops-jdk17-local down --remove-orphans` and `drill.real.stack` records the container count left behind.
 
-What it proves: a real provider produced the report, and the pinned test robot returned `errcode=0` for every job of that case. What it does not prove: that a human saw the message (the delivered body is not stored), anything about other cases or repeat stability, recovery (W2 and B3 never recover), or the remote deployment.
+What it proves: a real provider produced the report, and the pinned test robot returned `errcode=0` for every job of that case. For B3 it proves the other outcome: policy decided neither to investigate nor to notify, and nothing was sent. What it does not prove: that a human saw the message (the delivered body is not stored), anything about other cases or repeat stability, recovery (W2 and B3 never recover), or the remote deployment.
 
 ## Evidence
 
@@ -158,7 +161,7 @@ Overridable environment, for driving a stack started with other ports or tokens:
 
 - **FAKE model by default.** `deploy/local/compose.env` has `PI_OPS_REASONER_TYPE=fake` and pi-runtime starts without credentials, so it runs `createFakeRuntimeModel`. The hypothesis you will see ("memory pressure observed") is generated text, not a diagnosis. Use `drill real` for real-model evidence; it needs the gitignored credentials and the owner's authorization.
 - **A foreign listener on 18089 blocks the real drill.** 2026-10-22: an orphan `data-asset-starter` JVM from another worktree had held `*:18089` for a week, and `docker run -p 127.0.0.1:18089:8088` failed with `Bind for 0.0.0.0:18089 failed: port is already allocated`. `drive.sh drill real` now dies in the preflight and names the process. Freeing that port is the owner's call: it is not a pi-ops container, and this skill only ever stops compose project `pi-ops-jdk17-local`.
-- **B3 may stop at policy, before the model.** On 2026-10-22 at HEAD `083ff53`, the process exited 17 and inspect/logs succeeded, but `notificationDecision` was `record` with reason `container-exit-without-oom`. The reconciler skips that decision, so there was no session or notification. The driver timed out after 330s and failed. Report the blocked diagnosis/delivery goal with that decision; keep the driver's checks and do not change business policy just to pass.
+- **B3 stops at policy, before the model, and that is the expected outcome.** On 2026-10-22 at HEAD `083ff53`, the process exited 17 and inspect/logs succeeded, but `notificationDecision` was `record` with reason `container-exit-without-oom`. `apps/agent/src/investigation-reconciler.ts` starts a session only for `analyze`/`alert` (or a missing `health-binding`), so there was no session and no notification. `fault-drills.py` used to wait 330s for a session that policy would never create and then failed the case; it now settles on the evidence and judges `diagnosis: NOT_EXPECTED` with `notification: PASS` while zero messages went out. A message in a record-only case is still a failure. Do not change business policy to make a case pass.
 - **One W2 action can produce two Incidents.** The same 2026-10-22 run produced one `jvm.oom` for `order-service-本地演练-<runId>` and another for `order-local-drill-<runId>`. Both cited the same container and OOME, completed diagnosis, and sent an `INCIDENT_OPEN`. Compare service names and evidence before treating them as two independent faults. The driver's `ok` does not check duplicate Incidents.
 - **The real drill builds images from the working tree.** `fault-drills.py --build` always runs, so uncommitted files are baked into the image. `dirtyFiles` in the first line and `real/git-dirty.txt` say what was included; another session's work in `apps/agent` can change the brief text you see.
 - **No receipt, no proof.** A real-drill case fails unless both `notification-target-*` receipts exist with `match: true`. Groups from before those receipts existed (for example 2026-10-03) fail closed, even when the jobs say `DELIVERED`.

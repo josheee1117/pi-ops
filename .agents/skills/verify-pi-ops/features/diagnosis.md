@@ -31,12 +31,14 @@ Follow the single-case commands and provider-error gate in `../SKILL.md`, under 
 
 This runs the real provider through `deploy/local/fault-drills.py` and prints, per case, `sessions[].hypothesis`, `confidence`, the diagnosis summary and action purposes, and how many evidence ids the report cited. The full report and every collected evidence item are in the copied `artifacts/settled-<incident>-detail.json`.
 
-The 2026-10-22 run at HEAD `083ff53` completed two W2 sessions in about 258s and 253s. B3 had no session because policy chose `record / container-exit-without-oom`. The earlier W2/B3 timings of 35s/19s predate that policy result and do not predict this run.
+The 2026-10-22 run at HEAD `083ff53` completed two W2 sessions in about 258s and 253s. B3 had no session because policy chose `record / container-exit-without-oom`; that is B3's expected outcome, so the driver records `diagnosis: NOT_EXPECTED` with the decision's `action`/`reason` instead of waiting for a session that policy never starts. The earlier W2/B3 timings of 35s/19s predate that policy result and do not predict this run.
 
 | Case | Injected fault (the expected root cause) | Evidence the runtime can reach |
 | --- | --- | --- |
 | W2 | heap exhausted by the drill's own retention until `OutOfMemoryError: Java heap space` | JFR signal, docker inspect, logs, stats, host memory |
 | B3 | the drill JVM exits with status 17, container stays down | docker inspect and logs were collected; record-only policy prevented model submission |
+
+For B3, "no report" is the passing outcome, and the check is the decision itself: read `notificationDecisions[0].action`/`reason` in the case line and confirm no session was created (`apps/agent/src/investigation-reconciler.ts` only starts one for `analyze`/`alert`, or when `health-binding` is missing). A session or a message in a record-only case is the finding.
 
 Judge the report against the injected fault, not against polished wording:
 

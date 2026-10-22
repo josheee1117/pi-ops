@@ -8,6 +8,7 @@ from unittest.mock import patch
 import json
 import hashlib
 import re
+import sqlite3
 from types import SimpleNamespace
 
 spec = importlib.util.spec_from_file_location('fault_drills', Path(__file__).with_name('fault-drills.py'))
@@ -165,6 +166,88 @@ class FaultDrillsConfigurationTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'stopped immediately'):
                     run.check_b4_bounds({'notifications': [{'type': 'INCIDENT_OPEN'}, {'type': 'INCIDENT_OPEN'}]})
                 compose.assert_called_once_with('stop', '--timeout', '0', 'pi-ops', 'pi-ops-node-agent', 'pi-runtime', check=False)
+
+
+class FaultDrillsSettleTest(unittest.TestCase):
+    """Settle and result judgement against the 2026-10-22 B3 detail JSON shape (offline)."""
+
+    def detail(self, action='record', reason='container-exit-without-oom', missing=(), evidence='succeeded',
+               sessions=(), notifications=()):
+        return {
+            'incident': {'id': 'inc-b3', 'type': 'container.die', 'state': 'OPEN'},
+            'evidence': [{'id': 'e' + str(i), 'kind': kind, 'status': evidence}
+                         for i, kind in enumerate(['docker.inspect', 'docker.logs'])],
+            'sessions': list(sessions),
+            'notificationDecision': {'policyVersion': 1, 'evaluatedAt': '2026-10-22T02:37:14.877Z', 'action': action,
+                                     'reason': reason, 'missing': list(missing), 'valueKeys': []},
+            'notifications': list(notifications),
+        }
+
+    def settle(self, detail, incident_state=None, failed_jobs=0):
+        with tempfile.TemporaryDirectory() as directory, patch.object(drills, 'LOCAL', Path(directory)):
+            run = drills.Run('B3', 'unit-only', 0)
+            (run.path / 'pi-ops').mkdir()
+            with sqlite3.connect(run.path / 'pi-ops/pi-ops.sqlite') as conn:
+                conn.execute('CREATE TABLE evidence_jobs (incident_id TEXT, state TEXT)')
+                conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', 'COMPLETED')")
+                for _ in range(failed_jobs):
+                    conn.execute("INSERT INTO evidence_jobs VALUES ('inc-b3', 'FAILED')")
+            incident = {'id': 'inc-b3', 'type': 'container.die', 'state': incident_state or detail['incident']['state']}
+            def once(check, seconds=None):
+                if not check():
+                    raise TimeoutError('unit-only: not settled on the first check')
+            with patch.object(run, 'incidents', return_value=[incident]), \
+                 patch.object(run, 'api', return_value=detail), \
+                 patch.object(run, 'snapshot'), \
+                 patch.object(drills, 'until', side_effect=once):
+                run.settle()
+            return run.result
+
+    def test_record_decision_settles_without_a_session(self):
+        result = self.settle(self.detail())
+        self.assertNotIn('settleTimeout', result)
+        self.assertEqual(result['diagnosis'], 'NOT_EXPECTED')
+        self.assertEqual(result['notification'], 'PASS')
+        self.assertEqual(result['sessionStatuses'], [])
+        self.assertEqual(result['notificationDecisions'],
+                         [{'incidentId': 'inc-b3', 'action': 'record', 'reason': 'container-exit-without-oom'}])
+
+    def test_record_decision_waits_for_unfinished_evidence(self):
+        result = self.settle(self.detail(evidence='pending'))
+        self.assertTrue(result['settleTimeout'])
+        self.assertEqual(result['diagnosis'], 'NOT_EXPECTED')
+
+    def test_record_decision_with_a_notification_fails(self):
+        job = {'id': 'n1', 'type': 'INCIDENT_OPEN', 'status': 'DELIVERED'}
+        result = self.settle(self.detail(notifications=[job]))
+        self.assertEqual(result['notification'], 'FAIL')
+
+    def test_missing_health_binding_still_waits_for_the_session(self):
+        result = self.settle(self.detail(reason='health-binding-missing', missing=['health-binding']))
+        self.assertTrue(result['settleTimeout'])
+        self.assertEqual(result['diagnosis'], 'NOT_RUN')
+        self.assertEqual(result['notification'], 'FAIL')
+
+    def test_investigated_case_keeps_waiting_for_a_session(self):
+        result = self.settle(self.detail(action='analyze', reason='sustained-impact-unknown'))
+        self.assertTrue(result['settleTimeout'])
+        self.assertEqual(result['diagnosis'], 'NOT_RUN')
+
+    def test_missing_decision_is_not_treated_as_record(self):
+        detail = self.detail()
+        del detail['notificationDecision']
+        result = self.settle(detail)
+        self.assertTrue(result['settleTimeout'])
+        self.assertEqual(result['diagnosis'], 'NOT_RUN')
+
+    def test_completed_session_keeps_the_existing_judgement(self):
+        job = {'id': 'n1', 'type': 'INCIDENT_OPEN', 'status': 'DELIVERED'}
+        result = self.settle(self.detail(action='alert', reason='jvm-oome',
+                                        sessions=[{'id': 's1', 'status': 'COMPLETED'}], notifications=[job]))
+        self.assertNotIn('settleTimeout', result)
+        self.assertEqual(result['diagnosis'], 'BLOCKED')
+        self.assertEqual(result['notification'], 'PASS')
+        self.assertEqual(result['sessionStatuses'], ['COMPLETED'])
 
 
 if __name__ == '__main__':

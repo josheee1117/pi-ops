@@ -683,6 +683,13 @@ real_recovery() {
   esac
 }
 
+real_notifications() {
+  case "$1" in
+    W2) printf '%s' 'INCIDENT_OPEN; INVESTIGATION_COMPLETED only when the report carries a repair action (ADR-0030)' ;;
+    B3) printf '%s' 'none: container.die decides record / container-exit-without-oom, so policy starts no session and sends no message' ;;
+  esac
+}
+
 real_stack() { # real_stack <compose args...>; only ever touches project pi-ops-jdk17-local
   FAULT_CONTAINER=unused FAULT_SERVICE=unused PI_OPS_JDK17_RUN_ID=unused FAULT_HEALTH_TARGETS='[]' \
     docker compose -p pi-ops-jdk17-local \
@@ -708,10 +715,12 @@ real_check_ports() {
 }
 
 # Reads the copied artifacts of one group and prints one JSON line per case.
-# Exit status is 0 only when every case has an Incident of the expected type, a
-# COMPLETED session, all notification jobs DELIVERED, and both target receipts
-# match. It does not judge whether the diagnosis is right: that is the reader's
-# job, from the hypothesis and the evidence ids printed here.
+# Exit status is 0 only when every case has an Incident of the expected type,
+# the investigation and notification outcomes match the Incident's own
+# notificationDecision (a record-only decision expects neither), both target
+# receipts match, and nothing errored. It does not judge whether the diagnosis
+# is right: that is the reader's job, from the hypothesis and the evidence ids
+# printed here.
 real_summarize() { # real_summarize <copied dir> <case=incidentType ...>
   local dest=$1
   shift
@@ -722,6 +731,13 @@ import glob, json, os, sys
 dest, *expects = sys.argv[1:]
 expected = dict(item.split('=', 1) for item in expects)
 failures = 0
+
+# Mirror investigation-reconciler.ts: only these actions start a session, and a
+# missing health binding overrides the decision. No decision at all proves nothing.
+def investigation_skipped(decision):
+    action = decision.get('action')
+    return (action is not None and action not in ('analyze', 'alert')
+            and 'health-binding' not in (decision.get('missing') or []))
 
 def load(path, default=None):
     try:
@@ -746,7 +762,7 @@ for case in expected:
     container = load(os.path.join(art, 'notification-target-container.json'), {}) or {}
     incidents = load(os.path.join(art, 'settled-incidents.json'), []) or []
     job_rows = load(os.path.join(base, 'notification-jobs.json'), []) or []
-    sessions, jobs, kinds = [], [], set()
+    sessions, jobs, kinds, decisions = [], [], set(), []
     for path in sorted(glob.glob(os.path.join(art, 'settled-inc-*-detail.json'))):
         body = load(path, {}) or {}
         if isinstance(body.get('body'), str):
@@ -754,6 +770,9 @@ for case in expected:
                 body = json.loads(body['body'])
             except Exception:
                 continue
+        decision = body.get('notificationDecision') or {}
+        decisions.append({'action': decision.get('action'), 'reason': decision.get('reason'),
+                          'expectedSession': not investigation_skipped(decision)})
         for session in body.get('sessions') or []:
             report = session.get('report') or {}
             diagnosis = report.get('diagnosis') or {}
@@ -780,6 +799,7 @@ for case in expected:
         "incidentTypes": [i.get('type') for i in incidents],
         "incidentStates": [i.get('state') for i in incidents],
         "sessions": sessions,
+        "notificationDecisions": decisions,
         "evidenceKinds": sorted(k for k in kinds if k),
         "notifications": jobs,
         "notificationJobRows": [{"type": r.get('type'), "status": r.get('status'), "attempts": r.get('attempts'),
@@ -797,17 +817,21 @@ for case in expected:
                          ('discovery', 'collection', 'diagnosis', 'notification', 'recovery', 'settleTimeout')},
     })
     delivered = bool(jobs) and all(job.get('status') == 'DELIVERED' for job in jobs)
+    # A record-only case proves the chain by skipping both: no session and no message.
+    no_investigation = bool(decisions) and all(not item['expectedSession'] for item in decisions)
     row["checks"] = {
         "incidentType": expected[case] in row["incidentTypes"],
-        "sessionCompleted": any(s.get('status') == 'COMPLETED' for s in sessions),
-        "allNotificationsDelivered": delivered,
+        "sessionCompleted": not sessions if no_investigation else any(s.get('status') == 'COMPLETED' for s in sessions),
+        "allNotificationsDelivered": not jobs if no_investigation else delivered,
         "notificationTargetPinned": rendered.get('match') is True and container.get('match') is True,
         "noExecutionError": not result.get('executionError'),
     }
     row["ok"] = all(row["checks"].values())
-    row["judgement"] = ('DELIVERED means the WeCom API returned errcode=0 for the pinned test robot; '
-                        'it does not mean a human saw the message. Read hypothesis and supportingEvidenceIds '
-                        'against the injected fault.')
+    row["judgement"] = (('notificationDecisions say record-only, so no session and no message is the expected outcome; '
+                         if no_investigation else
+                         'DELIVERED means the WeCom API returned errcode=0 for the pinned test robot; '
+                         'it does not mean a human saw the message; ')
+                        + 'read hypothesis and supportingEvidenceIds against the injected fault.')
     if not row["ok"]:
         failures += 1
     print(json.dumps(row, ensure_ascii=False))
@@ -949,7 +973,7 @@ PY
   for c in $case_list; do
     emit drill.real.plan case="$c" fault="$(real_fault "$c")" expectedIncidentType="$(real_expected_incident "$c")" \
       recovery="$(real_recovery "$c")" \
-      notifications="INCIDENT_OPEN; INVESTIGATION_COMPLETED only when the report carries a repair action (ADR-0030)"
+      notifications="$(real_notifications "$c")"
   done
   emit drill.real.plan phase=run action="python3 deploy/local/fault-drills.py --execute --cases $cases --build, one case at a time, fresh data dir per case under deploy/local/data/jdk17/"
   emit drill.real.plan phase=copy action="copy each case's artifacts (no JFR binaries, no SQLite dumps) into $RUN_DIR/real/"
