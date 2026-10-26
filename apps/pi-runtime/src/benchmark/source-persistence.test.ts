@@ -57,6 +57,13 @@ it('writes closed-loop CLI artifacts without source bodies and keeps the repair 
   }
 });
 
+it('removes source annotations when a model changes their whitespace or quote style', async () => {
+  const snippet = { kind: 'source.snippet', data: { text: '@Profile("real-dataasset-lab")\n@ConditionalOnProperty(prefix = "lab.fault", name = "enabled")' } };
+  const result = await withoutSourceSnippetBodies({ text: '条件 @Profile(real-dataasset-lab) 与 @ConditionalOnProperty(prefix="lab.fault", name="enabled")。' }, [snippet]);
+  assert.doesNotMatch(result.text, /@Profile\(|@ConditionalOnProperty\(/);
+  assert.match(result.text, /source omitted/);
+});
+
 it('does not persist source bodies echoed by a model', async () => {
   const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow');
   assert.ok(sample);

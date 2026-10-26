@@ -55,10 +55,14 @@ export async function projectCase(benchmarkCase: BenchmarkCase): Promise<Runtime
 export async function withoutSourceSnippetBodies<T>(value: T, evidence: readonly unknown[] = []): Promise<T> {
   const { withoutSourceSnippetText } = await agentModule('incident-context');
   const bodies = new Set<string>();
+  const annotations = new Set<string>();
   const collect = (item: unknown): void => {
     if (!item || typeof item !== 'object') return;
     if ('kind' in item && item.kind === 'source.snippet' && 'data' in item
       && item.data && typeof item.data === 'object' && 'text' in item.data && typeof item.data.text === 'string') {
+      for (const match of item.data.text.matchAll(/@[\w.]+\s*\(/g)) {
+        annotations.add(match[0].replace(/\s*\($/, ''));
+      }
       for (const line of item.data.text.split('\n').map((line) => line.trim()).filter((line) => line.length >= 4)) {
         bodies.add(line);
         bodies.add(JSON.stringify(line).slice(1, -1));
@@ -75,6 +79,10 @@ export async function withoutSourceSnippetBodies<T>(value: T, evidence: readonly
     if (typeof item === 'string') {
       let text = item;
       for (const body of bodies) text = text.split(body).join('[source omitted]');
+      for (const annotation of annotations) {
+        const name = annotation.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        text = text.replace(new RegExp(`${name}\\s*\\([^)]*\\)`, 'g'), '[source omitted]');
+      }
       return text;
     }
     return item;
