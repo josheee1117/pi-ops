@@ -19,8 +19,8 @@ export function readModelConfig(path: string) {
   return { provider, model, thinkingLevel: parseThinkingLevel(env['PI_OPS_PI_THINKING_LEVEL']), apiKey: env['PI_OPS_PI_API_KEY'] };
 }
 
-async function main() {
-  const args = process.argv.slice(2).filter((arg) => arg !== '--');
+export async function main(argv: string[] = process.argv.slice(2)) {
+  const args = argv.filter((arg) => arg !== '--');
   const value = (flag: string) => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
   const root = fileURLToPath(new URL('../../../../', import.meta.url));
   const configPath = resolve(root, value('--config') ?? 'artifacts/real-dataasset-lab/central/runtime-secrets.env');

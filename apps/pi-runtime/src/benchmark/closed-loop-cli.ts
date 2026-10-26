@@ -90,8 +90,8 @@ function budgeted(model: RuntimeModel, tracker: Tracker): RuntimeModel {
   };
 }
 
-async function main() {
-  const args = process.argv.slice(2).filter((arg) => arg !== '--');
+export async function main(argv: string[] = process.argv.slice(2)) {
+  const args = argv.filter((arg) => arg !== '--');
   const value = (flag: string) => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
   const mode = args.includes('--live') ? 'live' : 'fake';
   const root = fileURLToPath(new URL('../../../../', import.meta.url));

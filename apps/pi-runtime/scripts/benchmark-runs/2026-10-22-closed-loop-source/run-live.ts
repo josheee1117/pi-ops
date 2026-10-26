@@ -3,11 +3,11 @@ import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderClosedLoopReport } from '../../closed-loop-report.js';
-import type { ClosedLoopCaseResult } from '../../closed-loop-runner.js';
+import { renderClosedLoopReport } from '../../../src/benchmark/closed-loop-report.js';
+import type { ClosedLoopCaseResult } from '../../../src/benchmark/closed-loop-runner.js';
 
-const out = dirname(fileURLToPath(import.meta.url));
-const root = resolve(out, '../../../../../..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
+const out = join(root, 'apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-source');
 const cases = ['dataasset-197', 'stack-overflow', 'jvm-heap-oom', 'cpu-quota-burst', 'tag-group-502', 'sop-404', 'health-503'];
 const budget = 400_000;
 const preflightTokens = 112;

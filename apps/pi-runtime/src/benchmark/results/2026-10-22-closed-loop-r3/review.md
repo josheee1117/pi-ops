@@ -80,7 +80,7 @@ The input did not match the regular expression /修复尚未确定/.
 | pnpm --filter @pi-ops/pi-runtime typecheck | 通过 | final-2.log |
 | pnpm --filter @pi-ops/agent test | 初版403过1失败；最终404过0失败 | verify-2.log，final-0.log |
 | pnpm --filter @pi-ops/agent typecheck | 通过 | final-1.log |
-| pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/results/2026-10-22-closed-loop-r3/run-live.ts | 六次提供方失败后停止，非有效模型验收 | live-*.log，六份json，summary.json |
+| pnpm --filter @pi-ops/pi-runtime exec tsx scripts/benchmark-runs/2026-10-22-closed-loop-r3/run-live.ts | 六次提供方失败后停止，非有效模型验收 | live-*.log，六份json，summary.json |
 | pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/results/2026-10-22-closed-loop-r3/probe-model.ts | 明确429 AccountQuotaExceeded | probe-model.json |
 | .agents/skills/verify-pi-ops/scripts/drive.sh doctor | blocked，五个服务均absent，未起栈 | doctor.log |
 

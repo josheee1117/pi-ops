@@ -1,6 +1,5 @@
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,8 +7,21 @@ import { MESSAGE_CASES } from './message-cases.js';
 import { runCase } from './runner.js';
 import { createFakeRuntimeModel } from '../model.js';
 import { withoutSourceSnippetBodies } from './agent-chain.js';
+import { main as closedLoopCli } from './closed-loop-cli.js';
+import { main as messageCli } from './message-cli.js';
 
 const BODY = 'return down(depth + 1) + depth;';
+
+/** CLI entrypoints log their plan to stdout; TAP output must stay clean. */
+async function quietly<T>(run: () => Promise<T>): Promise<T> {
+  const log = console.log;
+  console.log = () => {};
+  try {
+    return await run();
+  } finally {
+    console.log = log;
+  }
+}
 
 it('returns only source metadata in the persistable benchmark result while the model sees the body', async () => {
   const sample = MESSAGE_CASES.find((item) => item.id === 'stack-overflow');
@@ -43,12 +55,10 @@ it('removes nested source bodies from saved results without changing repair acti
   assert.equal(result.results[0]!.modelContext.evidence[0]!.data.text, BODY);
 });
 
-it('writes closed-loop CLI artifacts without source bodies and keeps the repair classification', () => {
+it('writes closed-loop CLI artifacts without source bodies and keeps the repair classification', async () => {
   const out = mkdtempSync(join(tmpdir(), 'snippet-closed-loop-'));
   try {
-    execFileSync(process.execPath, ['--import', 'tsx', 'src/benchmark/closed-loop-cli.ts', '--case', 'stack-overflow', '--out', out], {
-      cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 30_000,
-    });
+    await quietly(() => closedLoopCli(['--case', 'stack-overflow', '--out', out]));
     for (const file of readdirSync(out)) assert.ok(!readFileSync(join(out, file), 'utf8').includes(BODY), file);
     const saved = JSON.parse(readFileSync(join(out, 'stack-overflow.json'), 'utf8'));
     assert.equal(saved.result.diagnosis.repairKind, 'fallback');
@@ -80,12 +90,10 @@ it('does not persist source bodies echoed by a model', async () => {
   assert.ok(!JSON.stringify(result).includes(BODY));
 });
 
-it('writes message CLI case and summary files without source bodies', () => {
+it('writes message CLI case and summary files without source bodies', async () => {
   const out = mkdtempSync(join(tmpdir(), 'snippet-persistence-'));
   try {
-    execFileSync(process.execPath, ['--import', 'tsx', 'src/benchmark/message-cli.ts', '--case', 'stack-overflow', '--out', out], {
-      cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 30_000,
-    });
+    await quietly(() => messageCli(['--case', 'stack-overflow', '--out', out]));
     for (const file of readdirSync(out)) {
       const text = readFileSync(join(out, file), 'utf8');
       assert.ok(!text.includes(BODY), file);
