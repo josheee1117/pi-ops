@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 import { serve } from '@hono/node-server';
+import { projectCase, sourceRootsFor } from './agent-chain.js';
 import type { BenchmarkCase } from './fixtures.js';
 
 /**
@@ -71,7 +72,7 @@ export async function openCaseAgentServer(
   const sqlitePath = join(directory, 'agent.sqlite');
   const store = createEventStore(sqlitePath);
   const config = makeAgentConfig({ sqlitePath, piRuntimeToken: 'runtime-token' });
-  const loop = createInvestigationLoopService(store);
+  const loop = createInvestigationLoopService(store, { sourceRoots: sourceRootsFor(benchmarkCase) });
   const app = createApp(config, store, createIncidentEngine(store, config), undefined, loop);
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
   await once(server, 'listening');
@@ -90,7 +91,9 @@ export async function openCaseAgentServer(
       fingerprint: raw.fingerprint, first_seen: raw.first_seen, last_seen: raw.last_seen,
       event_count: raw.event_count, severity: raw.severity,
     });
-    for (const item of evidence) store.insertEvidence({ ...item, incidentId: incident.id });
+    const projected = await projectCase(benchmarkCase);
+    const sourceEvidence = projected.evidence.filter((item) => item.kind === 'source.snippet');
+    for (const item of [...evidence, ...sourceEvidence]) store.insertEvidence({ ...item, incidentId: incident.id });
 
     const started = await callJson(`${base}/v1/ops/investigations`, config.operatorToken, { incidentId: incident.id });
     const sessionId = String(started.json['sessionId'] ?? '');

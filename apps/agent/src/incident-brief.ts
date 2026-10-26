@@ -1,5 +1,5 @@
 import type { EventStore } from './store.js';
-import { MODEL_SAFE_MAX_LOG_LINES, toRuntimeSafeEvidence } from './incident-context.js';
+import { MODEL_SAFE_MAX_LOG_LINES, toRuntimeSafeEvidence, withoutSourceSnippetText } from './incident-context.js';
 import { incidentFactsFromRow, buildNotificationPayload } from './notification.js';
 import { plainSummary } from './on-call-brief.js';
 
@@ -21,7 +21,7 @@ export function incidentBrief(store: EventStore, incidentId: string) {
   return {
     incident: incidentFactsFromRow(incident), summary: plainSummary(payload),
     reports, sessions: sessions.map((session) => ({ id: session.id, status: session.status, createdAt: session.createdAt })),
-    evidence: store.listEvidence(incidentId).map((item) => toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES)),
+    evidence: store.listEvidence(incidentId).map((item) => withoutSourceSnippetText(toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES))),
     notificationDecision: store.getNotificationDecision(incidentId),
   };
 }

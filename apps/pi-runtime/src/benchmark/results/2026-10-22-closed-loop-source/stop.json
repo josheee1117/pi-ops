@@ -1,0 +1,18 @@
+{
+  "status": "blocked",
+  "date": "2026-10-26",
+  "stage": "provider-preflight",
+  "budget": 400000,
+  "observedTokens": 13,
+  "closedLoopCasesRun": 0,
+  "resetAt": "2026-10-26 14:19:01 +0800 CST",
+  "reason": "Production diagnosis, handler and judge all returned 429 AccountQuotaExceeded. Alternate DeepSeek channel works, but both configured GLM judge aliases share the exhausted upstream. No different judge model was substituted.",
+  "probes": [
+    { "model": "ark/deepseek-v4.1-flash", "ok": false, "error": "429 AccountQuotaExceeded: You have exceeded the 5-hour usage quota. It will reset at 2026-10-26 14:19:01 +0800 CST.", "tokens": 0 },
+    { "model": "cpa/deepseek-flash-latest", "ok": false, "error": "429 model_cooldown via provider openai-compatible-火山; last_upstream_error AccountQuotaExceeded", "tokens": 0 },
+    { "model": "cpa/glm-latest", "ok": false, "error": "429 AccountQuotaExceeded: You have exceeded the 5-hour usage quota. It will reset at 2026-10-26 14:19:01 +0800 CST.", "tokens": 0 },
+    { "model": "cpa/deepseek-v4.1-flash", "ok": false, "error": "503: 当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道 (request id: 202610261200148193181132rskrp6NcOFXa)", "tokens": 0 },
+    { "model": "cpa/deepseek-v4.1-flash-wong", "ok": true, "response": "OK", "inputTokens": 11, "outputTokens": 2, "tokens": 13 },
+    { "model": "cpa/glm-5.3", "ok": false, "error": "429 AccountQuotaExceeded: You have exceeded the 5-hour usage quota. It will reset at 2026-10-26 14:19:01 +0800 CST.", "tokens": 0 }
+  ]
+}

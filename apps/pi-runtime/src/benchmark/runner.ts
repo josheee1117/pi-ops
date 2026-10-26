@@ -1,8 +1,9 @@
 import { investigate, type CoordinatorOutcome } from '../coordinator.js';
 import type { RuntimeModel } from '../model.js';
-import type { RuntimeInvestigationContext, RuntimeEvidenceResponse } from '@pi-ops/protocol';
+import { validateEvidence, type RuntimeInvestigationContext, type RuntimeEvidenceResponse } from '@pi-ops/protocol';
 import { projectCase, fixedEvidenceClient, renderMessage } from './agent-chain.js';
-import { CPU_GOLDEN_CASES, buildBenchmarkContext, findCase, type BenchmarkCase } from './fixtures.js';
+import { CPU_GOLDEN_CASES, buildBenchmarkContext, findCase, type BenchmarkCase, type BenchmarkEvidence } from './fixtures.js';
+import { classifyRepair, type RepairKind } from './repair-classification.js';
 import { evaluateCase, evaluateMessage, type BenchmarkEvaluation, type MessageEvaluation } from './evaluator.js';
 
 export interface ThinkingReport {
@@ -60,6 +61,7 @@ export interface CaseResult {
   supplementalResponses?: RuntimeEvidenceResponse[];
   message?: { content: string; bytes: number; fetchCalls: number };
   messageEvaluation?: MessageEvaluation;
+  repairKind?: RepairKind;
   investigation: {
     report?: CoordinatorOutcome['report'];
     findings: CoordinatorOutcome['findings'];
@@ -186,7 +188,8 @@ export async function runCase(
   options: Omit<RunOptions, 'cases' | 'caseIds'>,
 ): Promise<CaseResult> {
   const { model, mode, thinkingLevel } = options;
-  const context = benchmarkCase.rawIncident ? await projectCase(benchmarkCase) : buildBenchmarkContext(benchmarkCase);
+  const projected = benchmarkCase.rawIncident ? await projectCase(benchmarkCase) : undefined;
+  const context = projected ?? buildBenchmarkContext(benchmarkCase);
   const supplementalResponses: RuntimeEvidenceResponse[] = [];
   const modelCalls: ModelCall[] = [];
   const started = Date.now();
@@ -229,7 +232,23 @@ export async function runCase(
     : usageOrNull(outcome, mode);
   const supplemental = supplementalResponses.flatMap((response) => response.results.flatMap((result) => result.status === 'collected' ? [{ ...result.evidence, data: result.evidence.data, status: 'succeeded' as const }] : []));
   const visibleIds = new Set(context.evidence.map((item) => item.id));
-  const visibleEvidence = [...benchmarkCase.evidence.filter((item) => visibleIds.has(item.id)), ...supplemental];
+  const benchmarkIds = new Set(benchmarkCase.evidence.map((item) => item.id));
+  const contextOnly: BenchmarkEvidence[] = (projected?.evidence ?? []).filter((item) => !benchmarkIds.has(item.id)).map((item) => {
+    const parsed = validateEvidence(item);
+    if (!parsed.success) throw new Error(parsed.message);
+    return { ...parsed.value, status: parsed.value.status === 'failed' ? 'failed' : 'succeeded' };
+  });
+  const visibleEvidence: BenchmarkEvidence[] = [...benchmarkCase.evidence.filter((item) => visibleIds.has(item.id)), ...contextOnly, ...supplemental];
+  const snippets = contextOnly.flatMap((item) => {
+    const data = item.data;
+    return item.kind === 'source.snippet' && data && typeof data === 'object'
+      && 'text' in data && typeof data.text === 'string'
+      ? [{ id: item.id, kind: item.kind, text: data.text }] : [];
+  });
+  const repairKind = outcome.report?.hypothesis.startsWith('诊断不完整') ? 'fallback' : classifyRepair(outcome.report?.diagnosis, {
+    snippets,
+    otherEvidenceText: JSON.stringify(visibleEvidence.filter((item) => item.kind !== 'source.snippet')),
+  });
   const message = benchmarkCase.rawIncident && outcome.report
     ? await renderMessage(benchmarkCase, outcome.report, visibleEvidence)
     : undefined;
@@ -261,6 +280,7 @@ export async function runCase(
     ...(benchmarkCase.rawIncident ? { modelContext: context, supplementalResponses } : {}),
     ...(message ? { message } : {}),
     ...(messageEvaluation ? { messageEvaluation } : {}),
+    ...(benchmarkCase.rawIncident ? { repairKind } : {}),
     investigation: {
       ...(outcome.report ? { report: outcome.report } : {}),
       findings: outcome.findings,

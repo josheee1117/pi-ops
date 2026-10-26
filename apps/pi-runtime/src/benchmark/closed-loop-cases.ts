@@ -198,12 +198,11 @@ export const CLOSED_LOOP_CRITERIA: ClosedLoopCriteria[] = [
     caseId: 'stack-overflow',
     knownFacts: facts('stack-overflow'),
     allowedRootCauses: [
-      'StackOverflowError，重复帧 Recurse.down 表明递归没有终止条件或终止条件失效',
+      'StackOverflowError，重复帧 Recurse.down 表明递归没有终止条件或终止条件失效；Recurse.down 无条件调用自身并累加 depth',
       '不是 Java heap space，也不是容器 OOM kill',
     ],
     allowedRepairs: [
-      '隔离触发请求，读对应版本递归实现与终止条件，查实后修复递归',
-      '若无法取得源码，明确需要部署版本源码，不猜测代码',
+      '隔离触发请求，读对应版本递归实现与终止条件，查实后修复递归（例如为 down 增加终止条件或深度上限）',
     ],
     stopLoss: '若溢出仍在持续或影响请求，先隔离触发请求或按批准重启；只做代码分析不算止损。',
     verification: '同一触发请求不再溢出，并检查健康与关键业务。',
@@ -214,8 +213,11 @@ export const CLOSED_LOOP_CRITERIA: ClosedLoopCriteria[] = [
     ],
     approvals: '重启、发布需要负责人批准。',
     criticalItems: ['root_cause', 'stop_loss', 'no_forbidden'],
-    sources: [],
-    missingSources: '该异常来自合成测试输入（log-events.test.ts），仓库内没有 com.example.Recurse 的部署源码；不能提供 Recurse.java，也不应伪造。',
+    sources: [{
+      path: 'apps/pi-runtime/src/benchmark/fixtures/closed-loop/stack-overflow/Recurse.java',
+      label: '合成栈溢出夹具源码（对应现有 Recurse.down(Recurse.java:7) 栈）',
+      note: '合成夹具，不是部署源码；第 7 行是无终止条件的自身调用，版本状态应保持 unchecked（版本未核对）。',
+    }],
   },
 ];
 

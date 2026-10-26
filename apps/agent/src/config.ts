@@ -1,5 +1,7 @@
 /** Configuration loaded from environment variables. Secrets are never defaulted in code. */
 
+import { loadSourceRoots, type SourceRoots } from './source-roots.js';
+
 export interface NodeAgentEndpoint {
   nodeId: string;
   url: string;
@@ -71,6 +73,8 @@ export interface AgentConfig {
   investigationRetryBackoffMs: number;
   /** SUBMITTED/RUNNING sessions older than this fail and may retry. */
   investigationStaleTimeoutMs: number;
+  /** Read-only source root per service, keyed by Incident service. */
+  sourceRoots: SourceRoots;
 }
 
 function parseDetailsBaseUrl(value: string): string {
@@ -284,6 +288,7 @@ export function loadConfig(): AgentConfig {
     investigationStaleTimeoutMs: integerEnv('PI_OPS_INVESTIGATION_STALE_TIMEOUT_MS', 15 * 60 * 1000, {
       max: 7 * 24 * 60 * 60 * 1000,
     }),
+    sourceRoots: loadSourceRoots(),
   };
 }
 

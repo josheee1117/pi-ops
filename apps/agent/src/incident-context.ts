@@ -50,6 +50,7 @@ const ENV_KEY = /^(env|environment)$/i;
 const KIND_RANK: Record<string, number> = {
   'jfr.signal': 0,
   'docker.inspect': 0,
+  'source.snippet': 0,
   'http.probe': 1,
   'docker.stats': 2,
   'host.memory': 2,
@@ -59,7 +60,8 @@ const KIND_RANK: Record<string, number> = {
 };
 
 export function evidenceRank(item: Pick<EvidenceRecord, 'kind' | 'status'>): number {
-  if (item.kind === 'jfr.signal' || item.kind === 'docker.inspect' || item.kind === 'http.probe') return 0;
+  if (item.kind === 'jfr.signal' || item.kind === 'docker.inspect' || item.kind === 'http.probe'
+    || item.kind === 'source.snippet') return 0;
   if (item.status === 'failed') return 1;
   return KIND_RANK[item.kind] ?? 4;
 }
@@ -71,6 +73,7 @@ const DIVERSITY_KINDS = [
   'host.load',
   'host.memory',
   'http.probe',
+  'source.snippet',
 ] as const;
 
 function compareEvidenceOrder(left: EvidenceRecord, right: EvidenceRecord): number {
@@ -179,6 +182,13 @@ export function buildIncidentContext(
 
 export function jsonBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
+
+/** Detail and raw endpoints show snippet metadata but never the source body. */
+export function withoutSourceSnippetText<T extends { kind: string; data: unknown }>(item: T): T {
+  if (item.kind !== 'source.snippet' || !isRecord(item.data) || !('text' in item.data)) return item;
+  const { text: _text, ...metadata } = item.data;
+  return { ...item, data: metadata };
 }
 
 export function toRuntimeSafeEvidence(

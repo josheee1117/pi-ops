@@ -28,6 +28,7 @@ export function makeAgentConfig(overrides: Partial<AgentConfig> = {}): AgentConf
     reasoningMaxContextBytes: 32_768,
     reasoningMaxEvidenceItems: 12,
     reasoningMaxLogLines: 50,
+    sourceRoots: {},
     ...overrides,
   };
 }

@@ -16,6 +16,7 @@ import { incidentBrief, renderIncidentBrief } from './incident-brief.js';
 import {
   MODEL_SAFE_MAX_LOG_LINES,
   toRuntimeSafeEvidence,
+  withoutSourceSnippetText,
 } from './incident-context.js';
 
 class RequestBodyTooLargeError extends Error {}
@@ -288,8 +289,8 @@ export function createApp(
       view,
       evidence: rows.map((item) => (
         view === 'raw'
-          ? { id: item.id, kind: item.kind, status: item.status, collectedAt: item.collectedAt, data: item.data }
-          : toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES)
+          ? withoutSourceSnippetText({ id: item.id, kind: item.kind, status: item.status, collectedAt: item.collectedAt, data: item.data })
+          : withoutSourceSnippetText(toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES))
       )),
     });
   });

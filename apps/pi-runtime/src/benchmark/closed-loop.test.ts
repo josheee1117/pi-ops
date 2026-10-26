@@ -121,9 +121,14 @@ it('derives closed, partial and open from judge items and case critical items', 
   assert.deepEqual(gaps, ['diagnosis_wrong']);
   const sourceGap = deriveGaps({
     verdict: 'open', items: items(['root_cause']), handler: answered,
-    criteria: criteriaFor('stack-overflow'), detailFailed: false, diagnosisUnavailable: false,
+    criteria: criteriaFor('tag-group-502'), detailFailed: false, diagnosisUnavailable: false,
   });
   assert.deepEqual(sourceGap, ['missing_source']);
+  const snippetCaseGap = deriveGaps({
+    verdict: 'open', items: items(['root_cause']), handler: answered,
+    criteria: criteriaFor('stack-overflow'), detailFailed: false, diagnosisUnavailable: false,
+  });
+  assert.deepEqual(snippetCaseGap, ['handler_reasoning']);
 });
 
 it('rejudges a saved case with the new rule without touching the source directory', async () => {

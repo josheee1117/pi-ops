@@ -34,7 +34,7 @@ interface RecordedIncident {
 const expectations: Record<string, MessageOracle> = {
   'dataasset-197': {
     expectedFacts: ['原始日志 197 行，第 133 行有故障头', 'IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault'],
-    allowedRepairs: ['核实演练入口和源码后停止或隔离注入；验证同一接口及关键业务', '没有源码时明确不能给出准确代码改法'],
+    allowedRepairs: ['核实演练入口和源码后停止或隔离注入；验证同一接口及关键业务'],
     forbiddenAttributions: ['把 RocketMQ 初始化栈当成本次请求根因', '断言数据库、库存或外部依赖故障'],
     forbiddenClaimPatterns: ['(?:确认|确定|根因是|由于)RocketMQ(?:故障|异常|不可用)', '(?:确认|根因是)库存不足'],
   },
@@ -153,7 +153,7 @@ export const MESSAGE_CASES: BenchmarkCase[] = [
     source: 'apps/node-agent/src/__tests__/log-events.test.ts reports stack overflow as its own type。合成固定输入，不声称真实演练。',
     lines: ['java.lang.StackOverflowError', '\tat com.example.Recurse.down(Recurse.java:7)', '\tat com.example.Recurse.down(Recurse.java:7)'],
     oracle: {
-      expectedFacts: ['StackOverflowError，重复 Recurse.down:7', '没有源码，递归终止条件和影响未知'],
+      expectedFacts: ['StackOverflowError，重复 Recurse.down:7', '递归实现缺少终止条件；读到的源码版本未核对'],
       allowedRepairs: ['隔离触发请求，读对应版本递归与终止条件；查实后修复并验证'],
       forbiddenAttributions: ['当成 Java heap space 或容器 OOM kill', '直接增大堆代替修复递归'],
       forbiddenClaimPatterns: ['(?:确认|根因是|由于)Java heap space', '(?:确认|根因是)容器OOM'],

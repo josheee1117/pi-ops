@@ -1,16 +1,45 @@
 import { validateRuntimeInvestigationContext, validateRuntimeEvidenceResponse, type RuntimeInvestigationContext, type RuntimeEvidenceResponse, type RuntimeInvestigationReportInput } from '@pi-ops/protocol';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { criteriaFor, type ClosedLoopCriteria } from './closed-loop-cases.js';
 import type { RuntimeEvidenceClient } from '../evidence-client.js';
 import type { BenchmarkCase, BenchmarkEvidence } from './fixtures.js';
+
+const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
 // Dynamic imports keep the benchmark-only agent dependency outside runtime's production rootDir.
 async function agentModule(name: string) {
   return import(new URL(`../../../agent/src/${name}.ts`, import.meta.url).href);
 }
 
+/** Fixture directories from the pre-written criteria, keyed by the Incident service. */
+export function sourceRootsFor(benchmarkCase: BenchmarkCase): Record<string, string> {
+  if (!benchmarkCase.rawIncident) return {};
+  let criteria: ClosedLoopCriteria;
+  try {
+    criteria = criteriaFor(benchmarkCase.id);
+  } catch {
+    return {};
+  }
+  const roots: Record<string, string> = {};
+  for (const item of criteria.sources) {
+    roots[benchmarkCase.rawIncident.service] = dirname(resolve(REPO_ROOT, item.path));
+  }
+  return roots;
+}
+
 export async function projectCase(benchmarkCase: BenchmarkCase): Promise<RuntimeInvestigationContext> {
   if (!benchmarkCase.rawIncident) throw new Error('raw incident required');
   const { buildIncidentContext } = await agentModule('incident-context');
-  const projected = buildIncidentContext(benchmarkCase.rawIncident, benchmarkCase.evidence, {
+  const { sourceSnippetEvidence } = await agentModule('source-snippet');
+  const snippet = sourceSnippetEvidence({
+    incident: benchmarkCase.rawIncident,
+    evidence: benchmarkCase.evidence,
+    roots: sourceRootsFor(benchmarkCase),
+    collectedAt: benchmarkCase.collectedAt,
+  });
+  const evidence = snippet ? [...benchmarkCase.evidence, snippet] : benchmarkCase.evidence;
+  const projected = buildIncidentContext(benchmarkCase.rawIncident, evidence, {
     maxEvidenceItems: 8, maxContextBytes: 8192, maxLogLines: 20,
   });
   const parsed = validateRuntimeInvestigationContext({

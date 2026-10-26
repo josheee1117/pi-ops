@@ -48,7 +48,10 @@ const runtimeClient = config.externalRuntimeEnabled
     timeoutMs: config.piRuntimeTimeoutMs,
   })
   : createNoopPiRuntimeClient();
-const investigationLoop = createInvestigationLoopService(store, { runtime: runtimeClient });
+const investigationLoop = createInvestigationLoopService(store, {
+  runtime: runtimeClient,
+  sourceRoots: config.sourceRoots,
+});
 const investigationEvidence = createInvestigationEvidenceService(store, config, evidenceOrchestrator);
 const investigationReconciler = createInvestigationReconciler({
   store,

@@ -22,6 +22,8 @@ import {
 } from './reasoning-strategy.js';
 import { hashEvidenceSnapshot } from './reasoning-worker.js';
 import type { EventStore, IncidentRow } from './store.js';
+import { sourceSnippetEvidence } from './source-snippet.js';
+import type { SourceRoots } from './source-roots.js';
 
 const MAX_TEXT_CHARS = 2000;
 
@@ -35,6 +37,7 @@ export function createInvestigationLoopService(
   options: {
     now?: () => string;
     runtime?: PiRuntimeClient;
+    sourceRoots?: SourceRoots;
   } = {},
 ) {
   const now = options.now ?? (() => new Date().toISOString());
@@ -45,7 +48,17 @@ export function createInvestigationLoopService(
       const incident = store.getIncident(incidentId);
       if (!incident) throw new Error(`Incident ${incidentId} does not exist`);
       const evidence = store.listEvidence(incident.id);
-      const context = buildInvestigationContext(incident, evidence, store);
+      const snippet = sourceSnippetEvidence({
+        incident, evidence, roots: options.sourceRoots ?? {}, collectedAt: now(),
+      });
+      const existingSnippet = snippet && evidence.find((item) => item.kind === snippet.kind
+        && JSON.stringify(item.data) === JSON.stringify(snippet.data));
+      if (snippet && !existingSnippet) store.insertEvidence(snippet);
+      const context = buildInvestigationContext(
+        incident,
+        snippet ? store.listEvidence(incident.id) : evidence,
+        store,
+      );
       const contextSnapshotHash = hashInvestigationContext(context);
       store.insertInvestigationContextSnapshot(contextSnapshotHash, context, now());
       const evidenceGeneration = store.getEvidenceJob(`job-${incident.id}`)?.generation ?? 1;
