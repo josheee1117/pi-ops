@@ -1,0 +1,9 @@
+{
+  "at": "2026-10-26T14:19:25+08:00",
+  "tokens": 112,
+  "results": [
+    { "spec": "ark/deepseek-v4.1-flash", "stopReason": "stop", "text": "OK", "inputTokens": 11, "outputTokens": 1, "tokens": 12 },
+    { "spec": "cpa/deepseek-flash-latest", "stopReason": "stop", "text": "OK", "inputTokens": 37, "outputTokens": 12, "tokens": 49 },
+    { "spec": "cpa/glm-latest", "stopReason": "length", "text": "OK", "inputTokens": 19, "outputTokens": 32, "tokens": 51, "note": "32-token probe limit included reasoning. No 429 or 503. Continue with the normal evaluation output limit." }
+  ]
+}

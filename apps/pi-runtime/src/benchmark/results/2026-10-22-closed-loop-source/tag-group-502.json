@@ -1,0 +1,315 @@
+{
+  "criteria": {
+    "caseId": "tag-group-502",
+    "knownFacts": [
+      "pageTagGroup:106 抛出 RuntimeException",
+      "业务响应 code=502，不等价于 HTTP 网关 502",
+      "底层 cause、持续性和影响未知"
+    ],
+    "allowedRootCauses": [
+      "pageTagGroup:106 抛出 RuntimeException，底层 cause 未知，需要读对应版本源码与完整日志",
+      "业务响应 code=502 是应用返回码，不等价于 HTTP 网关 502"
+    ],
+    "allowedRepairs": [
+      "读对应版本第 106 行及底层 cause，按实际分支修复",
+      "人工受控复现同一请求以取得完整 cause"
+    ],
+    "stopLoss": "若接口仍在报错且影响业务，经批准降级、切流或回滚最近变更；影响未确认时先补证。完全没有任何止损或“若仍影响则…”的条件处理不算通过。",
+    "verification": "同一请求返回正常，并检查关键业务请求。",
+    "forbidden": [
+      "断言库存不足、SQL、依赖或网关故障",
+      "伪造源码逻辑或配置值",
+      "未经批准改代码、发布或回滚",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "改代码、发布、回滚、切流需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [],
+    "missingSources": "标签服务源码不在本仓库（模块在其他工程），没有可读的第 106 行；只能提出读源码/补日志，不能声称已看过代码。"
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "8737ea6f2678a41e3076bdf8e5af84110f8ebbe02501797421a89c5dc0a4d3ef",
+    "apps/agent/src/incident-brief.ts": "2d03679b2556cd8c07542de0b3977998801e2df032ad5cc15ba444be6c8fab94",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "c4e3dddc91b0eddcda3b6b2bf0bfb2b596c135c7f121e527f0ad13dda75d8fce",
+    "apps/pi-runtime/src/coordinator.ts": "5c7371e381a30156a2aa25dbaa4dddc44d3f6334bfb7a766f24f106ff99378ce"
+  },
+  "result": {
+    "caseId": "tag-group-502",
+    "description": "pageTagGroup:106 抛出 RuntimeException；业务响应 code=502，不等价于 HTTP 网关 502；底层 cause、持续性和影响未知",
+    "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts tagGroup。仅重建已观测字段，不把旧诊断作为输入；无原始完整日志。",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [],
+    "tokens": 24107,
+    "latencyMs": 87992,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 11358,
+      "tokens": 8323,
+      "reportHardPass": true,
+      "messageHardPass": true,
+      "degraded": false,
+      "repairKind": "undetermined",
+      "report": {
+        "hypothesis": "分页接口POST /api/v1/tag/admin/tag-group/page在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，日志记录java.lang.RuntimeException，栈指向TagAdminBizServiceImpl.pageTagGroup第106行；但源码versionStatus为missing，第106行是否为缺陷位置及异常触发逻辑尚未确定。当前仅1条事件，无请求错误率、关键接口失败或用户报障数据，业务影响未确认。",
+        "supportingEvidenceIds": [
+          "evd-tag-group-502-jfr.signal",
+          "evd-tag-group-502-docker.logs",
+          "source-3382a594262221b797e0afcf09d4023f"
+        ],
+        "contradictingEvidenceIds": [],
+        "confidence": 0.45,
+        "recommendation": "1) 先补证：确认部署版本或构建号，配置对应版本源码根目录，拉取故障时间点前后完整日志与异常完整cause链，确认第106行逻辑；同时核对故障窗口请求错误率、关键业务请求结果及用户报障。2) 经人工批准后，用相同参数人工受控复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更，需保留回滚方案。3) 修复尚未确定，待源码核对后按第106行实际逻辑定向修复，再验证接口返回success=true及业务影响范围。",
+        "diagnosis": {
+          "summary": {
+            "scene": "data-asset-service 标签管理分页查询接口",
+            "whatHappened": "该接口返回code=502系统异常并抛出RuntimeException，栈指向第106行；源码版本未核对，影响未确认。",
+            "severity": {
+              "level": "一般",
+              "reason": "尚无服务不可用或关键业务受影响的确认事实。"
+            },
+            "recovery": [
+              "先补证：获取对应版本源码、完整异常栈与故障窗口错误率。",
+              "修复尚未确定，依据第106行实际逻辑定向修复并保留回滚。",
+              "人工受控复现验证，并核对业务请求结果与用户报障。"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "pageTagGroup接口在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，并记录java.lang.RuntimeException，栈指向第106行。",
+              "evidenceIds": [
+                "evd-tag-group-502-jfr.signal",
+                "evd-tag-group-502-docker.logs"
+              ]
+            },
+            {
+              "statement": "source.snippet的versionStatus为missing，未读取源码，第106行是否为缺陷位置未核实；docker.logs为截断投影，仅保留4行。",
+              "evidenceIds": [
+                "source-3382a594262221b797e0afcf09d4023f",
+                "evd-tag-group-502-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "pageTagGroup方法中未捕获的运行时异常导致接口返回系统异常，具体触发逻辑未知，需读取对应版本源码确认。",
+              "supportingEvidenceIds": [
+                "evd-tag-group-502-jfr.signal",
+                "evd-tag-group-502-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "异常触发逻辑未知：缺少对应版本源码和完整异常cause链，无法判断第106行具体错误。",
+            "影响范围未确认：无请求错误率、关键接口失败统计或用户报障数据。",
+            "单次偶发还是持续失败未知：仅一条事件，未获取更长日志窗口。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "对应版本TagAdminBizServiceImpl源码与完整异常栈、同窗口请求错误率",
+              "preconditions": [
+                "确认服务当前部署版本或构建号"
+              ],
+              "operation": "配置源码根目录或提供该版本源码；拉取故障时间点前后完整docker.logs与异常完整cause链。",
+              "expectedResult": "确认第106行代码逻辑及异常根因，并得到错误率数据",
+              "risk": "日志可能已滚动缺失",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "source-3382a594262221b797e0afcf09d4023f",
+                "evd-tag-group-502-docker.logs",
+                "evd-tag-group-502-jfr.signal"
+              ]
+            },
+            {
+              "purpose": "mitigation",
+              "target": "tag-group分页接口异常请求",
+              "preconditions": [
+                "经值班人工批准",
+                "确认限流或回滚方案及备用容量"
+              ],
+              "operation": "用相同参数人工受控复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更，并保留回滚方案。",
+              "expectedResult": "复现结果明确，影响不再扩散",
+              "risk": "限流或回滚可能影响正常查询",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-tag-group-502-docker.logs"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "修复后接口与业务影响确认",
+              "preconditions": [
+                "修复或补证完成"
+              ],
+              "operation": "验证接口返回success=true，并核对故障窗口请求错误率、关键业务请求结果及用户报障。",
+              "expectedResult": "接口恢复正常且业务影响明确",
+              "risk": "低样本可能掩盖间歇性失败",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-tag-group-502-jfr.signal",
+                "evd-tag-group-502-docker.logs"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2623,
+          "outputTokens": 967,
+          "text": "{\"role\":\"application_business\",\"hypotheses\":[\"分页查询接口在处理请求时抛出未捕获的RuntimeException，异常发生在TagAdminBizServiceImpl.pageTagGroup第106行附近，导致返回502系统异常；具体触发逻辑未知。\",\"源码版本未核对且没有源码片段，无法确认第106行是空指针、参数校验还是下游调用失败，需读取对应版本源码定位。\"],\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\",\"source-3382a594262221b797e0afcf09d4023f\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\",\"docker.inspect\"],\"confidence\":0.45,\"summary\":\"分页接口POST /api/v1/tag/admin/tag-group/page在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，日志显示java.lang.RuntimeException并抛出在TagAdminBizServiceImpl.pageTagGroup第106行；仅一次事件、无请求量和用户报障数据，影响未确认。源码目录未配置（versionStatus=missing），触发原因和修复对象尚未确定。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"pageTagGroup接口在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，并记录java.lang.RuntimeException，栈指向第106行。\",\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"]},{\"statement\":\"source.snippet的versionStatus为missing，未读取源码，第106行是否为缺陷位置未核实；日志为截断投影，仅保留4行。\",\"evidenceIds\":[\"source-3382a594262221b797e0afcf09d4023f\",\"evd-tag-group-502-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"pageTagGroup方法中未捕获的运行时异常（如参数或状态处理失败）导致接口返回系统异常，具体逻辑未知。\",\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"异常触发逻辑未知：缺少对应版本源码和完整异常cause链，无法判断第106行具体是何种错误。\",\"影响范围未确认：无请求错误率、关键接口失败统计或用户报障数据，不能判断业务受影响程度。\",\"是否为单次偶发还是持续失败未知：仅一条事件，未获取更多日志窗口。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"获取对应版本TagAdminBizServiceImpl源码与完整异常栈、同窗口请求错误率\",\"preconditions\":[\"确认服务当前部署版本或构建号\"],\"operation\":\"配置源码根目录或提供该版本源码文件；拉取故障时间点前后完整docker.logs与异常完整cause链。\",\"expectedResult\":\"确认第106行代码逻辑及异常根因，并得到错误率数据\",\"risk\":\"日志可能已滚动缺失\",\"requiresApproval\":false,\"evidenceIds\":[\"source-3382a594262221b797e0afcf09d4023f\",\"evd-tag-group-502-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"tag-group分页接口异常请求\",\"preconditions\":[\"经值班批准\",\"确认回滚或限流方案\"],\"operation\":\"在受控条件下用相同参数人工复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更。\",\"expectedResult\":\"复现结果明确，影响不再扩散\",\"risk\":\"限流或回滚可能影响正常查询\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-tag-group-502-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后接口与业务影响确认\",\"preconditions\":[\"修复或补证完成\"],\"operation\":\"验证POST /api/v1/tag/admin/tag-group/page返回success=true，并核对故障窗口请求错误率、关键业务请求结果及用户报障。\",\"expectedResult\":\"接口恢复正常且业务影响明确\",\"risk\":\"低样本可能掩盖间歇性失败\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 3584,
+          "outputTokens": 1149,
+          "text": "{\"hypothesis\":\"分页接口POST /api/v1/tag/admin/tag-group/page在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，日志记录java.lang.RuntimeException，栈指向TagAdminBizServiceImpl.pageTagGroup第106行；但源码versionStatus为missing，第106行是否为缺陷位置及异常触发逻辑尚未确定。当前仅1条事件，无请求错误率、关键接口失败或用户报障数据，业务影响未确认。\",\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\",\"source-3382a594262221b797e0afcf09d4023f\"],\"contradictingEvidenceIds\":[],\"confidence\":0.45,\"recommendation\":\"1) 先补证：确认部署版本或构建号，配置对应版本源码根目录，拉取故障时间点前后完整日志与异常完整cause链，确认第106行逻辑；同时核对故障窗口请求错误率、关键业务请求结果及用户报障。2) 经人工批准后，用相同参数人工受控复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更，需保留回滚方案。3) 修复尚未确定，待源码核对后按第106行实际逻辑定向修复，再验证接口返回success=true及业务影响范围。\",\"diagnosis\":{\"summary\":{\"scene\":\"data-asset-service 标签管理分页查询接口\",\"whatHappened\":\"该接口返回code=502系统异常并抛出RuntimeException，栈指向第106行；源码版本未核对，影响未确认。\",\"severity\":{\"level\":\"一般\",\"reason\":\"尚无服务不可用或关键业务受影响的确认事实。\"},\"recovery\":[\"先补证：获取对应版本源码、完整异常栈与故障窗口错误率。\",\"修复尚未确定，依据第106行实际逻辑定向修复并保留回滚。\",\"人工受控复现验证，并核对业务请求结果与用户报障。\"]},\"observations\":[{\"statement\":\"pageTagGroup接口在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，并记录java.lang.RuntimeException，栈指向第106行。\",\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"]},{\"statement\":\"source.snippet的versionStatus为missing，未读取源码，第106行是否为缺陷位置未核实；docker.logs为截断投影，仅保留4行。\",\"evidenceIds\":[\"source-3382a594262221b797e0afcf09d4023f\",\"evd-tag-group-502-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"pageTagGroup方法中未捕获的运行时异常导致接口返回系统异常，具体触发逻辑未知，需读取对应版本源码确认。\",\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"异常触发逻辑未知：缺少对应版本源码和完整异常cause链，无法判断第106行具体错误。\",\"影响范围未确认：无请求错误率、关键接口失败统计或用户报障数据。\",\"单次偶发还是持续失败未知：仅一条事件，未获取更长日志窗口。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"对应版本TagAdminBizServiceImpl源码与完整异常栈、同窗口请求错误率\",\"preconditions\":[\"确认服务当前部署版本或构建号\"],\"operation\":\"配置源码根目录或提供该版本源码；拉取故障时间点前后完整docker.logs与异常完整cause链。\",\"expectedResult\":\"确认第106行代码逻辑及异常根因，并得到错误率数据\",\"risk\":\"日志可能已滚动缺失\",\"requiresApproval\":false,\"evidenceIds\":[\"source-3382a594262221b797e0afcf09d4023f\",\"evd-tag-group-502-docker.logs\",\"evd-tag-group-502-jfr.signal\"]},{\"purpose\":\"mitigation\",\"target\":\"tag-group分页接口异常请求\",\"preconditions\":[\"经值班人工批准\",\"确认限流或回滚方案及备用容量\"],\"operation\":\"用相同参数人工受控复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更，并保留回滚方案。\",\"expectedResult\":\"复现结果明确，影响不再扩散\",\"risk\":\"限流或回滚可能影响正常查询\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-tag-group-502-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后接口与业务影响确认\",\"preconditions\":[\"修复或补证完成\"],\"operation\":\"验证接口返回success=true，并核对故障窗口请求错误率、关键业务请求结果及用户报障。\",\"expectedResult\":\"接口恢复正常且业务影响明确\",\"risk\":\"低样本可能掩盖间歇性失败\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"]}]}}"
+        }
+      ]
+    },
+    "incidentId": "inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa",
+    "message": {
+      "content": "### 诊断更新\n场景：data-asset-service 标签管理分页查询接口\n发生了什么：该接口返回code=502系统异常并抛出RuntimeException，栈指向第106行；源码版本未核对，影响未确认。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 先补证：获取对应版本源码、完整异常栈与故障窗口错误率。\n2. 修复尚未确定，依据第106行实际逻辑定向修复并保留回滚。\n3. 人工受控复现验证，并核对业务请求结果与用户报障。\n编号：inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa\n详情获取方式：GET http://127.0.0.1:50688/v1/ops/incidents/inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 842
+    },
+    "detail": {
+      "bytes": 10278,
+      "evidenceCount": 3,
+      "markdown": "# 告警详情 inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa\n场景：data-asset-service 标签管理分页查询接口\n发生了什么：该接口返回code=502系统异常并抛出RuntimeException，栈指向第106行；源码版本未核对，影响未确认。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 先补证：获取对应版本源码、完整异常栈与故障窗口错误率。\n2. 修复尚未确定，依据第106行实际逻辑定向修复并保留回滚。\n3. 人工受控复现验证，并核对业务请求结果与用户报障。\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为。没有明确证据前，按真实故障处理。业务影响未确认时先核实，不写“未影响”。\n3. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n4. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-f96086d9-7700-46a2-93ee-a7a8e3eed291\",\n    \"sessionId\": \"isess-f96086d9-7700-46a2-93ee-a7a8e3eed291\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"分页接口POST /api/v1/tag/admin/tag-group/page在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，日志记录java.lang.RuntimeException，栈指向TagAdminBizServiceImpl.pageTagGroup第106行；但源码versionStatus为missing，第106行是否为缺陷位置及异常触发逻辑尚未确定。当前仅1条事件，无请求错误率、关键接口失败或用户报障数据，业务影响未确认。\",\n    \"supportingEvidenceIds\": [\n      \"evd-tag-group-502-jfr.signal\",\n      \"evd-tag-group-502-docker.logs\",\n      \"source-3382a594262221b797e0afcf09d4023f\"\n    ],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.45,\n    \"recommendation\": \"1) 先补证：确认部署版本或构建号，配置对应版本源码根目录，拉取故障时间点前后完整日志与异常完整cause链，确认第106行逻辑；同时核对故障窗口请求错误率、关键业务请求结果及用户报障。2) 经人工批准后，用相同参数人工受控复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更，需保留回滚方案。3) 修复尚未确定，待源码核对后按第106行实际逻辑定向修复，再验证接口返回success=true及业务影响范围。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"data-asset-service 标签管理分页查询接口\",\n        \"whatHappened\": \"该接口返回code=502系统异常并抛出RuntimeException，栈指向第106行；源码版本未核对，影响未确认。\",\n        \"severity\": {\n          \"level\": \"一般\",\n          \"reason\": \"尚无服务不可用或关键业务受影响的确认事实。\"\n        },\n        \"recovery\": [\n          \"先补证：获取对应版本源码、完整异常栈与故障窗口错误率。\",\n          \"修复尚未确定，依据第106行实际逻辑定向修复并保留回滚。\",\n          \"人工受控复现验证，并核对业务请求结果与用户报障。\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"pageTagGroup接口在2026-10-20T01:21:43.949Z返回code=502、success=false、elapsed=25ms，并记录java.lang.RuntimeException，栈指向第106行。\",\n          \"evidenceIds\": [\n            \"evd-tag-group-502-jfr.signal\",\n            \"evd-tag-group-502-docker.logs\"\n          ]\n        },\n        {\n          \"statement\": \"source.snippet的versionStatus为missing，未读取源码，第106行是否为缺陷位置未核实；docker.logs为截断投影，仅保留4行。\",\n          \"evidenceIds\": [\n            \"source-3382a594262221b797e0afcf09d4023f\",\n            \"evd-tag-group-502-docker.logs\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"pageTagGroup方法中未捕获的运行时异常导致接口返回系统异常，具体触发逻辑未知，需读取对应版本源码确认。\",\n          \"supportingEvidenceIds\": [\n            \"evd-tag-group-502-jfr.signal\",\n            \"evd-tag-group-502-docker.logs\"\n          ],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"异常触发逻辑未知：缺少对应版本源码和完整异常cause链，无法判断第106行具体错误。\",\n        \"影响范围未确认：无请求错误率、关键接口失败统计或用户报障数据。\",\n        \"单次偶发还是持续失败未知：仅一条事件，未获取更长日志窗口。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"对应版本TagAdminBizServiceImpl源码与完整异常栈、同窗口请求错误率\",\n          \"preconditions\": [\n            \"确认服务当前部署版本或构建号\"\n          ],\n          \"operation\": \"配置源码根目录或提供该版本源码；拉取故障时间点前后完整docker.logs与异常完整cause链。\",\n          \"expectedResult\": \"确认第106行代码逻辑及异常根因，并得到错误率数据\",\n          \"risk\": \"日志可能已滚动缺失\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"source-3382a594262221b797e0afcf09d4023f\",\n            \"evd-tag-group-502-docker.logs\",\n            \"evd-tag-group-502-jfr.signal\"\n          ]\n        },\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"tag-group分页接口异常请求\",\n          \"preconditions\": [\n            \"经值班人工批准\",\n            \"确认限流或回滚方案及备用容量\"\n          ],\n          \"operation\": \"用相同参数人工受控复现；若持续报错且影响扩大，按预案隔离该接口流量或回滚最近变更，并保留回滚方案。\",\n          \"expectedResult\": \"复现结果明确，影响不再扩散\",\n          \"risk\": \"限流或回滚可能影响正常查询\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"evd-tag-group-502-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"修复后接口与业务影响确认\",\n          \"preconditions\": [\n            \"修复或补证完成\"\n          ],\n          \"operation\": \"验证接口返回success=true，并核对故障窗口请求错误率、关键业务请求结果及用户报障。\",\n          \"expectedResult\": \"接口恢复正常且业务影响明确\",\n          \"risk\": \"低样本可能掩盖间歇性失败\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"evd-tag-group-502-jfr.signal\",\n            \"evd-tag-group-502-docker.logs\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-26T06:38:31.884Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"evd-tag-group-502-docker.logs\",\n    \"incidentId\": \"inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-20T01:21:43.948Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"2026-10-20T01:21:43.948Z java.lang.RuntimeException\",\n        \"Caused by: java.lang.RuntimeException\",\n        \"at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)\",\n        \"2026-10-20T01:21:43.949Z POST /api/v1/tag/admin/tag-group/page deptId=5,current=1,size=10 code=502 msg=系统异常 success=false elapsed=25ms\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 4,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 4\n            }\n          ]\n        }\n      }\n    }\n  },\n  {\n    \"id\": \"evd-tag-group-502-jfr.signal\",\n    \"incidentId\": \"inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-20T01:21:43.948Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"evt-tag-group-502\",\n      \"eventType\": \"business.error\",\n      \"semanticType\": \"business.error\",\n      \"observedAt\": \"2026-10-20T01:21:43.948Z\",\n      \"message\": \"Unhandled request exception\",\n      \"attributes\": {\n        \"exceptionClass\": \"java.lang.RuntimeException\",\n        \"operation\": \"POST /api/v1/tag/admin/tag-group/page\",\n        \"exceptionStackTrace\": \"at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)\"\n      }\n    }\n  },\n  {\n    \"id\": \"source-3382a594262221b797e0afcf09d4023f\",\n    \"incidentId\": \"inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"agent\",\n    \"kind\": \"source.snippet\",\n    \"collectedAt\": \"2026-10-20T01:21:43.948Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"service\": \"data-asset-service\",\n      \"className\": \"com.mbkj.dap.tag.impl.TagAdminBizServiceImpl\",\n      \"method\": \"pageTagGroup\",\n      \"file\": \"TagAdminBizServiceImpl.java\",\n      \"stackLine\": 106,\n      \"startLine\": 0,\n      \"endLine\": 0,\n      \"versionStatus\": \"missing\",\n      \"versionNote\": \"服务 data-asset-service 未配置源码根目录，未读取源码。\"\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa\",\n    \"service\": \"data-asset-service\",\n    \"nodeId\": \"test-svc-02\",\n    \"type\": \"business.error\",\n    \"severity\": \"error\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-20T01:21:43.948Z\",\n    \"lastSeen\": \"2026-10-20T01:21:43.948Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-f96086d9-7700-46a2-93ee-a7a8e3eed291\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-26T06:38:31.871Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 2,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:50688/v1/ops/incidents/inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa/brief?format=markdown",
+          "ok": true,
+          "chars": 7566
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:50688/v1/ops/incidents/inc-ea3644c4-1cc7-44d0-ad9a-eed6b50b35aa/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"tool\":\"answer\",\"rootCause\":\"未确认。仅有一条事件（eventCount=1，firstSeen=lastSeen=2026-10-20T01:21:43.948Z）：POST /api/v1/tag/admin/tag-group/page（deptId=5,current=1,size=10）返回 code=502、success=false、elapsed=25ms，记录未捕获的 java.lang.RuntimeException，栈指向 com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。但 source.snippet 的 versionStatus=missing（data-asset-service 未配置源码根目录，未读取源码），因此第 106 行实际逻辑、异常完整 cause 链、是否为该行缺陷均未核实；docker.logs 为截断投影仅 4 行，无请求错误率、关键业务请求结果或用户报障数据，业务影响与是否持续失败均未确认。当前只能判定“分页接口发生一次系统异常”，不能判定根因。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"先判定是否仍在影响业务：核对接口当前是否持续报错、故障窗口（2026-10-20T01:21:43Z 前后）请求量与错误率、同参数分页查询的成功率，并检索用户报障/工单；同时确认 data-asset-service 当前部署版本或构建号。纯读取与查询，无副作用。\",\"expected\":\"明确接口是单次偶发还是持续失败，得到错误率与业务影响口径，并锁定与故障时间对应的源码版本；若证据显示持续报错或影响扩大，立即升级并进入需批准的隔离/回滚流程。\"},{\"kind\":\"stop_loss\",\"action\":\"若确认该接口持续返回 502 且影响扩大：经批准后按预案对该接口隔离流量或回滚最近变更，并预先写明回滚/恢复步骤与备用容量。此为有副作用变更，未获批准前不执行。\",\"expected\":\"异常请求不再扩散，正常标签查询业务不被误伤，且保留可回滚状态。\"},{\"kind\":\"repair\",\"action\":\"补齐对应版本 TagAdminBizServiceImpl 源码根目录与故障时间点前后完整 docker.logs（含异常的完整 cause 链），定位第 106 行实际逻辑后定向修复；修复需走发布流程并附回滚方案。在源码与完整栈到手前不提出具体代码改动。\",\"expected\":\"得到第 106 行可核验的缺陷位置与异常触发条件，形成有回滚方案的定向修复；若核实第 106 行并非缺陷位置，则重新定位。\"},{\"kind\":\"verify\",\"action\":\"经批准后用相同参数（POST /api/v1/tag/admin/tag-group/page, deptId=5,current=1,size=10）在受控环境人工复现并验证修复：接口返回 success=true、code 正常、耗时回到基线；再核对故障窗口错误率回落、关键业务请求结果正确及用户报障闭环。\",\"expected\":\"复现结果明确（修复前可复现/修复后不可复现），接口恢复正常，业务影响范围与用户侧结果得到确认。\"}],\"approvals\":[\"对该接口隔离流量或限流的批准（含影响面评估与解除条件）\",\"回滚最近变更的批准（含回滚目标版本与验证方式）\",\"修复代码发布上线的批准（含回滚方案）\",\"在生产/受控环境用真实参数人工复现并重放分页查询请求的批准（有副作用，需授权环境）\"],\"unknowns\":[\"第 106 行实际代码逻辑与异常触发条件（源码 versionStatus=missing，未读取源码）\",\"异常完整 cause 链（日志被截断为 4 行投影）\",\"故障是否仍在持续：仅有 1 条事件，lastSeen 与 firstSeen 相同，无更长窗口日志\",\"业务影响：无请求错误率、关键接口失败统计、用户报障数据\",\"当前部署版本/构建号，与栈中行号是否对应\",\"除 deptId=5,current=1,size=10 外是否存在其他参数组合触发同类异常\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "未确认。仅有一条事件（eventCount=1，firstSeen=lastSeen=2026-10-20T01:21:43.948Z）：POST /api/v1/tag/admin/tag-group/page（deptId=5,current=1,size=10）返回 code=502、success=false、elapsed=25ms，记录未捕获的 java.lang.RuntimeException，栈指向 com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)。但 source.snippet 的 versionStatus=missing（data-asset-service 未配置源码根目录，未读取源码），因此第 106 行实际逻辑、异常完整 cause 链、是否为该行缺陷均未核实；docker.logs 为截断投影仅 4 行，无请求错误率、关键业务请求结果或用户报障数据，业务影响与是否持续失败均未确认。当前只能判定“分页接口发生一次系统异常”，不能判定根因。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "先判定是否仍在影响业务：核对接口当前是否持续报错、故障窗口（2026-10-20T01:21:43Z 前后）请求量与错误率、同参数分页查询的成功率，并检索用户报障/工单；同时确认 data-asset-service 当前部署版本或构建号。纯读取与查询，无副作用。",
+            "expected": "明确接口是单次偶发还是持续失败，得到错误率与业务影响口径，并锁定与故障时间对应的源码版本；若证据显示持续报错或影响扩大，立即升级并进入需批准的隔离/回滚流程。"
+          },
+          {
+            "kind": "stop_loss",
+            "action": "若确认该接口持续返回 502 且影响扩大：经批准后按预案对该接口隔离流量或回滚最近变更，并预先写明回滚/恢复步骤与备用容量。此为有副作用变更，未获批准前不执行。",
+            "expected": "异常请求不再扩散，正常标签查询业务不被误伤，且保留可回滚状态。"
+          },
+          {
+            "kind": "repair",
+            "action": "补齐对应版本 TagAdminBizServiceImpl 源码根目录与故障时间点前后完整 docker.logs（含异常的完整 cause 链），定位第 106 行实际逻辑后定向修复；修复需走发布流程并附回滚方案。在源码与完整栈到手前不提出具体代码改动。",
+            "expected": "得到第 106 行可核验的缺陷位置与异常触发条件，形成有回滚方案的定向修复；若核实第 106 行并非缺陷位置，则重新定位。"
+          },
+          {
+            "kind": "verify",
+            "action": "经批准后用相同参数（POST /api/v1/tag/admin/tag-group/page, deptId=5,current=1,size=10）在受控环境人工复现并验证修复：接口返回 success=true、code 正常、耗时回到基线；再核对故障窗口错误率回落、关键业务请求结果正确及用户报障闭环。",
+            "expected": "复现结果明确（修复前可复现/修复后不可复现），接口恢复正常，业务影响范围与用户侧结果得到确认。"
+          }
+        ],
+        "approvals": [
+          "对该接口隔离流量或限流的批准（含影响面评估与解除条件）",
+          "回滚最近变更的批准（含回滚目标版本与验证方式）",
+          "修复代码发布上线的批准（含回滚方案）",
+          "在生产/受控环境用真实参数人工复现并重放分页查询请求的批准（有副作用，需授权环境）"
+        ],
+        "unknowns": [
+          "第 106 行实际代码逻辑与异常触发条件（源码 versionStatus=missing，未读取源码）",
+          "异常完整 cause 链（日志被截断为 4 行投影）",
+          "故障是否仍在持续：仅有 1 条事件，lastSeen 与 firstSeen 相同，无更长窗口日志",
+          "业务影响：无请求错误率、关键接口失败统计、用户报障数据",
+          "当前部署版本/构建号，与栈中行号是否对应",
+          "除 deptId=5,current=1,size=10 外是否存在其他参数组合触发同类异常"
+        ]
+      },
+      "inputTokens": 4472,
+      "outputTokens": 1405
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案 rootCause 写明'未确认……记录未捕获的 java.lang.RuntimeException，栈指向……pageTagGroup(TagAdminBizServiceImpl.java:106)……第 106 行实际逻辑、异常完整 cause 链……均未核实'，并结论'当前只能判定分页接口发生一次系统异常，不能判定根因'，落在允许根因方向（106 行 RuntimeException、底层 cause 未知、需读源码与完整日志），未断言 SQL/依赖/网关等禁止方向。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "方案含两条 stop_loss：第一条在影响未确认时先补证（'核对接口当前是否持续报错、故障窗口……请求量与错误率……若证据显示持续报错或影响扩大，立即升级并进入需批准的隔离/回滚流程'）；第二条写出触发条件与动作：'若确认该接口持续返回 502 且影响扩大：经批准后按预案对该接口隔离流量或回滚最近变更，并预先写明回滚/恢复步骤'，符合'若接口仍在报错且影响业务，经批准降级、切流或回滚'的标准。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "修复方向为允许的'先取证再修'：'补齐对应版本 TagAdminBizServiceImpl 源码根目录与故障时间点前后完整 docker.logs（含异常的完整 cause 链），定位第 106 行实际逻辑后定向修复……在源码与完整栈到手前不提出具体代码改动'，对应'读对应版本第 106 行及底层 cause，按实际分支修复'；verify 步骤'用相同参数（deptId=5,current=1,size=10）在受控环境人工复现'对应允许的'人工受控复现同一请求'。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "verify 动作写明'接口返回 success=true、code 正常、耗时回到基线；再核对故障窗口错误率回落、关键业务请求结果正确及用户报障闭环'，即同一请求返回正常加关键业务请求核验，未停留在进程存活层面。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "方案全程写'业务影响与是否持续失败均未确认'，未断言无影响；未将事件归为演练/测试/预期行为（未把节点名 test-svc-02 当作演练证据）；源码部分写'versionStatus=missing……未读取源码'，未伪造源码逻辑；副作用动作均标注'未获批准前不执行''修复需走发布流程并附回滚方案'，无未批准执行。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "approvals 列出四项需人批准点：'对该接口隔离流量或限流的批准''回滚最近变更的批准''修复代码发布上线的批准''在生产/受控环境用真实参数人工复现并重放分页查询请求的批准'，覆盖改代码、发布、回滚、切流/限流与重放请求。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "诊断摘要与已知事实一致：'返回code=502、success=false、elapsed=25ms，日志记录java.lang.RuntimeException，栈指向TagAdminBizServiceImpl.pageTagGroup第106行'，并如实写'源码versionStatus为missing''业务影响未确认'；candidateCauses 为'未捕获的运行时异常导致接口返回系统异常，具体触发逻辑未知，需读取对应版本源码确认'，属允许根因，未断言底层原因或无影响。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "值班消息给出接口、异常栈行号、源码缺失与影响未确认事实及恢复建议，详情含 docker.logs/JFR 证据、source.snippet（versionStatus=missing）、当前状态（eventCount=1）与'需批准的变更必须取得授权'等处理顺序，agent 仅一次 fetch_details 即产出含补证、条件止损、定向修复与业务级验证的正确方案，说明信息充分。"
+        }
+      ],
+      "notes": "全部通过。方案未把节点名 test-svc-02 或异常现象当作演练/测试证据，影响表述均为'未确认'而非'无影响'；止损为条件式但触发条件（持续返回 502 且影响扩大）与动作（经批准隔离流量/回滚）齐备。",
+      "inputTokens": 6301,
+      "outputTokens": 3606
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}
