@@ -5,7 +5,7 @@ The central agent submits an investigation for an Incident to pi-runtime over `P
 ## Sub-features
 
 - One session per Incident generation; `GET /v1/ops/incidents/:id` shows `sessions[].status` moving `SUBMITTED`/`RUNNING` to `COMPLETED` or `FAILED`.
-- The report carries `hypothesis`, `confidence`, `recommendation`, `supportingEvidenceIds`, `contradictingEvidenceIds`, and, when the runtime sends one, a structured `diagnosis`: summary, observations, candidate causes, uncertainties, actions with preconditions/risk/`requiresApproval`. Reports written before 2026-10-20 have no `diagnosis`; read `hypothesis` and the evidence ids there.
+- The report carries `hypothesis`, `confidence`, `recommendation`, `supportingEvidenceIds`, `contradictingEvidenceIds`, and, when the runtime sends one, a structured `diagnosis`: summary (`scene`, `whatHappened`, `severity`, `recovery`), observations, candidate causes, uncertainties, actions with preconditions/risk/`requiresApproval`. The coordinator normalizes flat summary fields on diagnosis into `diagnosis.summary` before validation. Reports written before 2026-10-20 have no `diagnosis`; read `hypothesis` and the evidence ids there.
 - Evidence audits show what pi-runtime asked for while investigating (`evidenceAudits[]`: request id, evidence type, status, specialist roles).
 - Deterministic evidence for this Incident is collected by the center: `http.probe`, `docker.inspect`, `docker.logs`, and host evidence when the runtime asks. The observed run also got a dynamic `host.memory` item.
 

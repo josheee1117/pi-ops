@@ -6,7 +6,7 @@ Evidence is what the model and the on-call engineer are allowed to see. The cent
 
 - `GET /v1/ops/incidents/:id/evidence?view=safe` (default): secret-named fields and env arrays redacted, logs trimmed to `MODEL_SAFE_MAX_LOG_LINES`, data bounded in size. This is the shape the runtime receives.
 - `GET /v1/ops/incidents/:id/evidence?view=raw`: unredacted records for authorized local debugging.
-- `GET /v1/ops/incidents/:id/brief`: JSON brief with incident facts, plain-language summary, reports, sessions, safe evidence and the notification decision.
+- `GET /v1/ops/incidents/:id/brief`: JSON brief with incident facts, plain-language summary, reports, sessions, safe evidence and the notification decision. When merging uncertain repair actions into recovery suggestions, duplicate `修复：` prefixes are stripped to avoid stacking `修复尚未确定：修复：`.
 - `GET /v1/ops/incidents/:id/brief?format=markdown`: the same content as the on-call document, including the authenticated read path for full evidence.
 
 ## How to get to it (user POV)
