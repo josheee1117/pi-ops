@@ -7,6 +7,7 @@ import { CPU_GOLDEN_CASES } from './fixtures.js';
 import { createLiveBenchmarkModel } from './live-model.js';
 import { buildReport, renderMarkdown } from './report.js';
 import { resolveCases, runBenchmark } from './runner.js';
+import { withoutSourceSnippetBodies } from './agent-chain.js';
 
 /**
  * JVM Diagnosis Benchmark CLI.
@@ -101,7 +102,7 @@ async function main(): Promise<void> {
 
   const secrets = [process.env['PI_OPS_PI_API_KEY'], process.env['GOVERNANCE_REVIEW_API_KEY']]
     .filter((item): item is string => typeof item === 'string');
-  const safeReport = scrub(report, secrets);
+  const safeReport = scrub(await withoutSourceSnippetBodies(report), secrets);
 
   const slug = `${options.mode}-${report.provider}-${report.model}-${thinking}${options.label ? `-${options.label}` : ''}`.replace(/[^\w.-]+/g, '_');
   mkdirSync(options.outDir, { recursive: true });

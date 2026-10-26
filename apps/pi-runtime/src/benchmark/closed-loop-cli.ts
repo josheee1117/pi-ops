@@ -11,6 +11,7 @@ import { runClosedLoopCase, type ClosedLoopCaseResult } from './closed-loop-runn
 import { criteriaFor } from './closed-loop-cases.js';
 import { renderClosedLoopReport } from './closed-loop-report.js';
 import { rejudgeDirectory, renderRejudgeReport } from './closed-loop-rejudge.js';
+import { withoutSourceSnippetBodies } from './agent-chain.js';
 
 const DEFAULT_AGENT_CATALOG = 'apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent';
 const CASE_RESERVE = 95_000;
@@ -111,7 +112,7 @@ async function main() {
     const tracker: Tracker = { spent: 0, budget };
     const judgeModel = budgeted((await withCatalog(modelCatalog, () => createLiveBenchmarkModel({ ...judgeSpec, thinkingLevel: 'off' }))).model, tracker);
     const started = Date.now();
-    const results = await rejudgeDirectory({ sourceDir, outDir, repoRoot: root, judgeModel, caseIds });
+    const results = await withoutSourceSnippetBodies(await rejudgeDirectory({ sourceDir, outDir, repoRoot: root, judgeModel, caseIds }));
     const wallMs = Date.now() - started;
     writeFileSync(join(outDir, 'summary.json'), `${JSON.stringify({ mode: 'rejudge', sourceDir, judge, budget, spent: tracker.spent, wallMs, results }, null, 2)}\n`);
     writeFileSync(join(outDir, 'report.md'), renderRejudgeReport({
@@ -188,7 +189,7 @@ async function main() {
   for (const benchmarkCase of cases) {
     const casePath = join(out, `${benchmarkCase.id}.json`);
     if (args.includes('--resume') && existsSync(casePath)) {
-      const existing: ClosedLoopCaseResult = JSON.parse(readFileSync(casePath, 'utf8'));
+      const existing: ClosedLoopCaseResult = await withoutSourceSnippetBodies(JSON.parse(readFileSync(casePath, 'utf8')));
       const mismatch = existing.mode !== mode
         || existing.diagnosis.provider !== config.diagnosis.provider || existing.diagnosis.model !== config.diagnosis.model
         || existing.handler.provider !== config.handler.provider || existing.handler.model !== config.handler.model
@@ -202,9 +203,9 @@ async function main() {
     }
     if (existsSync(casePath)) throw new Error(`refuse to overwrite ${benchmarkCase.id}; use --resume or a new --out directory`);
     if (tracker.spent + CASE_RESERVE > budget) throw new Error(`token budget reached before ${benchmarkCase.id}; spent=${tracker.spent}`);
-    const result = await runClosedLoopCase(benchmarkCase, {
+    const result = await withoutSourceSnippetBodies(await runClosedLoopCase(benchmarkCase, {
       repoRoot: root, diagnosisModel, handlerModel, judgeModel, mode, diagnosisThinking: config.diagnosis.thinking,
-    });
+    }));
     results.push(result);
     writeFileSync(casePath, safe(`${JSON.stringify({ criteria: criteriaFor(benchmarkCase.id), codeHashes, result }, null, 2)}\n`));
     save();

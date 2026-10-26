@@ -369,6 +369,87 @@ it('stores exactly one source row before building an investigation and reuses it
   }
 });
 
+it('finds business source after MySQL and an unlisted third-party frame', () => {
+  const data = snippet({ [SERVICE]: DATAASSET_ROOT }, [
+    'at com.mysql.cj.jdbc.exceptions.SQLExceptionsMapping.translateException(SQLExceptionsMapping.java:122)',
+    'at vendor.unknown.Proxy.invoke(Proxy.java:30)',
+    DATAASSET_STACK,
+  ].join('\n'));
+  assert.equal(data?.file, 'LabFaultController.java');
+  assert.equal(data?.versionStatus, 'unchecked');
+  assert.match(data?.text ?? '', /throw new IllegalStateException/);
+});
+
+it('redacts passwords in connection URIs regardless of the variable name', () => {
+  const root = tempRoot((directory) => writeFileSync(join(directory, 'Connection.java'), [
+    'class Connection {', '  void run() {',
+    '    String endpoint = "mysql://alice:db-secret@db.example/app";',
+    '    String cache = "redis://:redis-secret@cache.example:6379";',
+    '  }', '}',
+  ].join('\n')));
+  const data = snippet({ [SERVICE]: root }, 'at app.Connection.run(Connection.java:3)');
+  assert.ok(data);
+  assert.doesNotMatch(data.text, /db-secret|redis-secret/);
+  assert.match(data.text, /mysql:\/\/alice:\[redacted\]@db.example/);
+  assert.match(data.text, /redis:\/\/:\[redacted\]@cache.example/);
+});
+
+it('refuses source files larger than one MiB before reading their content', () => {
+  const root = tempRoot((directory) => writeFileSync(join(directory, 'Huge.java'),
+    'class Huge {\n  void run() {}\n}\n' + ' '.repeat(1024 * 1024)));
+  const data = snippet({ [SERVICE]: root }, 'at app.Huge.run(Huge.java:2)');
+  assert.equal(data?.versionStatus, 'missing');
+  assert.equal(data?.text, '');
+  assert.match(data?.versionNote ?? '', /源码文件过大，未读取/);
+});
+
+it('reads findUsers with a three-line parameter signature', () => {
+  const root = tempRoot((directory) => writeFileSync(join(directory, 'Users.java'), [
+    'class Users {', '  public List<User> findUsers(', '      String name,', '      int limit) {',
+    '    return repository.find(name, limit);', '  }', '}',
+  ].join('\n')));
+  const data = snippet({ [SERVICE]: root }, 'at app.Users.findUsers(Users.java:5)');
+  assert.equal(data?.versionStatus, 'unchecked');
+  assert.match(data?.text ?? '', /public List<User> findUsers\(/);
+  assert.match(data?.text ?? '', /return repository.find/);
+});
+
+it('redacts a secret assignment spanning a Java text block without shifting line numbers', () => {
+  const root = tempRoot((directory) => writeFileSync(join(directory, 'Block.java'), [
+    'class Block {', '  void run() {', '    String apiKey = """',
+    '        first-secret-line', '        second-secret-line', '        """;',
+    '    use(apiKey);', '  }', '}',
+  ].join('\n')));
+  const data = snippet({ [SERVICE]: root }, 'at app.Block.run(Block.java:7)');
+  assert.ok(data);
+  assert.doesNotMatch(data.text, /first-secret-line|second-secret-line/);
+  assert.match(data.text, /\[redacted\]/);
+  assert.equal(data.endLine, data.startLine + data.text.split('\n').length - 1);
+});
+
+it('ignores braces and parentheses in block comments when locating a method body', () => {
+  const root = tempRoot((directory) => writeFileSync(join(directory, 'Commented.java'), [
+    'class Commented {', '  void run() {', '    /* } )', '       } { ( */',
+    '    use("body-marker");', '  }', '}',
+  ].join('\n')));
+  const data = snippet({ [SERVICE]: root }, 'at app.Commented.run(Commented.java:5)');
+  assert.equal(data?.versionStatus, 'unchecked');
+  assert.match(data?.text ?? '', /body-marker/);
+  assert.equal(data?.endLine, 6);
+});
+
+it('redacts Authorization headers and Bearer tokens under unrelated variable names', () => {
+  const root = tempRoot((directory) => writeFileSync(join(directory, 'Headers.java'), [
+    'class Headers {', '  void run() {',
+    '    headers.put("Authorization", "Basic basic-secret");',
+    '    String value = "Bearer bearer-secret";', '  }', '}',
+  ].join('\n')));
+  const data = snippet({ [SERVICE]: root }, 'at app.Headers.run(Headers.java:3)');
+  assert.ok(data);
+  assert.doesNotMatch(data.text, /basic-secret|bearer-secret/);
+  assert.match(data.text, /\[redacted\]/);
+});
+
 it('loads source roots from the environment and rejects malformed values', () => {
   assert.deepEqual(loadSourceRoots({}), {});
   assert.deepEqual(loadSourceRoots({ PI_OPS_SOURCE_ROOTS: '{"svc":"/srv/code"}' }), { svc: '/srv/code' });

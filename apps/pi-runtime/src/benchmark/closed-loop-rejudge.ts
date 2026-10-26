@@ -8,6 +8,7 @@ import {
   type ClosedLoopCaseResult, type ClosedLoopVerdict, type GapKind,
 } from './closed-loop-runner.js';
 import { gapLabel } from './closed-loop-report.js';
+import { withoutSourceSnippetBodies } from './agent-chain.js';
 
 /**
  * Re-runs only the judge against already stored handler answers.
@@ -137,10 +138,12 @@ export async function rejudgeDirectory(options: {
     if (!existsSync(sourceFile)) throw new Error(`missing saved case: ${sourceFile}`);
     const casePath = join(outDir, `${caseId}.json`);
     if (existsSync(casePath)) throw new Error(`refuse to overwrite ${caseId}; use a new --out directory`);
-    const result = await rejudgeCase(sourceFile, {
+    const result = await withoutSourceSnippetBodies(await rejudgeCase(sourceFile, {
       repoRoot: options.repoRoot, judgeModel: options.judgeModel,
       ...(options.beforeCall ? { beforeCall: options.beforeCall } : {}),
-    });
+    }), loadSourceFixtures(options.repoRoot, criteriaFor(caseId)).map((item) => ({
+      kind: 'source.snippet', data: { text: item.content },
+    })));
     results.push(result);
     writeFileSync(casePath, `${JSON.stringify({
       criteria: criteriaFor(caseId),

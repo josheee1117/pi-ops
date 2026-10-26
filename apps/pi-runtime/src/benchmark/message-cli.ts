@@ -9,6 +9,7 @@ import { runCase, estimateCaseTokens, type CaseResult } from './runner.js';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { renderMessageReport } from './report.js';
+import { withoutSourceSnippetBodies } from './agent-chain.js';
 
 export function readModelConfig(path: string) {
   const env = parseEnv(readFileSync(path, 'utf8'));
@@ -75,7 +76,7 @@ async function main() {
   for (const item of cases) {
     const casePath = join(out, `${item.id}.json`);
     if (args.includes('--resume') && existsSync(casePath)) {
-      const existing: CaseResult = JSON.parse(readFileSync(casePath, 'utf8'));
+      const existing: CaseResult = await withoutSourceSnippetBodies(JSON.parse(readFileSync(casePath, 'utf8')));
       if (existing.mode !== mode || (mode === 'live' && (existing.provider !== config.provider || existing.model !== config.model || existing.thinking.requested !== config.thinkingLevel))) {
         throw new Error(`saved case configuration mismatch: ${item.id}`);
       }

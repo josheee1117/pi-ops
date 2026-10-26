@@ -1,7 +1,7 @@
 import { investigate, type CoordinatorOutcome } from '../coordinator.js';
 import type { RuntimeModel } from '../model.js';
 import { validateEvidence, type RuntimeInvestigationContext, type RuntimeEvidenceResponse } from '@pi-ops/protocol';
-import { projectCase, fixedEvidenceClient, renderMessage } from './agent-chain.js';
+import { projectCase, fixedEvidenceClient, renderMessage, withoutSourceSnippetBodies } from './agent-chain.js';
 import { CPU_GOLDEN_CASES, buildBenchmarkContext, findCase, type BenchmarkCase, type BenchmarkEvidence } from './fixtures.js';
 import { classifyRepair, type RepairKind } from './repair-classification.js';
 import { evaluateCase, evaluateMessage, type BenchmarkEvaluation, type MessageEvaluation } from './evaluator.js';
@@ -205,7 +205,7 @@ export async function runCase(
       } : {}),
     });
   } catch (error) {
-    return {
+    return withoutSourceSnippetBodies({
       caseId: benchmarkCase.id,
       description: benchmarkCase.description,
       provider: model.provider,
@@ -222,7 +222,7 @@ export async function runCase(
       evidenceIds: benchmarkCase.evidence.map((item) => item.id),
       evaluation: null,
       investigation: { findings: [] },
-    };
+    }, context.evidence);
   }
   const observedUsage = modelCalls.every((call) => call.status === 'ok' && call.inputTokens !== undefined && call.outputTokens !== undefined)
     ? modelCalls.reduce((sum, call) => ({ input: sum.input + (call.inputTokens ?? 0), output: sum.output + (call.outputTokens ?? 0), total: sum.total + (call.inputTokens ?? 0) + (call.outputTokens ?? 0) }), { input: 0, output: 0, total: 0 })
@@ -260,7 +260,7 @@ export async function runCase(
   const evaluation = outcome.status === 'completed' && outcome.report
     ? evaluateCase({ ...benchmarkCase, evidence: visibleEvidence }, { report: outcome.report, findings: outcome.findings })
     : null;
-  return {
+  return withoutSourceSnippetBodies({
     caseId: benchmarkCase.id,
     description: benchmarkCase.description,
     provider: outcome.provider,
@@ -285,7 +285,7 @@ export async function runCase(
       ...(outcome.report ? { report: outcome.report } : {}),
       findings: outcome.findings,
     },
-  };
+  }, context.evidence);
 }
 
 export function estimateCaseTokens(benchmarkCase: BenchmarkCase): number {

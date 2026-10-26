@@ -47,7 +47,7 @@ it('stores a report citing the projected source id and hides its text over real 
   assert.ok(sample);
   const outcome = await runCase(sample, { model: createFakeRuntimeModel(), mode: 'fake', thinkingLevel: 'off' });
   const report = outcome.investigation.report;
-  const source = outcome.modelContext?.evidence.find((item) => item.kind === 'source.snippet');
+  const source = (await projectCase(sample)).evidence.find((item) => item.kind === 'source.snippet');
   assert.ok(report && source);
   report.supportingEvidenceIds.push(source.id);
   assert.equal(outcome.repairKind, 'undetermined');

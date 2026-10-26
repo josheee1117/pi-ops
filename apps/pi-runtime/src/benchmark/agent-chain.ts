@@ -52,6 +52,35 @@ export async function projectCase(benchmarkCase: BenchmarkCase): Promise<Runtime
   return parsed.value;
 }
 
+export async function withoutSourceSnippetBodies<T>(value: T, evidence: readonly unknown[] = []): Promise<T> {
+  const { withoutSourceSnippetText } = await agentModule('incident-context');
+  const bodies = new Set<string>();
+  const collect = (item: unknown): void => {
+    if (!item || typeof item !== 'object') return;
+    if ('kind' in item && item.kind === 'source.snippet' && 'data' in item
+      && item.data && typeof item.data === 'object' && 'text' in item.data && typeof item.data.text === 'string') {
+      for (const line of item.data.text.split('\n').map((line) => line.trim()).filter((line) => line.length >= 4)) {
+        bodies.add(line);
+        bodies.add(JSON.stringify(line).slice(1, -1));
+      }
+    }
+    for (const child of Object.values(item)) collect(child);
+  };
+  collect(value);
+  collect(evidence);
+  return JSON.parse(JSON.stringify(value, (_key, item: unknown) => {
+    if (item && typeof item === 'object' && 'kind' in item && typeof item.kind === 'string' && 'data' in item) {
+      return withoutSourceSnippetText(item);
+    }
+    if (typeof item === 'string') {
+      let text = item;
+      for (const body of bodies) text = text.split(body).join('[source omitted]');
+      return text;
+    }
+    return item;
+  }));
+}
+
 export function fixedEvidenceClient(benchmarkCase: BenchmarkCase, responses: RuntimeEvidenceResponse[]): RuntimeEvidenceClient {
   return {
     async request(input) {

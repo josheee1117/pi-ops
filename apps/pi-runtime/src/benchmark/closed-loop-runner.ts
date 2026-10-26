@@ -4,6 +4,8 @@ import { resolve, sep } from 'node:path';
 import type { RuntimeModel } from '../model.js';
 import type { BenchmarkCase } from './fixtures.js';
 import { runCase, type CaseResult } from './runner.js';
+import { projectCase, withoutSourceSnippetBodies } from './agent-chain.js';
+import type { RepairKind } from './repair-classification.js';
 import { criteriaFor, HANDLER_ITEMS, type ClosedLoopCriteria, type SourceFixture } from './closed-loop-cases.js';
 import { openCaseAgentServer, type StoredEvidence } from './closed-loop-server.js';
 import { runHandler, runJudge, type HandlerResult, type JudgeItem, type JudgeResult, type ToolCallLog } from './closed-loop-agent.js';
@@ -31,6 +33,7 @@ export interface ClosedLoopCaseResult {
     reportHardPass: boolean;
     messageHardPass: boolean;
     degraded: boolean;
+    repairKind?: RepairKind;
     error?: string;
     report?: unknown;
     modelCalls?: Array<{ role: string; status: string; stopReason?: string; inputTokens?: number; outputTokens?: number; text?: string }>;
@@ -199,6 +202,7 @@ export async function runClosedLoopCase(benchmarkCase: BenchmarkCase, options: C
     reportHardPass: diagnosis.evaluation?.hardPass === true,
     messageHardPass: diagnosis.messageEvaluation?.hardPass === true,
     degraded: diagnosis.evaluation?.degraded === true || diagnosis.messageEvaluation?.degraded === true,
+    repairKind: diagnosis.repairKind,
     ...(diagnosis.error ? { error: diagnosis.error } : {}),
     ...(report ? { report } : {}),
     modelCalls: (diagnosis.modelCalls ?? []).map((call) => ({
@@ -215,6 +219,10 @@ export async function runClosedLoopCase(benchmarkCase: BenchmarkCase, options: C
     };
   }
 
+  const sourceEvidence = (await projectCase(benchmarkCase)).evidence;
+  const sourceBodies = loadSourceFixtures(repoRoot, criteria).map((item) => ({
+    kind: 'source.snippet', data: { text: item.content },
+  }));
   const agent = await openCaseAgentServer(benchmarkCase, report, measurableEvidence(benchmarkCase, diagnosis));
   try {
     const handlerTools = {
@@ -267,7 +275,7 @@ export async function runClosedLoopCase(benchmarkCase: BenchmarkCase, options: C
     const verdict = judge ? deriveVerdict(criteria, items, handler.status) : 'open';
     const detailFailed = agent.detailBytes === 0 || handler.calls.some((call) => call.tool === 'fetch_details' && !call.ok);
     const gaps = deriveGaps({ verdict, items, handler, criteria, detailFailed, diagnosisUnavailable: false });
-    return {
+    return withoutSourceSnippetBodies({
       ...base,
       diagnosis: diagnosisSummary,
       incidentId: agent.incidentId,
@@ -298,7 +306,7 @@ export async function runClosedLoopCase(benchmarkCase: BenchmarkCase, options: C
       primaryGap: primaryGap(gaps),
       tokens: reportTokens + handler.inputTokens + handler.outputTokens + (judge?.inputTokens ?? 0) + (judge?.outputTokens ?? 0),
       latencyMs: Date.now() - started,
-    };
+    }, [...sourceEvidence, ...sourceBodies]);
   } finally {
     await agent.close();
   }
