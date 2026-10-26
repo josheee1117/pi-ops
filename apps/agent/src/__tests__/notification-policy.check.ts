@@ -1,3 +1,26 @@
+/**
+ * 运行说明：通知策略纯函数判定与决策隔离快照
+ *
+ * 怎么跑：
+ *   在 apps/agent 目录下运行：
+ *     ./node_modules/.bin/tsx src/__tests__/notification-policy.check.ts
+ *   或在仓库根目录下运行：
+ *     pnpm --filter @pi-ops/agent exec tsx src/__tests__/notification-policy.check.ts
+ *
+ * 什么时候跑：
+ *   修改通知策略（src/notification-policy.ts）、通知决策（src/notification-decision.ts）或相关配置后手动运行。
+ *   本文件以 .check.ts 命名，默认 pnpm test（仅匹配 src/**\/*.test.ts）不会自动运行它。
+ *   提交通知策略改动前必须单独运行本离线检查。
+ *
+ * 期望输出：
+ *   所有测试套件通过时以 exit code 0 结束，控制台输出包含：
+ *     ℹ tests 16
+ *     ℹ suites 2
+ *     ℹ pass 16
+ *     ℹ fail 0
+ *   若任何断言失败，抛出 AssertionError 并以非 0 状态码退出。
+ *   注意：exit 0 仅表示纯函数的离线合同快照匹配，不代表真实环境场景 PASS。
+ */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { OpsEvent } from '@pi-ops/protocol';

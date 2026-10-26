@@ -1,3 +1,26 @@
+/**
+ * 运行说明：通知存储事实层转换与真实 SQLite 行为快照
+ *
+ * 怎么跑：
+ *   在 apps/agent 目录下运行：
+ *     ./node_modules/.bin/tsx src/__tests__/notification-stored-facts.check.ts
+ *   或在仓库根目录下运行：
+ *     pnpm --filter @pi-ops/agent exec tsx src/__tests__/notification-stored-facts.check.ts
+ *
+ * 什么时候跑：
+ *   修改通知存储事实层（src/notification-stored-facts.ts）、存储模型与事件关联逻辑后手动运行。
+ *   本文件以 .check.ts 命名，默认 pnpm test（仅匹配 src/**\/*.test.ts）不会自动运行它。
+ *   提交通知事实层改动前必须单独运行本离线检查。
+ *
+ * 期望输出：
+ *   自备临时目录下的 SQLite 数据库并运行用例。全部通过时以 exit code 0 结束，控制台输出包含：
+ *     ℹ tests 10
+ *     ℹ suites 1
+ *     ℹ pass 10
+ *     ℹ fail 0
+ *   临时目录会在退出前自动清理。若任何断言失败，抛出 AssertionError 并以非 0 状态码退出。
+ *   注意：exit 0 仅表示事实层离线合同快照匹配，不代表真实环境场景 PASS。
+ */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
