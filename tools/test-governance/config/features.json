@@ -209,7 +209,8 @@
       "paths": [
         "apps/agent/src/incident-context.ts",
         "apps/agent/src/investigation-evidence.ts",
-        "apps/agent/src/investigation-context.ts"
+        "apps/agent/src/investigation-context.ts",
+        "apps/agent/src/source-snippet.ts"
       ],
       "invariants": [
         {
@@ -338,6 +339,7 @@
       "maintenanceBudget": 8,
       "paths": [
         "apps/agent/src/investigation-loop.ts",
+        "apps/agent/src/investigation-report.ts",
         "apps/agent/src/investigation-session.ts",
         "apps/agent/package.json"
       ],
@@ -811,6 +813,7 @@
       "maintenanceBudget": 6,
       "paths": [
         "apps/agent/src/config.ts",
+        "apps/agent/src/source-roots.ts",
         "apps/node-agent/src/config.ts",
         "apps/pi-runtime/src/config.ts",
         "apps/agent/package.json"

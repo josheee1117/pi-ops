@@ -9,29 +9,28 @@ node tools/test-governance/src/cli.mjs gaps
 Current machine output:
 
 ```text
-MACHINE EVIDENCE GAPS: 1
-- evidence.collection INV-EVD-02:A missing=1
+MACHINE EVIDENCE GAPS: 0
 ```
 
-This one is a **required floor slot with no existing proof** - not a recommendation. `test:plan` reports `NEEDS_EVIDENCE` for the owning (and impact-propagated) features until it is closed.
+A required floor slot with no existing proof is not a recommendation. `test:plan` reports `NEEDS_EVIDENCE` for the owning (and impact-propagated) features until it is closed.
 
 ---
 
 ## P1 (machine-detected, floor-missing)
 
-### GAP-P1-PROBE-MP
-
-- **Feature:** evidence.collection
-- **Invariant:** INV-EVD-02 - required A1 C1; **A1 missing (MACHINE GAP)**
-- **Existing evidence:** C only - `evd-transport-retryable`, `evd-hang-retryable` (stub `fetch` ECONNREFUSED / hanging promise).
-- **Why insufficient:** transport ownership is a distributed boundary; stubs cannot prove Compose DNS/TCP failure between `pi-ops` and `pi-ops-node-agent`, nor that no code path synthesizes target health under a real outage.
-- **Recommended action:** CREATE
-- **Suggested test case:** TC-INV-EVD-002 (stop Node Agent container mid-collection; retryable failed Evidence; no synthesized `healthy=false`; recovery after restart).
-- **Maintenance cost:** 6 · **Priority:** P1
+None open.
 
 ---
 
 ## Closed P1 gaps
+
+### GAP-P1-PROBE-MP (closed)
+
+- **Feature:** evidence.collection · INV-EVD-02
+- **Closed by:** catalog entry `evd-outage-multiprocess`, level A for INV-EVD-02, source "Real node-agent process is SIGKILLed while an http.probe is in flight; the Evidence row stays failed/retryable with data=null, and the retry after restart stores the target's real healthy=true".
+- **How it runs:** `apps/agent/src/__tests__/evidence-transport-outage.test.ts` starts the real Node Agent as one child process, waits for its `/health`, and sends a real `http.probe`. The probe target holds the request, so the collection is inside the live Node Agent when the process is killed. The persisted Evidence stays `failed` with `data=null` and `failureClass=retryable`, and no stored row carries a `healthy` fact. After a restart on the same port the same collection id re-collects and stores `healthy=true` from the real target.
+- **Deviation from the suggested case:** the suggested test used the Compose container. The claim is the transport boundary between Pi-Ops and a real Node Agent process, so a local child process on `127.0.0.1` proves it without Compose and stays inside Gate 3. The outage is a process kill, not a Compose DNS failure.
+- **Priority:** P1 · maintenance cost 3.
 
 ### GAP-P1-SAFE-MP (closed)
 

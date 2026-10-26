@@ -392,6 +392,24 @@
       ]
     },
     {
+      "id": "evd-outage-multiprocess",
+      "featureId": "evidence.collection",
+      "status": "ACTIVE",
+      "maintenanceCost": 3,
+      "executionClass": "MULTI_PROCESS",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-transport-outage.test.ts",
+        "testName": "keeps a real Node Agent killed mid-collection retryable and never fabricates target health"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-EVD-02",
+          "level": "A",
+          "source": "Real node-agent process is SIGKILLed while an http.probe is in flight; the Evidence row stays failed/retryable with data=null, and the retry after restart stores the target's real healthy=true"
+        }
+      ]
+    },
+    {
       "id": "evd-node-unhealth",
       "featureId": "evidence.collection",
       "status": "PINNED",
