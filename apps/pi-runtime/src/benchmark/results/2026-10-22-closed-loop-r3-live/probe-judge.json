@@ -1,0 +1,30 @@
+{
+  "probedAt": "2026-10-22T03:08:56.629Z",
+  "catalog": "/Users/hejiayuan/.pi/agent",
+  "note": "minimal completeSimple; no runtime api key override; ark key not used",
+  "results": [
+    {
+      "spec": "cpa/gemini-3.8-flash-high",
+      "ok": true,
+      "stopReason": "stop",
+      "errorMessage": null,
+      "usage": {
+        "input": 8,
+        "output": 75,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 74,
+        "totalTokens": 83,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "OK",
+      "latencyMs": 16320
+    }
+  ]
+}

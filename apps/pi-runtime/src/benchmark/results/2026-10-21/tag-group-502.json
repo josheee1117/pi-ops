@@ -1,0 +1,156 @@
+{
+  "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts tagGroup。仅重建已观测字段，不把旧诊断作为输入；无原始完整日志。",
+  "oracle": {
+    "expectedFacts": [
+      "pageTagGroup:106 抛出 RuntimeException",
+      "业务响应 code=502，不等价于 HTTP 网关 502",
+      "底层 cause、持续性和影响未知"
+    ],
+    "allowedRepairs": [
+      "读对应版本第 106 行及 cause，按实际分支修复；人工受控复现相同请求"
+    ],
+    "forbiddenAttributions": [
+      "凭异常断言库存、SQL、依赖或网关故障",
+      "伪造源码逻辑或配置值"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|根因是|由于)库存(?:不足|校验)",
+      "(?:确认|根因是)数据库故障",
+      "(?:确认|根因是)网关故障"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+    "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+    "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+    "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+  },
+  "caseId": "tag-group-502",
+  "description": "pageTagGroup:106 抛出 RuntimeException；业务响应 code=502，不等价于 HTTP 网关 502；底层 cause、持续性和影响未知",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "failed",
+  "error": "all specialists failed",
+  "latencyMs": 46667,
+  "tokenUsage": {
+    "input": 1668,
+    "output": 8192,
+    "total": 9860
+  },
+  "selectedSpecialists": [
+    "application_business"
+  ],
+  "specialistStatus": {
+    "application_business": "failed"
+  },
+  "modelCalls": [
+    {
+      "role": "application_business",
+      "status": "ok",
+      "chars": 549,
+      "inputChars": 4719,
+      "inputTokens": 1668,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": "{\"role\":\"application_business\",\"hypotheses\":[\"pageTagGroup 第106行发生未处理 RuntimeException 并导致接口返回 502；该行是显式抛出还是包装异常、触发条件为何，需源码与入参确认。\",\"当前异常栈只显示业务方法位置，未显示数据库、缓存或外部依赖调用帧；不能把依赖故障、条件判断或结果映射列为已确认或较可能原因。\",\"容器日志仅见 4 行且 truncated=true，完整 cause 链和故障窗口未知；单次事件不足以判断持续性与影响范围。\"],\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\",\"docker.inspect\",\"docker.stats\",\"host.memory\",\"host.load\"],\"confidence\":0.58,\"summary\":\"当前可确认一次 POST /api/v1/tag/admin/tag-group/page "
+    }
+  ],
+  "evidenceIds": [
+    "evd-tag-group-502-jfr.signal",
+    "evd-tag-group-502-docker.logs"
+  ],
+  "evaluation": null,
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-tag-group-502",
+      "type": "business.error",
+      "service": "data-asset-service",
+      "nodeId": "test-svc-02",
+      "severity": "error",
+      "state": "OPEN",
+      "firstSeen": "2026-10-20T01:21:43.948Z",
+      "lastSeen": "2026-10-20T01:21:43.948Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "evd-tag-group-502-jfr.signal",
+        "kind": "jfr.signal",
+        "incidentId": "inc-tag-group-502",
+        "nodeId": "test-svc-02",
+        "source": "jfr",
+        "collectedAt": "2026-10-20T01:21:43.948Z",
+        "status": "succeeded",
+        "data": {
+          "eventId": "evt-tag-group-502",
+          "eventType": "business.error",
+          "semanticType": "business.error",
+          "observedAt": "2026-10-20T01:21:43.948Z",
+          "message": "Unhandled request exception",
+          "attributes": {
+            "exceptionClass": "java.lang.RuntimeException",
+            "operation": "POST /api/v1/tag/admin/tag-group/page",
+            "exceptionStackTrace": "at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)"
+          }
+        }
+      },
+      {
+        "id": "evd-tag-group-502-docker.logs",
+        "kind": "docker.logs",
+        "incidentId": "inc-tag-group-502",
+        "nodeId": "test-svc-02",
+        "source": "docker",
+        "collectedAt": "2026-10-20T01:21:43.948Z",
+        "status": "succeeded",
+        "data": {
+          "truncated": true,
+          "lines": [
+            "2026-10-20T01:21:43.948Z java.lang.RuntimeException",
+            "Caused by: java.lang.RuntimeException",
+            "at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)",
+            "2026-10-20T01:21:43.949Z POST /api/v1/tag/admin/tag-group/page deptId=5,current=1,size=10 code=502 msg=系统异常 success=false elapsed=25ms"
+          ],
+          "logProjection": {
+            "lines": {
+              "originalLineCount": 4,
+              "retainedRanges": [
+                {
+                  "startLine": 1,
+                  "endLine": 4
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": [],
+    "truncation": {
+      "droppedEvidenceIds": [],
+      "truncatedItems": [
+        "evd-tag-group-502-docker.logs"
+      ]
+    }
+  },
+  "supplementalResponses": [],
+  "investigation": {
+    "findings": []
+  }
+}

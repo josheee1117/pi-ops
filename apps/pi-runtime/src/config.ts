@@ -44,7 +44,8 @@ export function loadConfig(): PiRuntimeConfig {
     sqlitePath: requireEnv('PI_OPS_PI_RUNTIME_SQLITE_PATH'),
     callbackBaseUrl: requireEnv('PI_OPS_PI_RUNTIME_CALLBACK_URL'),
     callbackTimeoutMs: integerEnv('PI_OPS_PI_RUNTIME_CALLBACK_TIMEOUT_MS', 5000, { max: 10 * 60 * 1000 }),
-    executionTimeoutMs: integerEnv('PI_OPS_PI_RUNTIME_EXECUTION_TIMEOUT_MS', 30_000, { max: 10 * 60 * 1000 }),
+    // A bounded whole-investigation budget: sequential specialists/enrichment/synthesis exceeded 30s in real runs.
+    executionTimeoutMs: integerEnv('PI_OPS_PI_RUNTIME_EXECUTION_TIMEOUT_MS', 300_000, { max: 10 * 60 * 1000 }),
     deliveryBackoffMs: integerEnv('PI_OPS_PI_RUNTIME_DELIVERY_BACKOFF_MS', 200, { max: 60_000 }),
     maxDeliveryAttempts: integerEnv('PI_OPS_PI_RUNTIME_MAX_DELIVERY_ATTEMPTS', 5, { max: 20 }),
     piProvider: process.env['PI_OPS_PI_PROVIDER'] ?? '',

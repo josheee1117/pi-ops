@@ -30,6 +30,12 @@ export function makeNodeAgentConfig(overrides: Partial<NodeAgentConfig> = {}): N
     diskPressureDuration: 3,
     healthTargets: [{ name: 'test-health', url: 'http://localhost:8080/health' }],
     healthFailureDuration: 2,
+    logScanEnabled: true,
+    logScanIntervalMs: 30_000,
+    logScanMaxLines: 2000,
+    logScanInitialLookbackSeconds: 30,
+    logScanOverlapSeconds: 2,
+    logScanDedupWindowMs: 600_000,
     ...overrides,
   };
 }

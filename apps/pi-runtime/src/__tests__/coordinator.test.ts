@@ -1,5 +1,7 @@
+import { deterministicSummary } from '@pi-ops/protocol';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   EVIDENCE_QUERY_TYPES,
   MAX_SPECIALISTS_PER_INVESTIGATION,
@@ -38,6 +40,16 @@ const validFinding = (role: 'jvm' | 'database' | 'container_host' | 'application
   missingEvidence: missing,
   confidence: 0.91,
   summary: `${role} used injected model output`,
+  diagnosis: {
+    observations: [],
+    candidateCauses: [{ cause: `${role} injected finding`, supportingEvidenceIds: ids, contradictingEvidenceIds: [] }],
+    uncertainties: ['需要更多当前证据。'],
+    actions: [{
+      purpose: 'evidence_collection', target: 'data-asset-service', preconditions: ['修复尚未确定。'],
+      operation: '核对故障窗口日志。若有异常则对照调用链，否则补齐故障窗口。',
+      expectedResult: '明确异常位置或证据缺口。', risk: '只读检查。', requiresApproval: false, evidenceIds: ids,
+    }],
+  },
   status: 'completed',
 });
 
@@ -52,6 +64,29 @@ const evidenceRow = (id: string, kind: string, incidentId = 'inc-1') => ({
 });
 
 describe('bounded multi-agent coordinator', () => {
+  const echoCoordinatorModel = (text: string): RuntimeModel => ({
+    provider: 'test', model: 'recorded', networkCalls: 0,
+    async invoke(request) {
+      return { text: request.system.includes('COORDINATOR_SYNTHESIS') ? text : validFinding('container_host', ['evd-health-503-http.probe']), provider: 'test', model: 'recorded' };
+    },
+  });
+
+  const investigateHealth503 = (text: string) => investigate(context({
+    incident: { id: 'inc-1', type: 'health.failure', service: 'data-asset-service' },
+    evidence: [{ id: 'evd-health-503-http.probe', kind: 'http.probe' }],
+  }), { model: echoCoordinatorModel(text) });
+
+  it('fake model delay completes locally and stops when aborted', async () => {
+    const model = createFakeRuntimeModel({ delayMs: 1 });
+    const request = { system: 'SPECIALIST_ROLE=container_host', user: JSON.stringify(context()) };
+    assert.ok((await model.invoke(request)).text);
+    const controller = new AbortController();
+    const pending = createFakeRuntimeModel({ delayMs: 60_000 }).invoke({ ...request, signal: controller.signal });
+    controller.abort();
+    await assert.rejects(pending, { name: 'AbortError' });
+    assert.equal(model.networkCalls, 0);
+  });
+
   it('does not select database for jvm.gc_pressure', () => {
     const selected = selectSpecialists(context({
       incident: { id: 'inc-1', type: 'jvm.gc_pressure', service: 'data-asset-service' },
@@ -77,6 +112,82 @@ describe('bounded multi-agent coordinator', () => {
     assert.match(outcome.report?.hypothesis ?? '', /injected finding/);
     assert.ok(model.invocations > 0);
     assert.equal(model.networkCalls, 0);
+  });
+
+  it('moves summary fields written flat on diagnosis into diagnosis.summary', async () => {
+    const recorded = JSON.parse(readFileSync(
+      new URL('../benchmark/results/2026-10-22-closed-loop-r3-prod/health-503.json', import.meta.url), 'utf8',
+    )) as { result: { diagnosis: { modelCalls: Array<{ role: string; text: string }> } } };
+    const text = recorded.result.diagnosis.modelCalls.filter((call) => call.role === 'coordinator').at(-1)!.text;
+    const flat = (JSON.parse(text) as { diagnosis: Record<string, unknown> }).diagnosis;
+    const outcome = await investigateHealth503(text);
+    assert.equal(outcome.status, 'completed');
+    assert.doesNotMatch(outcome.report?.hypothesis ?? '', /^诊断不完整/);
+    assert.deepEqual(outcome.report?.diagnosis?.summary, {
+      scene: flat['scene'], whatHappened: flat['whatHappened'], severity: flat['severity'], recovery: flat['recovery'],
+    });
+    const partial = JSON.parse(text) as { diagnosis: Record<string, unknown> };
+    delete partial.diagnosis['severity'];
+    const rejected = await investigateHealth503(JSON.stringify(partial));
+    assert.match(rejected.report?.hypothesis ?? '', /^诊断不完整/);
+  });
+
+  it('requests readable Chinese findings and synthesis without changing protocol keys', async () => {
+    const systems: string[] = [];
+    const users: string[] = [];
+    const model: RuntimeModel = {
+      provider: 'test', model: 'readable', networkCalls: 0,
+      async invoke(request) {
+        systems.push(request.system);
+        users.push(request.user);
+        if (request.system.includes('COORDINATOR_SYNTHESIS')) {
+          return { text: JSON.stringify({
+            schemaVersion: 1, hypothesis: '健康接口返回 503，具体失败条件未知。',
+            supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [], confidence: 0.8,
+            recommendation: '检查健康接口详情。\n核对应用日志。',
+            diagnosis: {
+              summary: deterministicSummary({ type: 'health.failure', service: 'order-service' }),
+              observations: [{ statement: '健康接口返回 503。', evidenceIds: ['evd-now'] }],
+              candidateCauses: [{ cause: '具体失败条件未知。', supportingEvidenceIds: ['evd-now'], contradictingEvidenceIds: [] }],
+              uncertainties: ['缺少健康详情。'],
+              actions: [{
+                purpose: 'evidence_collection', target: 'order-service 健康接口', preconditions: ['使用已批准健康目标。'],
+                operation: '检查健康接口详情。若组件失败则核对对应依赖，否则对齐应用日志。',
+                expectedResult: '区分健康组件失败与应用异常。', risk: '只读检查。', requiresApproval: false, evidenceIds: ['evd-now'],
+              }],
+            },
+          }), provider: 'test', model: 'readable' };
+        }
+        return { text: validFinding('container_host', ['evd-now']), provider: 'test', model: 'readable' };
+      },
+    };
+    const outcome = await investigate(context({
+      incident: { id: 'inc-1', type: 'health.failure', service: 'order-service' },
+    }), { model });
+    assert.equal(outcome.status, 'completed');
+    assert.equal(systems.length, 2);
+    for (const system of systems) {
+      assert.match(system, /Simplified Chinese/);
+      assert.match(system, /禁止写入上述正文/);
+      assert.match(system, /完整的诊断结论和处置依据/);
+      assert.doesNotMatch(system, /320 个字符|180 个字符|不是调查底稿/);
+      assert.match(system, /JFR事件名.*观测名/);
+      assert.match(system, /OOMKilled=false.*JVM堆/);
+      assert.match(system, /不是容器配额百分比/);
+      assert.match(system, /事后低stats\/load不能证明故障期无压力/);
+      assert.match(system, /没有源码或调用证据时.*不得把库存校验/);
+      assert.match(system, /只保留前20行.*不得称完整日志/);
+      assert.match(system, /http\.probe仅支持已配置健康URL的GET\/HEAD.*不支持业务POST/);
+      assert.match(system, /业务请求只能建议人工受控复现/);
+    }
+    assert.match(systems[0]!, /at most 5 non-empty strings/);
+    assert.match(systems[0]!, /summary must be one non-empty string of at most 2000 characters, not an object/);
+    assert.deepEqual(JSON.parse(users[1]!).evidence, context().evidence);
+    assert.match(systems[1]!, /没有已核实的配置值/);
+    assert.match(systems[1]!, /Do not repeat internal policy/);
+    assert.equal(outcome.report?.hypothesis, '健康接口返回 503，具体失败条件未知。');
+    assert.match(outcome.report?.recommendation ?? '', /检查健康接口详情。\n核对应用日志。/);
+    assert.deepEqual(outcome.report?.supportingEvidenceIds, ['evd-now']);
   });
 
   it('isolates a specialist failure', async () => {
@@ -135,7 +246,7 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(outcome.report?.supportingEvidenceIds.includes('inc-old'), false);
     assert.match(outcome.report?.hypothesis ?? '', /current incident/);
     assert.match(outcome.report?.recommendation ?? '', /advisory/i);
-    assert.match(outcome.report?.recommendation ?? '', /Evidence describes the current incident/);
+    assert.doesNotMatch(outcome.report?.recommendation ?? '', /Evidence describes the current incident/);
   });
 
   it('keeps runtime context bounded', async () => {

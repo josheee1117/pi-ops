@@ -1,0 +1,8 @@
+$ pnpm --filter @pi-ops/agent typecheck
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+> @pi-ops/agent@0.1.0 typecheck /Users/hejiayuan/code_me/pi-ops/apps/agent
+> tsc -p tsconfig.json --noEmit
+
+
+exit_code=0

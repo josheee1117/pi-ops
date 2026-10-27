@@ -1,0 +1,12 @@
+$ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live --handler cpa/deepseek-flash-latest --judge cpa/glm-latest --case cpu-quota-burst --budget 271573 --resume --out apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-prod
+{"mode":"live","configPath":"/Users/hejiayuan/code_me/pi-ops/artifacts/real-dataasset-lab/central/runtime-secrets.env","agentCatalog":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent","modelCatalog":"/Users/hejiayuan/.pi/agent","diagnosis":{"provider":"ark","model":"deepseek-v4.1-flash","thinking":"off"},"handler":{"provider":"cpa","model":"deepseek-flash-latest","thinking":"off"},"judge":{"provider":"cpa","model":"glm-latest","thinking":"off"},"cases":["cpu-quota-burst"],"estimatedTokens":95000,"budget":271573,"out":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-prod"}
+[agent] POST /v1/ops/investigations → 200 (5ms)
+[agent] POST /v1/investigation-results → 200 (6ms)
+[agent] GET /v1/ops/incidents/inc-0fe8d61f-a815-4352-af67-5eb12b2e3a3e/brief → 200 (1ms)
+[agent] GET /v1/ops/incidents/inc-0fe8d61f-a815-4352-af67-5eb12b2e3a3e/brief → 200 (2ms)
+{"case":"cpu-quota-burst","verdict":"closed","gaps":[],"tokens":77767,"ms":228746,"messageBytes":1072,"detailBytes":20598,"turns":3,"handler":"answered","judge":[]}
+
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+exit_code=0
+wall_ms=230465

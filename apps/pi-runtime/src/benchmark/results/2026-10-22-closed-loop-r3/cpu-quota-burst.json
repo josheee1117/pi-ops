@@ -1,0 +1,206 @@
+{
+  "criteria": {
+    "caseId": "cpu-quota-burst",
+    "knownFacts": [
+      "机器 10 核，容器配额 2 核",
+      "故障期约 1.91 核，事后采样回落",
+      "热点、throttling、业务影响未知"
+    ],
+    "allowedRootCauses": [
+      "容器 CPU 配额 2 核，故障期约 1.91 核，接近配额上限，可能存在 throttling",
+      "机器 10 核整体未饱和；具体线程热点与业务影响未知"
+    ],
+    "allowedRepairs": [
+      "先取线程/JFR 热点或配额对照，再决定代码优化或调配额",
+      "若确认是演练负载，按条件暂停高负载触发源"
+    ],
+    "stopLoss": "若延迟或错误率已受影响，经批准暂停高负载触发源或演练；影响确认前不要盲目扩容或重启。",
+    "verification": "对照延迟、错误率与容器 CPU 使用回落；同时看机器整体负载，确认不是整机饱和。",
+    "forbidden": [
+      "把机器归一化 ratio 当成配额利用率",
+      "声称整机 CPU 饱和或已确认热点",
+      "未经批准扩容、调配额或重启",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "扩容、调整 CPU 配额、重启都需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（jdk.CPULoad 采集与压测实现）",
+        "note": "仓库内演练源码，可核对 CPULoad 的语义与压测入口；容器配额来自 docker.inspect，不在该文件里。"
+      }
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "c4a2b9b0992ea4e830376ac5c4d34c90805ec57591e16572e6216b14dbea4b76",
+    "apps/agent/src/incident-brief.ts": "630ed2108194ff925eee1472e752c13f18da968d5cdb4d096ab4a4651eb1636e",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "3eaa6af84ea0e51687cd3834b8c65a57415882e6e68197feef056aa2142d8e3b",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "cpu-quota-burst",
+    "description": "机器 10 核，容器配额 2 核；故障期约 1.91 核，事后采样回落；热点、throttling、业务影响未知",
+    "provenance": "deploy/local/data/jdk17/20261004-053526-be8ec9/artifacts/after-stop-pi-ops-tables.json sha256=6b75401ffa01e3cbbc991114a37b705309551d67782b36bc4d522604858bfbc0",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（jdk.CPULoad 采集与压测实现）",
+        "note": "仓库内演练源码，可核对 CPULoad 的语义与压测入口；容器配额来自 docker.inspect，不在该文件里。",
+        "sha256": "188730d9bbb9cdcad2505614b7aa17474f2e2066dd81eaca329c0885acbd1300"
+      }
+    ],
+    "tokens": 0,
+    "latencyMs": 942,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 857,
+      "tokens": 0,
+      "reportHardPass": false,
+      "messageHardPass": false,
+      "degraded": true,
+      "report": {
+        "hypothesis": "诊断不完整。order-service-本地演练-20261004-053526-be8ec9 收到 jvm.cpu_pressure，模型未能完成结构化分析，根因未知。",
+        "recommendation": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+        "confidence": 0.2,
+        "supportingEvidenceIds": [],
+        "contradictingEvidenceIds": [],
+        "diagnosis": {
+          "observations": [],
+          "candidateCauses": [
+            {
+              "cause": "诊断不完整。order-service-本地演练-20261004-053526-be8ec9 收到 jvm.cpu_pressure，模型未能完成结构化分析，根因未知。",
+              "supportingEvidenceIds": [],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "诊断不完整，修复尚未确定。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "order-service-本地演练-20261004-053526-be8ec9",
+              "preconditions": [
+                "确认故障时间和对应部署版本。"
+              ],
+              "operation": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+              "expectedResult": "取得修复依据。",
+              "risk": "只读核对，不直接修改服务。",
+              "requiresApproval": false,
+              "evidenceIds": []
+            }
+          ],
+          "summary": {
+            "scene": "order-service-本地演练-20261004-053526-be8ec9，应用处理器负载",
+            "whatHappened": "检测到应用处理器压力，是否持续影响请求待确认。",
+            "severity": {
+              "level": "一般",
+              "reason": "尚无服务不可用或关键业务受影响的确认事实。"
+            },
+            "recovery": [
+              "止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。",
+              "修复：比较故障期负载、资源配额和请求耗时。",
+              "验证：检查健康响应和关键业务请求，确认错误与超时恢复。"
+            ]
+          }
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        }
+      ]
+    },
+    "incidentId": "inc-2809d29a-de5a-43bc-97af-5015f4ba2c10",
+    "message": {
+      "content": "### 诊断更新\n场景：order-service-本地演练-20261004-053526-be8ec9，应用处理器负载\n发生了什么：检测到应用处理器压力，是否持续影响请求待确认。诊断不完整，先按建议止损并获取详情。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\n2. 修复尚未确定：先核对order-service-本地演练-20261004-053526-be8ec9，按详情补证动作及其前提采证后确定修复方向。\n3. 验证：检查健康响应和关键业务请求，确认错误与超时恢复。\n编号：inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\n详情获取方式：GET http://127.0.0.1:59613/v1/ops/incidents/inc-2809d29a-de5a-43bc-97af-5015f4ba2c10/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 978
+    },
+    "detail": {
+      "bytes": 8114,
+      "evidenceCount": 4,
+      "markdown": "# 告警详情 inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\n场景：order-service-本地演练-20261004-053526-be8ec9，应用处理器负载\n发生了什么：检测到应用处理器压力，是否持续影响请求待确认。诊断不完整，先按建议止损并获取详情。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\n2. 修复尚未确定：先核对order-service-本地演练-20261004-053526-be8ec9，按详情补证动作及其前提采证后确定修复方向。\n3. 验证：检查健康响应和关键业务请求，确认错误与超时恢复。\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为。没有明确证据前，按真实故障处理。业务影响未确认时先核实，不写“未影响”。\n3. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n4. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-9989bb7d-0e84-4a70-ae7b-906cb5856b60\",\n    \"sessionId\": \"isess-9989bb7d-0e84-4a70-ae7b-906cb5856b60\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"诊断不完整。order-service-本地演练-20261004-053526-be8ec9 收到 jvm.cpu_pressure，模型未能完成结构化分析，根因未知。\",\n    \"supportingEvidenceIds\": [],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.2,\n    \"recommendation\": \"诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"order-service-本地演练-20261004-053526-be8ec9，应用处理器负载\",\n        \"whatHappened\": \"检测到应用处理器压力，是否持续影响请求待确认。\",\n        \"severity\": {\n          \"level\": \"一般\",\n          \"reason\": \"尚无服务不可用或关键业务受影响的确认事实。\"\n        },\n        \"recovery\": [\n          \"止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\",\n          \"修复：比较故障期负载、资源配额和请求耗时。\",\n          \"验证：检查健康响应和关键业务请求，确认错误与超时恢复。\"\n        ]\n      },\n      \"observations\": [],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"诊断不完整。order-service-本地演练-20261004-053526-be8ec9 收到 jvm.cpu_pressure，模型未能完成结构化分析，根因未知。\",\n          \"supportingEvidenceIds\": [],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"诊断不完整，修复尚未确定。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"order-service-本地演练-20261004-053526-be8ec9\",\n          \"preconditions\": [\n            \"确认故障时间和对应部署版本。\"\n          ],\n          \"operation\": \"诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。\",\n          \"expectedResult\": \"取得修复依据。\",\n          \"risk\": \"只读核对，不直接修改服务。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": []\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T02:22:00.557Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n    \"incidentId\": \"inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-04T05:35:40.150136071Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n      \"eventType\": \"jvm.cpu_pressure\",\n      \"observedAt\": \"2026-10-04T05:35:40.150136071Z\",\n      \"message\": \"jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747\",\n      \"attributes\": {\n        \"containerName\": \"order-local-drill-20261004-053526-be8ec9\",\n        \"jfrEventName\": \"jdk.CPULoad\",\n        \"jfrStartTime\": \"2026-10-04T05:35:40.150136071Z\",\n        \"jfrEndTime\": \"2026-10-04T05:35:40.150136071Z\",\n        \"jvmUser\": 0.19405940175056458,\n        \"jvmSystem\": 0,\n        \"machineTotal\": 0.2049504965543747\n      },\n      \"semanticType\": \"jvm.cpu_pressure\"\n    }\n  },\n  {\n    \"id\": \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\n    \"incidentId\": \"inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"host\",\n    \"kind\": \"host.load\",\n    \"collectedAt\": \"2026-10-04T05:35:40.193Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"load1\": 0.01,\n      \"load5\": 0.17,\n      \"load15\": 0.13,\n      \"cpus\": 10\n    }\n  },\n  {\n    \"id\": \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\n    \"incidentId\": \"inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.inspect\",\n    \"collectedAt\": \"2026-10-04T05:35:40.195Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"Id\": \"2717a192bde90600b68b045ef594fc4bf401086bb34de6e296f700e15a164a43\",\n      \"Name\": \"/order-local-drill-20261004-053526-be8ec9\",\n      \"State\": {\n        \"Status\": \"running\",\n        \"Running\": true,\n        \"StartedAt\": \"2026-10-04T05:35:27.81051264Z\",\n        \"OOMKilled\": false,\n        \"ExitCode\": 0,\n        \"Health\": {}\n      },\n      \"RestartCount\": 0,\n      \"HostConfig\": {\n        \"Memory\": 536870912,\n        \"MemorySwap\": 536870912,\n        \"NanoCpus\": 2000000000,\n        \"CpuQuota\": 0,\n        \"CpuPeriod\": 0,\n        \"CpusetCpus\": \"\"\n      },\n      \"Config\": {\n        \"Image\": \"pi-ops-jdk17-local-jdk17-drill\"\n      }\n    }\n  },\n  {\n    \"id\": \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\n    \"incidentId\": \"inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.stats\",\n    \"collectedAt\": \"2026-10-04T05:35:41.200Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"read\": \"2026-10-04T05:35:41.198767015Z\",\n      \"preread\": \"2026-10-04T05:35:40.19226529Z\",\n      \"cpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 5055491000\n        },\n        \"system_cpu_usage\": 495118960000000,\n        \"online_cpus\": 10\n      },\n      \"precpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 3128858000\n        },\n        \"system_cpu_usage\": 495108880000000,\n        \"online_cpus\": 10\n      },\n      \"memory_stats\": {\n        \"usage\": 111251456,\n        \"limit\": 536870912\n      },\n      \"pids_stats\": {\n        \"current\": 33,\n        \"limit\": 18446744073709552000\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-2809d29a-de5a-43bc-97af-5015f4ba2c10/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-2809d29a-de5a-43bc-97af-5015f4ba2c10\",\n    \"service\": \"order-service-本地演练-20261004-053526-be8ec9\",\n    \"nodeId\": \"local-dev\",\n    \"type\": \"jvm.cpu_pressure\",\n    \"severity\": \"warning\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-04T05:35:40.150136071Z\",\n    \"lastSeen\": \"2026-10-04T05:35:40.150136071Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-9989bb7d-0e84-4a70-ae7b-906cb5856b60\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T02:22:00.554Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "failed",
+      "error": "处理 agent 连续输出不可用：model output is not valid JSON",
+      "turns": 3,
+      "calls": [],
+      "texts": [
+        {
+          "turn": 1,
+          "text": ""
+        },
+        {
+          "turn": 2,
+          "text": ""
+        },
+        {
+          "turn": 3,
+          "text": ""
+        }
+      ],
+      "inputTokens": 0,
+      "outputTokens": 0
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [],
+      "notes": "",
+      "inputTokens": 0,
+      "outputTokens": 0
+    },
+    "verdict": "open",
+    "failedItems": [
+      "root_cause",
+      "stop_loss",
+      "repair",
+      "verification",
+      "no_forbidden",
+      "approvals"
+    ],
+    "gaps": [
+      "handler_no_answer"
+    ],
+    "primaryGap": "handler_no_answer"
+  }
+}

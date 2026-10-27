@@ -1,7 +1,10 @@
 import { investigate, type CoordinatorOutcome } from '../coordinator.js';
 import type { RuntimeModel } from '../model.js';
-import { CPU_GOLDEN_CASES, buildBenchmarkContext, findCase, type BenchmarkCase } from './fixtures.js';
-import { evaluateCase, type BenchmarkEvaluation } from './evaluator.js';
+import { validateEvidence, type RuntimeInvestigationContext, type RuntimeEvidenceResponse } from '@pi-ops/protocol';
+import { projectCase, fixedEvidenceClient, renderMessage, withoutSourceSnippetBodies } from './agent-chain.js';
+import { CPU_GOLDEN_CASES, buildBenchmarkContext, findCase, type BenchmarkCase, type BenchmarkEvidence } from './fixtures.js';
+import { classifyRepair, type RepairKind } from './repair-classification.js';
+import { evaluateCase, evaluateMessage, type BenchmarkEvaluation, type MessageEvaluation } from './evaluator.js';
 
 export interface ThinkingReport {
   requested: string;
@@ -23,6 +26,14 @@ export interface ModelCall {
   /** Truncated raw assistant text, for post-hoc review of a failed specialist. */
   text?: string;
   error?: string;
+  inputChars?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  provider?: string;
+  model?: string;
+  stopReason?: string;
+  thinkingChars?: number;
+  requestParameters?: import('../model.js').RuntimeModelResponse['requestParameters'];
 }
 
 export interface CaseResult {
@@ -46,6 +57,11 @@ export interface CaseResult {
   modelCalls: ModelCall[];
   evidenceIds: string[];
   evaluation: BenchmarkEvaluation | null;
+  modelContext?: RuntimeInvestigationContext;
+  supplementalResponses?: RuntimeEvidenceResponse[];
+  message?: { content: string; bytes: number; fetchCalls: number };
+  messageEvaluation?: MessageEvaluation;
+  repairKind?: RepairKind;
   investigation: {
     report?: CoordinatorOutcome['report'];
     findings: CoordinatorOutcome['findings'];
@@ -60,6 +76,9 @@ export interface RunOptions {
   thinkingLevel: string;
   /** Output directory. When omitted, results are returned but not written. */
   experimentLabel?: string;
+  tokenBudget?: number;
+  maxContextBytes?: number;
+  executionTimeoutMs?: number;
 }
 
 export function resolveCases(caseIds?: string[]): BenchmarkCase[] {
@@ -143,6 +162,14 @@ function withCallCapture(model: RuntimeModel, calls: ModelCall[]): RuntimeModel 
           role,
           status: 'ok',
           chars: response.text.length,
+          inputChars: request.system.length + request.user.length,
+          inputTokens: response.inputTokens,
+          outputTokens: response.outputTokens,
+          provider: response.provider ?? model.provider,
+          model: response.model ?? model.model,
+          stopReason: response.stopReason,
+          thinkingChars: response.thinkingChars,
+          requestParameters: response.requestParameters,
           text: response.text.length > MAX_CALL_TEXT_CHARS
             ? `${response.text.slice(0, MAX_CALL_TEXT_CHARS)}…[truncated]`
             : response.text,
@@ -161,14 +188,24 @@ export async function runCase(
   options: Omit<RunOptions, 'cases' | 'caseIds'>,
 ): Promise<CaseResult> {
   const { model, mode, thinkingLevel } = options;
-  const context = buildBenchmarkContext(benchmarkCase);
+  const projected = benchmarkCase.rawIncident ? await projectCase(benchmarkCase) : undefined;
+  const context = projected ?? buildBenchmarkContext(benchmarkCase);
+  const supplementalResponses: RuntimeEvidenceResponse[] = [];
   const modelCalls: ModelCall[] = [];
   const started = Date.now();
   let outcome: CoordinatorOutcome;
   try {
-    outcome = await investigate(context, { model: withCallCapture(model, modelCalls) });
+    outcome = await investigate(context, {
+      model: withCallCapture(model, modelCalls),
+      ...(options.maxContextBytes ? { maxContextBytes: options.maxContextBytes } : {}),
+      ...(options.executionTimeoutMs ? { executionTimeoutMs: options.executionTimeoutMs } : {}),
+      ...(benchmarkCase.rawIncident ? {
+        evidenceClient: fixedEvidenceClient(benchmarkCase, supplementalResponses),
+        runtimeRequestId: `request-${benchmarkCase.id}`, runtimeTaskId: `task-${benchmarkCase.id}`, sessionId: benchmarkCase.id,
+      } : {}),
+    });
   } catch (error) {
-    return {
+    return withoutSourceSnippetBodies({
       caseId: benchmarkCase.id,
       description: benchmarkCase.description,
       provider: model.provider,
@@ -185,15 +222,45 @@ export async function runCase(
       evidenceIds: benchmarkCase.evidence.map((item) => item.id),
       evaluation: null,
       investigation: { findings: [] },
-    };
+    }, context.evidence);
   }
-  const { usage, note } = usageOrNull(outcome, mode);
+  const observedUsage = modelCalls.every((call) => call.status === 'ok' && call.inputTokens !== undefined && call.outputTokens !== undefined)
+    ? modelCalls.reduce((sum, call) => ({ input: sum.input + (call.inputTokens ?? 0), output: sum.output + (call.outputTokens ?? 0), total: sum.total + (call.inputTokens ?? 0) + (call.outputTokens ?? 0) }), { input: 0, output: 0, total: 0 })
+    : null;
+  const { usage, note } = mode === 'live'
+    ? { usage: observedUsage, note: observedUsage ? undefined : 'At least one invocation omitted usage or failed; totals are incomplete. See modelCalls.' }
+    : usageOrNull(outcome, mode);
+  const supplemental = supplementalResponses.flatMap((response) => response.results.flatMap((result) => result.status === 'collected' ? [{ ...result.evidence, data: result.evidence.data, status: 'succeeded' as const }] : []));
+  const visibleIds = new Set(context.evidence.map((item) => item.id));
+  const benchmarkIds = new Set(benchmarkCase.evidence.map((item) => item.id));
+  const contextOnly: BenchmarkEvidence[] = (projected?.evidence ?? []).filter((item) => !benchmarkIds.has(item.id)).map((item) => {
+    const parsed = validateEvidence(item);
+    if (!parsed.success) throw new Error(parsed.message);
+    return { ...parsed.value, status: parsed.value.status === 'failed' ? 'failed' : 'succeeded' };
+  });
+  const visibleEvidence: BenchmarkEvidence[] = [...benchmarkCase.evidence.filter((item) => visibleIds.has(item.id)), ...contextOnly, ...supplemental];
+  const snippets = contextOnly.flatMap((item) => {
+    const data = item.data;
+    return item.kind === 'source.snippet' && data && typeof data === 'object'
+      && 'text' in data && typeof data.text === 'string'
+      ? [{ id: item.id, kind: item.kind, text: data.text }] : [];
+  });
+  const repairKind = outcome.report?.hypothesis.startsWith('诊断不完整') ? 'fallback' : classifyRepair(outcome.report?.diagnosis, {
+    snippets,
+    otherEvidenceText: JSON.stringify(visibleEvidence.filter((item) => item.kind !== 'source.snippet')),
+  });
+  const message = benchmarkCase.rawIncident && outcome.report
+    ? await renderMessage(benchmarkCase, outcome.report, visibleEvidence)
+    : undefined;
+  const messageEvaluation = message && benchmarkCase.messageOracle
+    ? evaluateMessage(benchmarkCase.messageOracle, outcome.report, outcome.findings, visibleEvidence, message.content)
+    : undefined;
   // A run that never produced a report is a failed case, not a scored one:
   // scoring it would let "no diagnosis" masquerade as a partial pass.
   const evaluation = outcome.status === 'completed' && outcome.report
-    ? evaluateCase(benchmarkCase, { report: outcome.report, findings: outcome.findings })
+    ? evaluateCase({ ...benchmarkCase, evidence: visibleEvidence }, { report: outcome.report, findings: outcome.findings })
     : null;
-  return {
+  return withoutSourceSnippetBodies({
     caseId: benchmarkCase.id,
     description: benchmarkCase.description,
     provider: outcome.provider,
@@ -210,21 +277,36 @@ export async function runCase(
     modelCalls,
     evidenceIds: benchmarkCase.evidence.map((item) => item.id),
     evaluation,
+    ...(benchmarkCase.rawIncident ? { modelContext: context, supplementalResponses } : {}),
+    ...(message ? { message } : {}),
+    ...(messageEvaluation ? { messageEvaluation } : {}),
+    ...(benchmarkCase.rawIncident ? { repairKind } : {}),
     investigation: {
       ...(outcome.report ? { report: outcome.report } : {}),
       findings: outcome.findings,
     },
-  };
+  }, context.evidence);
+}
+
+export function estimateCaseTokens(benchmarkCase: BenchmarkCase): number {
+  // Reserve covers these cases' two specialists, one rerun each and synthesis, including long Chinese actions.
+  return benchmarkCase.rawIncident ? 100_000 : 80_000;
 }
 
 export async function runBenchmark(options: RunOptions): Promise<CaseResult[]> {
   const cases = options.cases ?? resolveCases(options.caseIds);
   const results: CaseResult[] = [];
   for (const benchmarkCase of cases) {
+    const spent = results.reduce((sum, result) => sum + result.modelCalls.reduce((subtotal, call) => subtotal + (call.inputTokens ?? 0) + (call.outputTokens ?? 0), 0), 0);
+    if (options.tokenBudget !== undefined && spent + estimateCaseTokens(benchmarkCase) > options.tokenBudget) {
+      throw new Error(`token budget would be exceeded before ${benchmarkCase.id}: spent=${spent} reserve=${estimateCaseTokens(benchmarkCase)} budget=${options.tokenBudget}`);
+    }
     results.push(await runCase(benchmarkCase, {
       model: options.model,
       mode: options.mode,
       thinkingLevel: options.thinkingLevel,
+      ...(options.maxContextBytes ? { maxContextBytes: options.maxContextBytes } : {}),
+      ...(options.executionTimeoutMs ? { executionTimeoutMs: options.executionTimeoutMs } : {}),
       ...(options.experimentLabel ? { experimentLabel: options.experimentLabel } : {}),
     }));
   }

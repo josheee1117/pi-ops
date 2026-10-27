@@ -1,3 +1,5 @@
+import type { InvestigationDiagnosis } from '@pi-ops/protocol';
+
 export interface InvestigationReport {
   id: string;
   sessionId: string;
@@ -7,6 +9,7 @@ export interface InvestigationReport {
   contradictingEvidenceIds: string[];
   confidence: number;
   recommendation: string;
+  diagnosis?: InvestigationDiagnosis;
   createdAt: string;
 }
 
@@ -17,4 +20,5 @@ export interface InvestigationReportInput {
   contradictingEvidenceIds: string[];
   confidence: number;
   recommendation: string;
+  diagnosis?: InvestigationDiagnosis;
 }

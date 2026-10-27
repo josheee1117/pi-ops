@@ -1,0 +1,223 @@
+{
+  "provenance": "deploy/local/data/jdk17/20261004-053526-be8ec9/artifacts/after-stop-pi-ops-tables.json sha256=6b75401ffa01e3cbbc991114a37b705309551d67782b36bc4d522604858bfbc0",
+  "oracle": {
+    "expectedFacts": [
+      "机器 10 核，容器配额 2 核",
+      "故障期约 1.91 核，事后采样回落",
+      "热点、throttling、业务影响未知"
+    ],
+    "allowedRepairs": [
+      "按业务影响条件暂停高负载触发源",
+      "经热点或配额对照后决定代码优化或调配额；验证延迟和错误率"
+    ],
+    "forbiddenAttributions": [
+      "把机器归一化 ratio 当成配额利用率",
+      "断言持续整机饱和或已知热点"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|确定|根因是)整机CPU(?:爆满|饱和)",
+      "容器配额利用率(?:为|仅为)19"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+    "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+    "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+    "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+  },
+  "caseId": "cpu-quota-burst",
+  "description": "机器 10 核，容器配额 2 核；故障期约 1.91 核，事后采样回落；热点、throttling、业务影响未知",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "failed",
+  "error": "all specialists failed",
+  "latencyMs": 90333,
+  "tokenUsage": {
+    "input": 4589,
+    "output": 16384,
+    "total": 20973
+  },
+  "selectedSpecialists": [
+    "jvm",
+    "container_host"
+  ],
+  "specialistStatus": {
+    "jvm": "failed",
+    "container_host": "failed"
+  },
+  "modelCalls": [
+    {
+      "role": "jvm",
+      "status": "ok",
+      "chars": 0,
+      "inputChars": 5964,
+      "inputTokens": 2294,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": ""
+    },
+    {
+      "role": "container_host",
+      "status": "ok",
+      "chars": 0,
+      "inputChars": 5975,
+      "inputTokens": 2295,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": ""
+    }
+  ],
+  "evidenceIds": [
+    "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+    "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+    "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+    "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats"
+  ],
+  "evaluation": null,
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "type": "jvm.cpu_pressure",
+      "service": "order-service-本地演练-20261004-053526-be8ec9",
+      "nodeId": "local-dev",
+      "severity": "warning",
+      "state": "OPEN",
+      "firstSeen": "2026-10-04T05:35:40.150136071Z",
+      "lastSeen": "2026-10-04T05:35:40.150136071Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+        "kind": "jfr.signal",
+        "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+        "nodeId": "local-dev",
+        "source": "jfr",
+        "collectedAt": "2026-10-04T05:35:40.150136071Z",
+        "status": "succeeded",
+        "data": {
+          "eventId": "207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+          "eventType": "jvm.cpu_pressure",
+          "observedAt": "2026-10-04T05:35:40.150136071Z",
+          "message": "jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747",
+          "attributes": {
+            "containerName": "order-local-drill-20261004-053526-be8ec9",
+            "jfrEventName": "jdk.CPULoad",
+            "jfrStartTime": "2026-10-04T05:35:40.150136071Z",
+            "jfrEndTime": "2026-10-04T05:35:40.150136071Z",
+            "jvmUser": 0.19405940175056458,
+            "jvmSystem": 0,
+            "machineTotal": 0.2049504965543747
+          },
+          "semanticType": "jvm.cpu_pressure"
+        }
+      },
+      {
+        "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+        "kind": "docker.inspect",
+        "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+        "nodeId": "local-dev",
+        "source": "docker",
+        "collectedAt": "2026-10-04T05:35:40.195Z",
+        "status": "succeeded",
+        "data": {
+          "Id": "2717a192bde90600b68b045ef594fc4bf401086bb34de6e296f700e15a164a43",
+          "Name": "/order-local-drill-20261004-053526-be8ec9",
+          "State": {
+            "Status": "running",
+            "Running": true,
+            "StartedAt": "2026-10-04T05:35:27.81051264Z",
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "Health": {}
+          },
+          "RestartCount": 0,
+          "HostConfig": {
+            "Memory": 536870912,
+            "MemorySwap": 536870912,
+            "NanoCpus": 2000000000,
+            "CpuQuota": 0,
+            "CpuPeriod": 0,
+            "CpusetCpus": ""
+          },
+          "Config": {
+            "Image": "pi-ops-jdk17-local-jdk17-drill"
+          }
+        }
+      },
+      {
+        "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+        "kind": "docker.stats",
+        "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+        "nodeId": "local-dev",
+        "source": "docker",
+        "collectedAt": "2026-10-04T05:35:41.200Z",
+        "status": "succeeded",
+        "data": {
+          "read": "2026-10-04T05:35:41.198767015Z",
+          "preread": "2026-10-04T05:35:40.19226529Z",
+          "cpu_stats": {
+            "cpu_usage": {
+              "total_usage": 5055491000
+            },
+            "system_cpu_usage": 495118960000000,
+            "online_cpus": 10
+          },
+          "precpu_stats": {
+            "cpu_usage": {
+              "total_usage": 3128858000
+            },
+            "system_cpu_usage": 495108880000000,
+            "online_cpus": 10
+          },
+          "memory_stats": {
+            "usage": 111251456,
+            "limit": 536870912
+          },
+          "pids_stats": {
+            "current": 33,
+            "limit": 18446744073709552000
+          }
+        }
+      },
+      {
+        "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+        "kind": "host.load",
+        "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+        "nodeId": "local-dev",
+        "source": "host",
+        "collectedAt": "2026-10-04T05:35:40.193Z",
+        "status": "succeeded",
+        "data": {
+          "load1": 0.01,
+          "load5": 0.17,
+          "load15": 0.13,
+          "cpus": 10
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": []
+  },
+  "supplementalResponses": [],
+  "investigation": {
+    "findings": []
+  }
+}

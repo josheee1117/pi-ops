@@ -1,0 +1,10 @@
+{
+  "stop": "probe",
+  "reason": "preflight failed",
+  "failures": [
+    {
+      "spec": "cpa/deepseek-v4.1-flash",
+      "error": "503: {\"message\":\"当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道 (request id: 20261022140214707966347hcz7gAip6KZjw)\",\"type\":\"new_api_error\"}"
+    }
+  ]
+}

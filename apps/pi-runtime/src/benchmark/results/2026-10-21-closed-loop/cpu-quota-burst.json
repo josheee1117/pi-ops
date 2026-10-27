@@ -1,0 +1,397 @@
+{
+  "criteria": {
+    "caseId": "cpu-quota-burst",
+    "knownFacts": [
+      "机器 10 核，容器配额 2 核",
+      "故障期约 1.91 核，事后采样回落",
+      "热点、throttling、业务影响未知"
+    ],
+    "allowedRootCauses": [
+      "容器 CPU 配额 2 核，故障期约 1.91 核，接近配额上限，可能存在 throttling",
+      "机器 10 核整体未饱和；具体线程热点与业务影响未知"
+    ],
+    "allowedRepairs": [
+      "先取线程/JFR 热点或配额对照，再决定代码优化或调配额",
+      "若确认是演练负载，按条件暂停高负载触发源"
+    ],
+    "stopLoss": "若延迟或错误率已受影响，经批准暂停高负载触发源或演练；影响确认前不要盲目扩容或重启。",
+    "verification": "对照延迟、错误率与容器 CPU 使用回落；同时看机器整体负载，确认不是整机饱和。",
+    "forbidden": [
+      "把机器归一化 ratio 当成配额利用率",
+      "声称整机 CPU 饱和或已确认热点",
+      "未经批准扩容、调配额或重启"
+    ],
+    "approvals": "扩容、调整 CPU 配额、重启都需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（jdk.CPULoad 采集与压测实现）",
+        "note": "仓库内演练源码，可核对 CPULoad 的语义与压测入口；容器配额来自 docker.inspect，不在该文件里。"
+      }
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "cf0603cfe20bff32dbc8e356c755bf5d7ac6db27f884c2b35cf356c817cd3d32",
+    "apps/agent/src/incident-brief.ts": "8bd6e538cc4569f914e6e99a198ab3124799aa3d2940161b43ce2b20f8a63897",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "2628cafbb1ad665e5e373049a1444e179664c3ea10ac2c273d52cd5dfc1ad584",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "cpu-quota-burst",
+    "description": "机器 10 核，容器配额 2 核；故障期约 1.91 核，事后采样回落；热点、throttling、业务影响未知",
+    "provenance": "deploy/local/data/jdk17/20261004-053526-be8ec9/artifacts/after-stop-pi-ops-tables.json sha256=6b75401ffa01e3cbbc991114a37b705309551d67782b36bc4d522604858bfbc0",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（jdk.CPULoad 采集与压测实现）",
+        "note": "仓库内演练源码，可核对 CPULoad 的语义与压测入口；容器配额来自 docker.inspect，不在该文件里。",
+        "sha256": "188730d9bbb9cdcad2505614b7aa17474f2e2066dd81eaca329c0885acbd1300"
+      }
+    ],
+    "tokens": 72032,
+    "latencyMs": 216806,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 57878,
+      "tokens": 32234,
+      "reportHardPass": true,
+      "messageHardPass": false,
+      "report": {
+        "hypothesis": "order-service 本地演练容器仅出现一次 jdk.CPULoad 采样偏高：jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747。该值按机器10核归一化，不是容器2核配额百分比；同期 host.load load1=0.01，容器 running、RestartCount=0、OOMKilled=false，后续 stats 增量很小，logs 可见片段为低 JVM 用量。尚无服务不可用证据，无法确认持续 CPU 饱和；throttling、持续时长与 JVM 热点线程来源均未知。",
+        "supportingEvidenceIds": [
+          "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+          "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+          "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+          "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load"
+        ],
+        "contradictingEvidenceIds": [
+          "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats",
+          "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs"
+        ],
+        "confidence": 0.5,
+        "recommendation": "先不重启容器。补证：采集 cgroup cpu.stat（nr_periods、nr_throttled、throttled_time）并连续 1 分钟采集 jdk.CPULoad 与 docker stats 区间，另做 3 次间隔 5 秒的 jstack 定位热点线程；若 nr_throttled 增长且 CPULoad 持续偏高，经人工批准隔离该实例流量并暂停已确认的高 CPU 任务（无确认任务则仅隔离流量，保留配置可回滚）；若 CPULoad 快速回落且无 throttling，记录为单次抖动并关闭事件。健康 URL 仅用 GET/HEAD 探测，业务接口人工受控复现。",
+        "diagnosis": {
+          "summary": {
+            "scene": "order-service 本地演练容器 order-local-drill-20261004-053526-be8ec9，nodeId=local-dev",
+            "whatHappened": "触发一次 jvm.cpu_pressure，jdk.CPULoad 采样 jvmUser=0.19405940175056458，但主机负载与容器后续 CPU 增量均低，疑为短时抖动。",
+            "severity": {
+              "level": "一般",
+              "reason": "尚无服务不可用或关键业务受影响的确认事实。"
+            },
+            "recovery": [
+              "补采 cpu.stat、连续 CPULoad 与线程栈确认是否复现",
+              "若确认持续偏高或 throttling 增长，经批准隔离实例流量",
+              "确认单次抖动后关闭事件"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "jdk.CPULoad 单点事件：jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747，为单次采样。",
+              "evidenceIds": [
+                "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae"
+              ]
+            },
+            {
+              "statement": "host.load load1=0.01、load5=0.17、load15=0.13、cpus=10；容器 running、RestartCount=0、OOMKilled=false、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、Memory=536870912。",
+              "evidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect"
+              ]
+            },
+            {
+              "statement": "两次 docker.stats 的 total_usage 区间为 3128858000→5055491000（约1s）与 17589518000→17598204000（约1s），在线CPU=10；memory usage 111251456 与 102248448，limit=536870912。",
+              "evidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+                "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats"
+              ]
+            },
+            {
+              "statement": "docker.logs 模型视图仅保留原始 74 行中的第 1-12 行，均可见为低 JVM 用量的 jdk.CPULoad 记录（jvmUser 最高约 0.01195），不代表完整故障窗口。",
+              "evidenceIds": [
+                "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "JVM 用户态计算短时突发（如启动后预热或周期任务），仅造成一次 CPULoad 采样偏高。",
+              "supportingEvidenceIds": [
+                "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect"
+              ],
+              "contradictingEvidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+                "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats"
+              ]
+            },
+            {
+              "cause": "容器2 CPU 配额下发生 CPU throttling，但缺少 cpu.stat 的 nr_throttled/throttled_time 与故障窗口连续采样，尚不能确认。",
+              "supportingEvidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+                "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae"
+              ],
+              "contradictingEvidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load"
+              ]
+            }
+          ],
+          "uncertainties": [
+            "缺少告警前后连续 jdk.CPULoad 序列，峰值持续性未知。",
+            "缺少 cgroup cpu.stat，是否发生 throttling 未知。",
+            "缺少线程转储与热点方法，CPU 消耗来源未知；docker.logs 视图被截断，不能代表完整窗口。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "order-local-drill-20261004-053526-be8ec9 的 cgroup cpu.stat、连续 CPULoad 与线程采样",
+              "preconditions": [
+                "容器保持 running 且可执行诊断命令",
+                "采样在演练环境进行，避免干扰业务"
+              ],
+              "operation": "读取 /sys/fs/cgroup 下 cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad 与 docker stats 区间计数；执行 3 次间隔 5 秒的 jstack 记录线程状态与热点方法。",
+              "expectedResult": "若 nr_throttled/throttled_time 增长且 CPULoad 持续偏高，支持配额 throttling；若快速回落且无 throttle，支持短时突发；jstack 给出热点线程类别。",
+              "risk": "jstack 有短暂停顿开销，采集需避免同时执行重型命令。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats"
+              ]
+            },
+            {
+              "purpose": "mitigation",
+              "target": "order-local-drill-20261004-053526-be8ec9 实例流量与其已确认的高CPU触发任务",
+              "preconditions": [
+                "值班负责人批准，并确认有备用容量可承接流量",
+                "保留当前容器配置，隔离/暂停操作可随时回滚"
+              ],
+              "operation": "先不重启容器；若补证确认持续 CPU 压力或出现服务不可用，经批准将该实例隔离出流量；仅在已确认存在高 CPU 触发任务时暂停该任务，无确认任务则只隔离流量。",
+              "expectedResult": "服务可用性保持或恢复，故障实例不再承接流量。",
+              "risk": "隔离降低整体处理容量；误暂停任务影响业务进度。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+                "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "健康检查与告警是否复现",
+              "preconditions": [
+                "已配置该服务健康检查 URL",
+                "已获得补证阶段连续采样数据"
+              ],
+              "operation": "对已配置健康 URL 执行 GET/HEAD 并记录状态码与响应时间；对比连续 CPULoad 曲线判断峰值是否再次出现；业务接口不在 http.probe 范围，需人工受控复现。",
+              "expectedResult": "健康检查持续正常且 CPULoad 未再偏高则确认单次抖动并关闭事件；否则升级处置。",
+              "risk": "高频探测可能放大影响，需控制频率。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+                "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2657,
+          "outputTokens": 1954,
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"JVM CPU告警可能来自容器启动初期（StartedAt 05:35:27.810，事件05:35:40.150，仅约12秒）的类加载与JIT预热瞬时CPU尖峰，容器刚启动、重启0次，尚未证明持续性压力。\",\"证据仅单点jdk.CPULoad，故障期峰值持续性、容器是否受CPU配额限制（throttling）均未知，不能确认存在真实生产级CPU压力。\"],\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"],\"missingEvidence\":[\"docker.stats\",\"docker.logs\",\"host.memory\"],\"confidence\":0.35,\"summary\":\"JVM CPU告警可能来自容器启动初期（StartedAt 05:35:27.810，事件05:35:40.150，仅约12秒）的类加载与JIT预热瞬时CPU尖峰，容器刚启动、重启0次，尚未证明持续性压力。证据仅单点jdk.CPULoad，故障期峰值持续性、容器是否受CPU配额限制（throttling）均未知，不能确认存在真实生产级CPU压力。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747，按机器CPU归一化，并非容器配额百分比。\",\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"statement\":\"docker.stats区间内累计CPU total_usage由3128858000增至5055491000（间隔约1.0065s，online_cpus=10），说明该区间有CPU消耗，但不代表故障期峰值或持续性。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"statement\":\"容器running、OOMKilled=false、RestartCount=0，Memory=536870912、NanoCpus=2000000000，CpuQuota/CpuPeriod=0且CpusetCpus为空；容器内存占用111251456/536870912，仅为容器内存而非JVM堆。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"statement\":\"宿主load1=0.01、load5=0.17、load15=0.13，cpus=10，采样时机器整体负载很低，不支持宿主侧整体CPU饱和。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"candidateCauses\":[{\"cause\":\"容器启动初期（约12秒）类加载与JIT预热引起的瞬时CPU升高，属启动阶段短暂现象。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"cause\":\"业务线程或GC导致JVM持续占用CPU（尚未确认，缺少故障期连续采样、线程栈与GC日志）。\",\"supportingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"uncertainties\":[\"故障窗口内CPU占用是瞬时尖峰还是持续升高未知，仅有一个jdk.CPULoad采样点。\",\"容器是否受CPU配额限制并发生throttling未知：NanoCpus=2000000000但CpuQuota/CpuPeriod=0，需确认生效调度限制。\",\"JVM堆使用、GC行为、线程栈及应用日志未采集，无法判定CPU消耗的具体来源。\",\"告警时容器仍健康（Health为空、running），业务是否受影响未知。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"同一容器order-local-drill-20261004-053526-be8ec9的docker.stats与docker.logs\",\"preconditions\":[\"容器仍处于running状态且未重启\"],\"operation\":\"在数分钟内多次采集docker stats（至少3次，间隔≥10s），记录read/preread与cpu total_usage差值，并采集docker logs查看是否有异常或GC相关输出；注意日志模型视图可能只保留前20行。\",\"expectedResult\":\"可判断CPU占用是启动尖峰后回落还是持续高位，并获得应用侧报错线索。\",\"risk\":\"频繁采集对低负载演练容器影响很小，但日志截断可能造成结论偏差。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"purpose\":\"evidence_collection\",\"target\":\"宿主内存与负载复核（host.memory、host.load），以及确认CPU配额生效方式\",\"preconditions\":[\"有宿主采集权限\"],\"operation\":\"读取宿主内存与load趋势，并核对容器实际生效的CPU限制（NanoCpus与CpuQuota/CpuPeriod是否生效），不修改任何配置。\",\"expectedResult\":\"排除宿主资源干扰，明确容器CPU限制模型后判断是否可能throttling。\",\"risk\":\"只读操作，风险低；若采集缺失需如实标注未知。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]},{\"purpose\":\"verification\",\"target\":\"告警指标连续性验证（jvm.cpu_pressure与jdk.CPULoad）\",\"preconditions\":[\"已有新的采样数据\"],\"operation\":\"对比后续jdk.CPULoad与docker.stats区间CPU使用，观察是否回落至接近基线；如持续升高，再安排人工受控复现业务请求定位线程，http.probe不能替代业务POST复现。\",\"expectedResult\":\"确认告警属启动瞬态则关闭事件；若持续则升级为真实CPU压力并补充线程与GC证据。\",\"risk\":\"误判为瞬态可能掩盖持续压力，需依赖多采样点而非单点。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]}],\"summary\":{\"scene\":\"order-service本地演练容器order-local-drill-20261004-053526-be8ec9（JVM CPU告警）\",\"whatHappened\":\"容器启动约12秒后出现单点jdk.CPULoad告警，jvmUser=0.194，容器running且OOMKilled=false，宿主负载低。\",\"severity\":{\"level\":\"一般\",\"reason\":\"仅为单点告警，容器运行中无重启，宿主负载低，业务影响未知。\"},\"recovery\":[\"先补采docker.stats与日志确认CPU是否回落，暂不改配置\",\"若持续高位，再取线程栈与GC证据并人工审批后处置\",\"验证指标回落至基线后再关闭事件\"]}}}}"
+        },
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2704,
+          "outputTokens": 1337,
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"JVM 已发生一次 CPU 压力信号：jvmUser=0.19405940175056458、machineTotal=0.2049504965543747，Docker 区间 CPU 计数也在上升；但容器 CPU 配额与宿主 10 核均未饱和，是一次短促尖峰而非持续打满，触发业务逻辑未知。\"],\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\",\"docker.inspect\"],\"confidence\":0.55,\"summary\":\"JFR 采样时刻 CPU 占用温和：jvmUser 0.19405940175056458、machineTotal 0.2049504965543747；Docker 计数区间上升但内存 111251456/536870912、pids 33、宿主 load1 0.01、10 核，容器状态 running 且无 OOMKilled。NanoCpus=2000000000。究竟是偶发尖峰还是业务触发热点未知，需日志与线程/采样确认。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR 报 jvm.cpu_pressure：jvmUser=0.19405940175056458，jvmSystem=0，machineTotal=0.2049504965543747。\",\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"statement\":\"docker.stats 区间内 total_usage 从 3128858000 升至 5055491000，online_cpus=10；memory usage 111251456/limit 536870912，pids 33。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"statement\":\"host.load load1=0.01，cpus=10；容器 running、RestartCount=0、OOMKilled=false，NanoCpus=2000000000。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]}],\"candidateCauses\":[{\"cause\":\"短时 JVM 计算尖峰（业务或 GC 触发逻辑未知），未达配额上限，缺少日志与线程采样无法定位。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"uncertainties\":[\"jvmUser 与 machineTotal 按机器 CPU 归一化，非配额百分比；尖峰持续性、throttling 与峰值时间未知。\",\"缺 docker.logs 与线程/堆采样，GC 与热点方法均未确认。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"order-local-drill-20261004-053526-be8ec9 容器日志与 JVM 线程/堆采样\",\"preconditions\":[\"容器仍在 running 状态（已由 docker.inspect 确认）\"],\"operation\":\"采集 docker.logs，并触发一次 JFR 或线程 dump 采样，按事件时刻对齐时间戳。\",\"expectedResult\":\"能区分计算热点、GC 还是频繁业务请求触发；获得可核对的峰值与持续时长。\",\"risk\":\"采样增加少量 CPU 负载；只读操作，不改配置。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"purpose\":\"mitigation\",\"target\":\"CPU 尖峰触发源隔离（若日志确认固化批处理或高频入口）\",\"preconditions\":[\"已获人工批准；确认备用容量可用并准备回滚方案\"],\"operation\":\"暂停已确认的触发任务或隔离故障流量，观察 jvmUser 与 machineTotal 回落；不改未核实的配置值。\",\"expectedResult\":\"CPU 信号回落且业务仅短暂降级。\",\"risk\":\"误停正常任务影响订单处理，需可快速回滚恢复。\",\"requiresApproval\":true,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"purpose\":\"verification\",\"target\":\"尖峰处置后 1 小时内 CPU 信号复测\",\"preconditions\":[\"处置或补证动作已完成\"],\"operation\":\"复采 JFR jdk.CPULoad 与 docker.stats，比较 jvmUser、machineTotal 与区间 CPU 计数。\",\"expectedResult\":\"确认信号不复发且容器状态仍 running。\",\"risk\":\"观察期可能漏掉稀疏尖峰。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]}]}}"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2658,
+          "outputTokens": 1529,
+          "text": "{\"role\":\"container_host\",\"hypotheses\":[\"容器进程在采样区间内CPU使用快速上升，JVM用户态占用约0.19，但观测窗口极短，无法确认持续压力或是否触发配额限流。\",\"服务多数线程处于运行或可运行状态导致消耗CPU，但当前无JVM线程栈与容器配额限流证据，无法区分业务计算、GC或线程竞争。\"],\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"],\"missingEvidence\":[\"docker.stats\",\"docker.logs\",\"http.probe\"],\"confidence\":0.42,\"summary\":\"jdk.CPULoad 报 jvmUser=0.194，machineTotal=0.205，容器 running 且 OOMKilled=false；docker.stats 前后计数差显示累计CPU增长，仅覆盖约1秒。host.load1=0.01，NanoCpus=2000000000 但 CpuQuota=0，未确认限流。JVM占比按机器CPU归一化，不等于容器配额百分比，且未知峰值与持续性，服务影响未证实。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"jdk.CPULoad 事件记录 jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747，容器名 order-local-drill-20261004-053526-be8ec9。\",\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"statement\":\"容器 running、OOMKilled=false、RestartCount=0，Memory=536870912、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、CpusetCpus 为空，未配置健康检查。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]},{\"statement\":\"docker.stats read=2026-10-04T05:35:41.198767015Z、preread=05:35:40.19226529Z，cpu_usage total_usage 由 3128858000 增至 5055491000，online_cpus=10，内存 usage=111251456/limit=536870912，pids current=33。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"statement\":\"主机 load1=0.01、load5=0.17、load15=0.13，cpus=10，主机整体不忙碌。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"candidateCauses\":[{\"cause\":\"容器内JVM进程短时消耗CPU（可能来自业务计算或GC），但样本仅约1秒，持续性未知。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]},{\"cause\":\"容器CPU配额限流导致响应变慢；但 CpuQuota=0、CpuPeriod=0，限流未确认，需以 cpu.throttled 计数验证。\",\"supportingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"uncertainties\":[\"故障期CPU峰值、持续时间与是否发生throttling未知，事后低主机负载不能代表故障期。\",\"线程栈与GC日志缺失，无法区分业务热点、GC与线程竞争。\",\"服务健康与业务受影响程度未验证。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"容器 order-local-drill-20261004-053526-be8ec9 的 CPU 与线程运行数据\",\"preconditions\":[\"容器保持 running\",\"允许采集 docker.stats 与 JVM 线程/GC 数据\"],\"operation\":\"连续多次采集 docker.stats，读取 cpu_stats.throttling 与 cpu_usage 区间计算配额使用率；同时抓取数份线程栈与 GC 日志，覆盖至少一个完整分钟窗口。\",\"expectedResult\":\"得到持续CPU趋势、是否限流以及热点线程/GC结论。\",\"risk\":\"采集本身增加少量负载。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]},{\"purpose\":\"evidence_collection\",\"target\":\"服务健康状态与容器日志\",\"preconditions\":[\"服务端口或健康URL已知\",\"允许读取容器日志\"],\"operation\":\"读取 docker.logs 中最近片段，确认是否有 GC、OOM 或超时告警；对已配置健康URL执行 http.probe GET 检查；业务请求由人工受控复现，http.probe 不等价复现。\",\"expectedResult\":\"确认服务是否可用及是否存在异常报错。\",\"risk\":\"探测流量轻微。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]},{\"purpose\":\"verification\",\"target\":\"采集后的 CPU 与限流指标\",\"preconditions\":[\"补证完成\"],\"operation\":\"复核 cpu 配额使用率是否持续接近配额、throttling 是否增长，并结合线程栈判断热点。\",\"expectedResult\":\"若持续高占用或限流增长则升级为需处置；否则判定为短时波动。\",\"risk\":\"无。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]}]}}"
+        },
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2106,
+          "outputTokens": 2103,
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"jdk.CPULoad 的 jvmUser 在告警时刻为 0.194，jvmSystem=0，机器总负载 0.205，10 个 CPU 的 load1=0.01；量级很小且机器与容器压力低，无法确认真实 CPU 饱和，可能是短时抖动或采样峰值。\",\"JFR 事件只能证明 jdk.CPULoad 单点采样偏高，缺少持续窗口、线程栈与热点方法证据；触发来源（业务线程/GC/编译线程）未知。\"],\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"],\"missingEvidence\":[],\"confidence\":0.45,\"summary\":\"order-service 本地演练实例触发 jvm.cpu_pressure。jdk.CPULoad 采样 jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747；host.load load1=0.01、load5=0.17、load15=0.13，cpus=10。docker.inspect 显示 running、OOMKilled=false、RestartCount=0、NanoCpus=2000000000、Memory=536870912。两组 docker.stats 的 CPU 区间增量很小（5055491000→3128858000 与 17598204000→17589518000，读间隔约1s），memory usage 约102-111MB/536870912。docker.logs 的模型视图只有原始74行中的第1-12行，均为低负载 JFR 记录。结论：仅有一次短时 CPU 采样偏高，容器与主机压力低，真实饱和度与线程来源未知，需补线程与时间序列证据。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"jdk.CPULoad 单点采样 jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747，事件时间 2026-10-04T05:35:40.150136071Z。\",\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"statement\":\"host.load load1=0.01、load5=0.17、load15=0.13、cpus=10，主机侧未显示高负载。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]},{\"statement\":\"docker.inspect 显示 running、OOMKilled=false、RestartCount=0、NanoCpus=2000000000、Memory=536870912、CpuQuota=0、CpuPeriod=0。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]},{\"statement\":\"docker.stats 增量区间 total_usage 5055491000→3128858000（precpu 早于 cpu），相邻约1s，增量约1.9e9；两次读 online_cpus=10。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"statement\":\"后续 docker.stats 增量约 8.686e6/1s，memory usage=102248448、limit=536870912，pids current=30。\",\"evidenceIds\":[\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"]},{\"statement\":\"docker.logs 仅保留原始 74 行中的第 1-12 行，可见 JFR jdk.CPULoad 记录持续低值（jvmUser 多低于 0.012，最高 0.01195）。\",\"evidenceIds\":[\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"短时 CPU 抖动或单次采样峰值触发告警，非持续性饱和。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"]},{\"cause\":\"某类 JVM 线程（业务、GC 或 JIT 编译）在告警窗口内短暂占用 CPU，具体线程与热点方法未采集，无法确认。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]}],\"uncertainties\":[\"缺少告警前后数分钟的 jdk.CPULoad 时间序列，无法判断峰值持续性。\",\"缺少线程转储与热点方法采样，无法定位 CPU 消耗来源。\",\"docker.logs 模型视图被截断为前12行，不能代表完整故障窗口。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"order-local-drill-20261004-053526-be8ec9 容器的 JVM 线程与 CPU 热点采样\",\"preconditions\":[\"容器仍处于 running 状态且可执行诊断命令\",\"不影响演练业务的前提下操作\"],\"operation\":\"在容器内执行多次 jstack（如 3 次间隔 5 秒）与连续 60 秒的 jdk.CPULoad 采样，同时用 docker stats --no-stream 记录区间计数，比较线程状态与热点方法。\",\"expectedResult\":\"得到告警窗口附近线程状态和连续 CPU 曲线，区分 GC、编译线程或业务线程。\",\"risk\":\"jstack 有短暂停顿开销，需在演练环境操作。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"]},{\"purpose\":\"verification\",\"target\":\"确认告警是否复现或已自愈\",\"preconditions\":[\"已获得至少 5 分钟连续采样数据\"],\"operation\":\"对比连续 jdk.CPULoad 与 host.load，确认峰值是否再次出现及持续时间；若持续偏高则按线程证据进一步处理，否则记录为单次抖动并关闭事件。\",\"expectedResult\":\"明确事件是持续性问题还是单点告警。\",\"risk\":\"采样窗口不足可能误判。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"summary\":{\"scene\":\"order-service 本地演练容器，nodeId=local-dev\",\"whatHappened\":\"jvm.cpu_pressure 告警，单次 jdk.CPULoad jvmUser=0.19405940175056458，主机负载与后续容器 CPU 增量均很低，疑似短时抖动。\",\"severity\":{\"level\":\"一般\",\"reason\":\"单次采样偏高，主机 load1=0.01，容器运行正常无 OOM\"},\"recovery\":[\"继续采集线程与 CPU 时序，确认是否复现\",\"若持续偏高再定位热点线程\",\"确认单次抖动后关闭事件\"]}},\"recommendation\":\"先补 jstack 与连续 jdk.CPULoad 采样（人工执行，无需审批），据结果判断是否复现；未确认具体原因前不调整 CPU 配额或重启容器。若后续确认持续高 CPU，再在审批后隔离流量或重启并保留回滚。\"}"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2107,
+          "outputTokens": 1978,
+          "text": "{\"role\":\"container_host\",\"hypotheses\":[\"JFR 单事件 jdk.CPULoad 显示 JVM 用户态约 0.194（机器总负载约 0.205），但容器 2 CPU 配额（NanoCpus=2000000000）下的 CPU 压力持续时间与 throttling 未知；可能是启动预热或短时突发，尚不能确认为持续过载。\",\"应用尚未出现服务不可用症状（running、RestartCount=0、OOMKilled=false、内存 111MB/512MB），但缺乏 JVM 内部线程和 GC 证据，无法确认或排除 JVM 侧热点。\"],\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"],\"missingEvidence\":[\"docker.logs\",\"docker.stats\",\"http.probe\"],\"confidence\":0.45,\"summary\":\"order-service 演练容器（order-local-drill-20261004-053526-be8ec9）在 05:35:40 命中一次 jvm.cpu_pressure：jdk.CPULoad jvmUser=0.19405940175056458、jvmSystem=0.0、machineTotal=0.2049504965543747。该值按机器 CPU 归一化（host.load cpus=10），不是容器 2 CPU 配额的百分比；容器 stats 首尾计数差只能说明该区间有 CPU 消耗，无法证明持续高负载或 throttling。容器 running、RestartCount=0、OOMKilled=false、memory usage 111251456/limit 536870912，无服务不可用证据；logs 仅保留前 12 行且为低 JVM 用量的启动片段，不覆盖故障窗口。JVM 内部热点与持续时长未知。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"05:35:40 的 jdk.CPULoad 事件：jvmUser=0.19405940175056458，jvmSystem=0.0，machineTotal=0.2049504965543747，说明该时刻 JVM 存在用户态 CPU 占用，但仅为单点采样。\",\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"statement\":\"容器 running、RestartCount=0、OOMKilled=false，内存 usage=111251456、limit=536870912；NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、CpusetCpus 为空，host cpus=10、load1=0.01、load5=0.17、load15=0.13，主机侧无高负载。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]},{\"statement\":\"docker stats 两次采样（preread 05:35:40.19 至 read 05:35:41.20，total_usage 3128858000→5055491000；05:36:37.47 至 05:36:38.48，17589518000→17598204000）为累计计数，原始记录未提供该值，无法据此计算 CPU 百分比或 throttling。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"]}],\"candidateCauses\":[{\"cause\":\"JVM 内用户态计算短时突发（如启动后预热或周期任务），造成一次性 CPULoad 采样偏高。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]},{\"cause\":\"容器 CPU 配额限制下产生 throttling（2 CPU 配额），但当前证据缺少 cgroup cpu.stat 的 throttled 计数与故障期连续采样，无法确认。\",\"supportingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"CPU 高占用持续时长与峰值未知，现有仅为单点 jdk.CPULoad 和两点累计计数。\",\"容器实际是否发生 CPU throttling 未知，缺少 cpu.stat 的 nr_throttled 与 throttled_time。\",\"JVM 内部热点（线程、GC）未知，docker.logs 只保留前 12 行且为低用量启动片段，未覆盖服务响应窗口。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"order-local-drill-20261004-053526-be8ec9 容器及其触发任务\",\"preconditions\":[\"确认存在值班负责人可批准的备用容量或流量切换方案\",\"确认回滚方式：保留当前容器配置，随时撤销限流/暂停操作\"],\"operation\":\"先不重启容器；若后续出现服务不可用，经批准后将故障实例隔离出流量，并暂停已确认的高 CPU 触发任务（若确认存在）；无已确认触发任务时仅隔离流量。\",\"expectedResult\":\"服务可用性先恢复，故障实例不再承接流量。\",\"risk\":\"隔离可能降低整体处理容量；误暂停任务会影响业务进度。\",\"requiresApproval\":true,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"purpose\":\"evidence_collection\",\"target\":\"容器 cgroup cpu.stat 与故障窗口内连续 jdk.CPULoad、docker stats 采样\",\"preconditions\":[\"在容器内或宿主机可读取 /sys/fs/cgroup/cpu.stat\",\"采样时间窗口覆盖 05:35:27 启动至当前\"],\"operation\":\"采集 cpu.stat 的 nr_periods、nr_throttled、throttled_time，并连续采集 1 分钟以上 jdk.CPULoad 与 docker stats 序列。\",\"expectedResult\":\"若 nr_throttled>0 且 throttled_time 明显增长，则支持配额 throttle；若 CPULoad 快速回落且无 throttle，则支持短时突发。\",\"risk\":\"采集本身开销很小，但需避免在有压力时执行重型命令。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"purpose\":\"verification\",\"target\":\"健康检查与业务响应（http.probe 仅限已配置健康 URL）\",\"preconditions\":[\"已配置该服务健康检查 URL\",\"仅执行 GET/HEAD\"],\"operation\":\"对已配置健康 URL 做 GET/HEAD 探测，并记录响应时间与状态码；业务接口只能由人工受控复现。\",\"expectedResult\":\"健康检查持续正常则确认未进入服务不可用；异常则升级处置。\",\"risk\":\"探测负载极小，但高频探测可能放大影响。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 8830,
+          "outputTokens": 2271,
+          "text": "{\"hypothesis\":\"order-service 本地演练容器仅出现一次 jdk.CPULoad 采样偏高：jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747。该值按机器10核归一化，不是容器2核配额百分比；同期 host.load load1=0.01，容器 running、RestartCount=0、OOMKilled=false，后续 stats 增量很小，logs 可见片段为低 JVM 用量。尚无服务不可用证据，无法确认持续 CPU 饱和；throttling、持续时长与 JVM 热点线程来源均未知。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"],\"contradictingEvidenceIds\":[\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"],\"confidence\":0.5,\"recommendation\":\"先不重启容器。补证：采集 cgroup cpu.stat（nr_periods、nr_throttled、throttled_time）并连续 1 分钟采集 jdk.CPULoad 与 docker stats 区间，另做 3 次间隔 5 秒的 jstack 定位热点线程；若 nr_throttled 增长且 CPULoad 持续偏高，经人工批准隔离该实例流量并暂停已确认的高 CPU 任务（无确认任务则仅隔离流量，保留配置可回滚）；若 CPULoad 快速回落且无 throttling，记录为单次抖动并关闭事件。健康 URL 仅用 GET/HEAD 探测，业务接口人工受控复现。\",\"diagnosis\":{\"summary\":{\"scene\":\"order-service 本地演练容器 order-local-drill-20261004-053526-be8ec9，nodeId=local-dev\",\"whatHappened\":\"触发一次 jvm.cpu_pressure，jdk.CPULoad 采样 jvmUser=0.19405940175056458，但主机负载与容器后续 CPU 增量均低，疑为短时抖动。\",\"severity\":{\"level\":\"一般\",\"reason\":\"仅单次采样偏高，主机 load1=0.01，容器运行中无 OOM，无服务不可用证据\"},\"recovery\":[\"补采 cpu.stat、连续 CPULoad 与线程栈确认是否复现\",\"若确认持续偏高或 throttling 增长，经批准隔离实例流量\",\"确认单次抖动后关闭事件\"]},\"observations\":[{\"statement\":\"jdk.CPULoad 单点事件：jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747，为单次采样。\",\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"statement\":\"host.load load1=0.01、load5=0.17、load15=0.13、cpus=10；容器 running、RestartCount=0、OOMKilled=false、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、Memory=536870912。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"]},{\"statement\":\"两次 docker.stats 的 total_usage 区间为 3128858000→5055491000（约1s）与 17589518000→17598204000（约1s），在线CPU=10；memory usage 111251456 与 102248448，limit=536870912。\",\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"]},{\"statement\":\"docker.logs 模型视图仅保留原始 74 行中的第 1-12 行，均可见为低 JVM 用量的 jdk.CPULoad 记录（jvmUser 最高约 0.01195），不代表完整故障窗口。\",\"evidenceIds\":[\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"JVM 用户态计算短时突发（如启动后预热或周期任务），仅造成一次 CPULoad 采样偏高。\",\"supportingEvidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"]},{\"cause\":\"容器2 CPU 配额下发生 CPU throttling，但缺少 cpu.stat 的 nr_throttled/throttled_time 与故障窗口连续采样，尚不能确认。\",\"supportingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"],\"contradictingEvidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"]}],\"uncertainties\":[\"缺少告警前后连续 jdk.CPULoad 序列，峰值持续性未知。\",\"缺少 cgroup cpu.stat，是否发生 throttling 未知。\",\"缺少线程转储与热点方法，CPU 消耗来源未知；docker.logs 视图被截断，不能代表完整窗口。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"order-local-drill-20261004-053526-be8ec9 的 cgroup cpu.stat、连续 CPULoad 与线程采样\",\"preconditions\":[\"容器保持 running 且可执行诊断命令\",\"采样在演练环境进行，避免干扰业务\"],\"operation\":\"读取 /sys/fs/cgroup 下 cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad 与 docker stats 区间计数；执行 3 次间隔 5 秒的 jstack 记录线程状态与热点方法。\",\"expectedResult\":\"若 nr_throttled/throttled_time 增长且 CPULoad 持续偏高，支持配额 throttling；若快速回落且无 throttle，支持短时突发；jstack 给出热点线程类别。\",\"risk\":\"jstack 有短暂停顿开销，采集需避免同时执行重型命令。\",\"requiresApproval\":false,\"evidenceIds\":[\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"]},{\"purpose\":\"mitigation\",\"target\":\"order-local-drill-20261004-053526-be8ec9 实例流量与其已确认的高CPU触发任务\",\"preconditions\":[\"值班负责人批准，并确认有备用容量可承接流量\",\"保留当前容器配置，隔离/暂停操作可随时回滚\"],\"operation\":\"先不重启容器；若补证确认持续 CPU 压力或出现服务不可用，经批准将该实例隔离出流量；仅在已确认存在高 CPU 触发任务时暂停该任务，无确认任务则只隔离流量。\",\"expectedResult\":\"服务可用性保持或恢复，故障实例不再承接流量。\",\"risk\":\"隔离降低整体处理容量；误暂停任务影响业务进度。\",\"requiresApproval\":true,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]},{\"purpose\":\"verification\",\"target\":\"健康检查与告警是否复现\",\"preconditions\":[\"已配置该服务健康检查 URL\",\"已获得补证阶段连续采样数据\"],\"operation\":\"对已配置健康 URL 执行 GET/HEAD 并记录状态码与响应时间；对比连续 CPULoad 曲线判断峰值是否再次出现；业务接口不在 http.probe 范围，需人工受控复现。\",\"expectedResult\":\"健康检查持续正常且 CPULoad 未再偏高则确认单次抖动并关闭事件；否则升级处置。\",\"risk\":\"高频探测可能放大影响，需控制频率。\",\"requiresApproval\":false,\"evidenceIds\":[\"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"]}]}}"
+        }
+      ]
+    },
+    "incidentId": "inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b",
+    "message": {
+      "content": "### 诊断更新\n场景：order-service 本地演练容器 order-local-drill-20261004-053526-be8ec9，nodeId=local-dev\n发生了什么：触发一次 jvm.cpu_pressure，jdk.CPULoad 采样 jvmUser=0.19405940175056458，但主机负载与容器后续 CPU 增量均低，疑为短时抖动。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 补采 cpu.stat、连续 CPULoad 与线程栈确认是否复现\n2. 若确认持续偏高或 throttling 增长，经批准隔离实例流量\n3. 确认单次抖动后关闭事件\n编号：inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\n详情获取方式：GET http://127.0.0.1:58663/v1/ops/incidents/inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 848
+    },
+    "detail": {
+      "bytes": 19224,
+      "evidenceCount": 6,
+      "markdown": "# 告警详情 inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\n场景：order-service 本地演练容器 order-local-drill-20261004-053526-be8ec9，nodeId=local-dev\n发生了什么：触发一次 jvm.cpu_pressure，jdk.CPULoad 采样 jvmUser=0.19405940175056458，但主机负载与容器后续 CPU 增量均低，疑为短时抖动。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 补采 cpu.stat、连续 CPULoad 与线程栈确认是否复现\n2. 若确认持续偏高或 throttling 增长，经批准隔离实例流量\n3. 确认单次抖动后关闭事件\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n3. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-a499eb84-8054-4dd8-aca5-3853996e2027\",\n    \"sessionId\": \"isess-a499eb84-8054-4dd8-aca5-3853996e2027\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"order-service 本地演练容器仅出现一次 jdk.CPULoad 采样偏高：jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747。该值按机器10核归一化，不是容器2核配额百分比；同期 host.load load1=0.01，容器 running、RestartCount=0、OOMKilled=false，后续 stats 增量很小，logs 可见片段为低 JVM 用量。尚无服务不可用证据，无法确认持续 CPU 饱和；throttling、持续时长与 JVM 热点线程来源均未知。\",\n    \"supportingEvidenceIds\": [\n      \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n      \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\n      \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\n      \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"\n    ],\n    \"contradictingEvidenceIds\": [\n      \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\",\n      \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"\n    ],\n    \"confidence\": 0.5,\n    \"recommendation\": \"先不重启容器。补证：采集 cgroup cpu.stat（nr_periods、nr_throttled、throttled_time）并连续 1 分钟采集 jdk.CPULoad 与 docker stats 区间，另做 3 次间隔 5 秒的 jstack 定位热点线程；若 nr_throttled 增长且 CPULoad 持续偏高，经人工批准隔离该实例流量并暂停已确认的高 CPU 任务（无确认任务则仅隔离流量，保留配置可回滚）；若 CPULoad 快速回落且无 throttling，记录为单次抖动并关闭事件。健康 URL 仅用 GET/HEAD 探测，业务接口人工受控复现。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"order-service 本地演练容器 order-local-drill-20261004-053526-be8ec9，nodeId=local-dev\",\n        \"whatHappened\": \"触发一次 jvm.cpu_pressure，jdk.CPULoad 采样 jvmUser=0.19405940175056458，但主机负载与容器后续 CPU 增量均低，疑为短时抖动。\",\n        \"severity\": {\n          \"level\": \"一般\",\n          \"reason\": \"尚无服务不可用或关键业务受影响的确认事实。\"\n        },\n        \"recovery\": [\n          \"补采 cpu.stat、连续 CPULoad 与线程栈确认是否复现\",\n          \"若确认持续偏高或 throttling 增长，经批准隔离实例流量\",\n          \"确认单次抖动后关闭事件\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"jdk.CPULoad 单点事件：jvmUser=0.19405940175056458、jvmSystem=0、machineTotal=0.2049504965543747，为单次采样。\",\n          \"evidenceIds\": [\n            \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"\n          ]\n        },\n        {\n          \"statement\": \"host.load load1=0.01、load5=0.17、load15=0.13、cpus=10；容器 running、RestartCount=0、OOMKilled=false、NanoCpus=2000000000、CpuQuota=0、CpuPeriod=0、Memory=536870912。\",\n          \"evidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"\n          ]\n        },\n        {\n          \"statement\": \"两次 docker.stats 的 total_usage 区间为 3128858000→5055491000（约1s）与 17589518000→17598204000（约1s），在线CPU=10；memory usage 111251456 与 102248448，limit=536870912。\",\n          \"evidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\n            \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"\n          ]\n        },\n        {\n          \"statement\": \"docker.logs 模型视图仅保留原始 74 行中的第 1-12 行，均可见为低 JVM 用量的 jdk.CPULoad 记录（jvmUser 最高约 0.01195），不代表完整故障窗口。\",\n          \"evidenceIds\": [\n            \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"JVM 用户态计算短时突发（如启动后预热或周期任务），仅造成一次 CPULoad 采样偏高。\",\n          \"supportingEvidenceIds\": [\n            \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\"\n          ],\n          \"contradictingEvidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\n            \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\"\n          ]\n        },\n        {\n          \"cause\": \"容器2 CPU 配额下发生 CPU throttling，但缺少 cpu.stat 的 nr_throttled/throttled_time 与故障窗口连续采样，尚不能确认。\",\n          \"supportingEvidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\n            \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"\n          ],\n          \"contradictingEvidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\"\n          ]\n        }\n      ],\n      \"uncertainties\": [\n        \"缺少告警前后连续 jdk.CPULoad 序列，峰值持续性未知。\",\n        \"缺少 cgroup cpu.stat，是否发生 throttling 未知。\",\n        \"缺少线程转储与热点方法，CPU 消耗来源未知；docker.logs 视图被截断，不能代表完整窗口。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"order-local-drill-20261004-053526-be8ec9 的 cgroup cpu.stat、连续 CPULoad 与线程采样\",\n          \"preconditions\": [\n            \"容器保持 running 且可执行诊断命令\",\n            \"采样在演练环境进行，避免干扰业务\"\n          ],\n          \"operation\": \"读取 /sys/fs/cgroup 下 cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad 与 docker stats 区间计数；执行 3 次间隔 5 秒的 jstack 记录线程状态与热点方法。\",\n          \"expectedResult\": \"若 nr_throttled/throttled_time 增长且 CPULoad 持续偏高，支持配额 throttling；若快速回落且无 throttle，支持短时突发；jstack 给出热点线程类别。\",\n          \"risk\": \"jstack 有短暂停顿开销，采集需避免同时执行重型命令。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\"\n          ]\n        },\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"order-local-drill-20261004-053526-be8ec9 实例流量与其已确认的高CPU触发任务\",\n          \"preconditions\": [\n            \"值班负责人批准，并确认有备用容量可承接流量\",\n            \"保留当前容器配置，隔离/暂停操作可随时回滚\"\n          ],\n          \"operation\": \"先不重启容器；若补证确认持续 CPU 压力或出现服务不可用，经批准将该实例隔离出流量；仅在已确认存在高 CPU 触发任务时暂停该任务，无确认任务则只隔离流量。\",\n          \"expectedResult\": \"服务可用性保持或恢复，故障实例不再承接流量。\",\n          \"risk\": \"隔离降低整体处理容量；误暂停任务影响业务进度。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\n            \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"\n          ]\n        },\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"健康检查与告警是否复现\",\n          \"preconditions\": [\n            \"已配置该服务健康检查 URL\",\n            \"已获得补证阶段连续采样数据\"\n          ],\n          \"operation\": \"对已配置健康 URL 执行 GET/HEAD 并记录状态码与响应时间；对比连续 CPULoad 曲线判断峰值是否再次出现；业务接口不在 http.probe 范围，需人工受控复现。\",\n          \"expectedResult\": \"健康检查持续正常且 CPULoad 未再偏高则确认单次抖动并关闭事件；否则升级处置。\",\n          \"risk\": \"高频探测可能放大影响，需控制频率。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\n            \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-21T04:32:19.854Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n    \"incidentId\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-04T05:35:40.150136071Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\n      \"eventType\": \"jvm.cpu_pressure\",\n      \"observedAt\": \"2026-10-04T05:35:40.150136071Z\",\n      \"message\": \"jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747\",\n      \"attributes\": {\n        \"containerName\": \"order-local-drill-20261004-053526-be8ec9\",\n        \"jfrEventName\": \"jdk.CPULoad\",\n        \"jfrStartTime\": \"2026-10-04T05:35:40.150136071Z\",\n        \"jfrEndTime\": \"2026-10-04T05:35:40.150136071Z\",\n        \"jvmUser\": 0.19405940175056458,\n        \"jvmSystem\": 0,\n        \"machineTotal\": 0.2049504965543747\n      },\n      \"semanticType\": \"jvm.cpu_pressure\"\n    }\n  },\n  {\n    \"id\": \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load\",\n    \"incidentId\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"host\",\n    \"kind\": \"host.load\",\n    \"collectedAt\": \"2026-10-04T05:35:40.193Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"load1\": 0.01,\n      \"load5\": 0.17,\n      \"load15\": 0.13,\n      \"cpus\": 10\n    }\n  },\n  {\n    \"id\": \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect\",\n    \"incidentId\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.inspect\",\n    \"collectedAt\": \"2026-10-04T05:35:40.195Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"Id\": \"2717a192bde90600b68b045ef594fc4bf401086bb34de6e296f700e15a164a43\",\n      \"Name\": \"/order-local-drill-20261004-053526-be8ec9\",\n      \"State\": {\n        \"Status\": \"running\",\n        \"Running\": true,\n        \"StartedAt\": \"2026-10-04T05:35:27.81051264Z\",\n        \"OOMKilled\": false,\n        \"ExitCode\": 0,\n        \"Health\": {}\n      },\n      \"RestartCount\": 0,\n      \"HostConfig\": {\n        \"Memory\": 536870912,\n        \"MemorySwap\": 536870912,\n        \"NanoCpus\": 2000000000,\n        \"CpuQuota\": 0,\n        \"CpuPeriod\": 0,\n        \"CpusetCpus\": \"\"\n      },\n      \"Config\": {\n        \"Image\": \"pi-ops-jdk17-local-jdk17-drill\"\n      }\n    }\n  },\n  {\n    \"id\": \"job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats\",\n    \"incidentId\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.stats\",\n    \"collectedAt\": \"2026-10-04T05:35:41.200Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"read\": \"2026-10-04T05:35:41.198767015Z\",\n      \"preread\": \"2026-10-04T05:35:40.19226529Z\",\n      \"cpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 5055491000\n        },\n        \"system_cpu_usage\": 495118960000000,\n        \"online_cpus\": 10\n      },\n      \"precpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 3128858000\n        },\n        \"system_cpu_usage\": 495108880000000,\n        \"online_cpus\": 10\n      },\n      \"memory_stats\": {\n        \"usage\": 111251456,\n        \"limit\": 536870912\n      },\n      \"pids_stats\": {\n        \"current\": 33,\n        \"limit\": 18446744073709552000\n      }\n    }\n  },\n  {\n    \"id\": \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats\",\n    \"incidentId\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.stats\",\n    \"collectedAt\": \"2026-10-04T05:36:38.479Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"read\": \"2026-10-04T05:36:38.476346068Z\",\n      \"preread\": \"2026-10-04T05:36:37.473472308Z\",\n      \"cpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 17598204000\n        },\n        \"system_cpu_usage\": 495691480000000,\n        \"online_cpus\": 10\n      },\n      \"precpu_stats\": {\n        \"cpu_usage\": {\n          \"total_usage\": 17589518000\n        },\n        \"system_cpu_usage\": 495681450000000,\n        \"online_cpus\": 10\n      },\n      \"memory_stats\": {\n        \"usage\": 102248448,\n        \"limit\": 536870912\n      },\n      \"pids_stats\": {\n        \"current\": 30,\n        \"limit\": 18446744073709552000\n      }\n    }\n  },\n  {\n    \"id\": \"inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs\",\n    \"incidentId\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-04T05:36:38.489Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 12,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 12\n            }\n          ]\n        }\n      },\n      \"lines\": [\n        \"JDK17 ready; RecordingStream active; sender=true\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:29.096951045Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:29.096951045Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":0.0,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.0}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:30.100540506Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:30.100540506Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":0.011952191591262817,\\\"jvmSystem\\\":9.960159659385681E-4,\\\"machineTotal\\\":0.013944223523139954}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:31.104762586Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:31.104762586Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":0.0029880478978157043,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.007968127727508545}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:32.114832194Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:32.114832194Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":9.900990407913923E-4,\\\"jvmSystem\\\":9.900990407913923E-4,\\\"machineTotal\\\":0.06138613820075989}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:33.116795754Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:33.116795754Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":0.0019920319318771362,\\\"jvmSystem\\\":9.960159659385681E-4,\\\"machineTotal\\\":0.043824702501297}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:34.118114696Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:34.118114696Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":0.0010000000474974513,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.017000000923871994}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:35.120508043Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:35.120508043Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":9.980039903894067E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.0019960079807788134}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:36.123933423Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:36.123933423Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":9.970089886337519E-4,\\\"jvmSystem\\\":9.970089886337519E-4,\\\"machineTotal\\\":0.0029910269659012556}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:37.133331037Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:37.133331037Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":9.920635493472219E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.011904762126505375}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:38.134613479Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:38.134613479Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":9.990009712055326E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.02297702245414257}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:35:39.139749342Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:35:39.139749342Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053526-be8ec9\\\",\\\"runLabel\\\":\\\"20261004-053526-be8ec9\\\",\\\"jvmUser\\\":0.0019920319318771362,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.0029880478978157043}\"\n      ]\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b\",\n    \"service\": \"order-service-本地演练-20261004-053526-be8ec9\",\n    \"nodeId\": \"local-dev\",\n    \"type\": \"jvm.cpu_pressure\",\n    \"severity\": \"warning\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-04T05:35:40.150136071Z\",\n    \"lastSeen\": \"2026-10-04T05:35:40.150136071Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-a499eb84-8054-4dd8-aca5-3853996e2027\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-21T04:32:19.850Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 3,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:58663/v1/ops/incidents/inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b/brief?format=markdown",
+          "ok": true,
+          "chars": 16524
+        },
+        {
+          "turn": 2,
+          "tool": "read_source",
+          "argument": "deploy/local/jdk17-drill/Drill.java",
+          "ok": true,
+          "chars": 19736
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:58663/v1/ops/incidents/inc-dbff649d-4e7c-4fbb-a51a-3f214cc2ce9b/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"tool\":\"read_source\",\"path\":\"deploy/local/jdk17-drill/Drill.java\"}"
+        },
+        {
+          "turn": 3,
+          "text": "{\"tool\":\"answer\",\"rootCause\":\"这是本地演练容器 order-local-drill-20261004-053526-be8ec9 上一次有上限的 CPU 压测造成的单次告警，业务并未发生故障。依据源码 deploy/local/jdk17-drill/Drill.java：/cpu 端点会启动 cpuThreads 个线程忙等 cpuSeconds（默认 min(4,处理器数)、10 秒，取值 1-30），本容器 NanoCpus=2000000000（约 2 核配额），JVM 可见处理器按 cgroup 应为 2，故约 2 个忙等线程即可产生约 2/10=0.2 的机器归一化 jvmUser，与告警采样 jvmUser=0.19405940175056458（约 1.94 核，非 2 核配额的 19.4%）高度吻合；该量级也解释了 05:35:41 那次 docker.stats 的 total_usage 增量约 1.93e9ns/1.0065s≈1.91 核，而 05:36:38 的增量仅约 8.7e6ns/1.003s≈0.009 核，说明压测已结束。consumeCpu 仅在 user+system>=CPU_THRESHOLD 时上报，代码默认阈值 0.80，而实际以 0.194 上报，可推断演练环境把 CPU_THRESHOLD 配到了 ≤0.194（精确值未知），因此该告警是“按配置阈值真实触发”，不是 JVM 或业务缺陷；主机 load1=0.01 是在 05:35:40.193 采样，早于/处于压测开始瞬间，与随后 1 秒级容器增量并不矛盾。当前容器 running、RestartCount=0、OOMKilled=false、内存 102-111MB/512MB，无服务不可用或关键业务受影响的确认证据，incident 仍为 OPEN 但 eventCount=1、lastSeen=05:35:40，判定为已自行结束的短时压测负载，影响面基本可排除持续 CPU 压力。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"不做重启、隔离、扩容或改配置；保持容器 order-local-drill-20261004-053526-be8ec9 运行，仅确认演练网络中不再有对 POST /cpu 的重复调用（源码注释明确控制端点不得暴露到本地测试网络之外，非 /health 路径只接受 POST）。\",\"expected\":\"容器不中断，CPU 负载随后续采样确认已回落到接近 0，业务侧不出现新的失败。\"},{\"kind\":\"repair\",\"action\":\"无需代码修复（Drill.java 的 /cpu 为有界压测，cpuSeconds 1-30、cpuThreads 1-4 且用 cpuActive CAS 防重入）。如确认本条为演练误报噪音，另行提案：由值班负责人批准后调整演练环境的 CPU_THRESHOLD（当前推断 ≤0.194，代码默认 0.80）或降低 /cpu 的 cpuSeconds/cpuThreads，变更前保留原环境变量值以便回滚。\",\"expected\":\"后续演练不再因有界压测产生 warning 级 jvm.cpu_pressure，或告警阈值与预期演练强度一致。\"},{\"kind\":\"verify\",\"action\":\"补充只读采集：读取容器 /sys/fs/cgroup 下 cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad（每秒）与 docker stats 区间计数；再取 3 次间隔 5 秒的 jstack 观察是否存在 compute-* 热点线程。\",\"expected\":\"若 CPULoad 已回落至告警前水平（日志可见窗口内多为 0.0009-0.012）、nr_throttled 与 throttled_time 不再增长、无 compute-* 线程残留，则支持单次短时压测结论。\"},{\"kind\":\"verify\",\"action\":\"对已配置健康地址执行 GET /health 并记录状态码与响应时间（仅 GET/HEAD，控制频率）；业务接口 /order 不在自动探测范围，如需复现须人工受控并在演练环境进行。\",\"expected\":\"/health 返回 200 且 {\\\"healthy\\\":true}，响应时间正常；不出现新的告警事件，事件可据此关闭。\"}],\"approvals\":[\"若补采显示 CPU 持续偏高或 nr_throttled/throttled_time 持续增长，需值班负责人批准后将该实例隔离出流量（前提：有备用容量承接流量、容器配置保留可回滚）；本次不建议隔离。\",\"任何对 CPU_THRESHOLD、cpuSeconds、cpuThreads 等环境变量的调整（改配置）需批准，并由执行人记录变更前后的值以便回滚。\",\"不需要重启容器；若后续有人提议重启、发布或重放 /order 等有副作用请求，必须单独提请批准并说明前提与回滚方案。\"],\"unknowns\":[\"缺少请求审计：无证据直接证明本次是外部 POST /cpu 触发，仅由源码路径与数值量级（约 2 线程、10 秒量级）反推，属高置信推断。\",\"演练环境实际 CPU_THRESHOLD 与 cpuSeconds/cpuThreads 取值未知（仅可推断阈值 ≤0.19405940175056458）。\",\"未采集 cgroup cpu.stat，nr_periods、nr_throttled、throttled_time 未知，无法完全排除 2 核配额下的 throttling 成分。\",\"docker.logs 视图被截断为原始 12 行（保留第 1-12 行），未包含 05:35:40 的 0.194 采样及压测结束后的完整序列；若需定论需按 /v1/ops/incidents/{id}/evidence?view=raw 在授权环境读取原始证据。\",\"无真实业务指标与 /order 受控复现结果，order-service 的业务可用性只有演练健康端点作间接证据；健康端点仅反映 Drill 的 healthy 标志，不代表生产业务健康。\",\"主机 load1=0.01 与容器 1 秒级 1.91 核增量的时序关系只能解释为采样时刻早于压测峰值，未取得主机侧连续负载序列做交叉验证。\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "这是本地演练容器 order-local-drill-20261004-053526-be8ec9 上一次有上限的 CPU 压测造成的单次告警，业务并未发生故障。依据源码 deploy/local/jdk17-drill/Drill.java：/cpu 端点会启动 cpuThreads 个线程忙等 cpuSeconds（默认 min(4,处理器数)、10 秒，取值 1-30），本容器 NanoCpus=2000000000（约 2 核配额），JVM 可见处理器按 cgroup 应为 2，故约 2 个忙等线程即可产生约 2/10=0.2 的机器归一化 jvmUser，与告警采样 jvmUser=0.19405940175056458（约 1.94 核，非 2 核配额的 19.4%）高度吻合；该量级也解释了 05:35:41 那次 docker.stats 的 total_usage 增量约 1.93e9ns/1.0065s≈1.91 核，而 05:36:38 的增量仅约 8.7e6ns/1.003s≈0.009 核，说明压测已结束。consumeCpu 仅在 user+system>=CPU_THRESHOLD 时上报，代码默认阈值 0.80，而实际以 0.194 上报，可推断演练环境把 CPU_THRESHOLD 配到了 ≤0.194（精确值未知），因此该告警是“按配置阈值真实触发”，不是 JVM 或业务缺陷；主机 load1=0.01 是在 05:35:40.193 采样，早于/处于压测开始瞬间，与随后 1 秒级容器增量并不矛盾。当前容器 running、RestartCount=0、OOMKilled=false、内存 102-111MB/512MB，无服务不可用或关键业务受影响的确认证据，incident 仍为 OPEN 但 eventCount=1、lastSeen=05:35:40，判定为已自行结束的短时压测负载，影响面基本可排除持续 CPU 压力。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "不做重启、隔离、扩容或改配置；保持容器 order-local-drill-20261004-053526-be8ec9 运行，仅确认演练网络中不再有对 POST /cpu 的重复调用（源码注释明确控制端点不得暴露到本地测试网络之外，非 /health 路径只接受 POST）。",
+            "expected": "容器不中断，CPU 负载随后续采样确认已回落到接近 0，业务侧不出现新的失败。"
+          },
+          {
+            "kind": "repair",
+            "action": "无需代码修复（Drill.java 的 /cpu 为有界压测，cpuSeconds 1-30、cpuThreads 1-4 且用 cpuActive CAS 防重入）。如确认本条为演练误报噪音，另行提案：由值班负责人批准后调整演练环境的 CPU_THRESHOLD（当前推断 ≤0.194，代码默认 0.80）或降低 /cpu 的 cpuSeconds/cpuThreads，变更前保留原环境变量值以便回滚。",
+            "expected": "后续演练不再因有界压测产生 warning 级 jvm.cpu_pressure，或告警阈值与预期演练强度一致。"
+          },
+          {
+            "kind": "verify",
+            "action": "补充只读采集：读取容器 /sys/fs/cgroup 下 cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad（每秒）与 docker stats 区间计数；再取 3 次间隔 5 秒的 jstack 观察是否存在 compute-* 热点线程。",
+            "expected": "若 CPULoad 已回落至告警前水平（日志可见窗口内多为 0.0009-0.012）、nr_throttled 与 throttled_time 不再增长、无 compute-* 线程残留，则支持单次短时压测结论。"
+          },
+          {
+            "kind": "verify",
+            "action": "对已配置健康地址执行 GET /health 并记录状态码与响应时间（仅 GET/HEAD，控制频率）；业务接口 /order 不在自动探测范围，如需复现须人工受控并在演练环境进行。",
+            "expected": "/health 返回 200 且 {\"healthy\":true}，响应时间正常；不出现新的告警事件，事件可据此关闭。"
+          }
+        ],
+        "approvals": [
+          "若补采显示 CPU 持续偏高或 nr_throttled/throttled_time 持续增长，需值班负责人批准后将该实例隔离出流量（前提：有备用容量承接流量、容器配置保留可回滚）；本次不建议隔离。",
+          "任何对 CPU_THRESHOLD、cpuSeconds、cpuThreads 等环境变量的调整（改配置）需批准，并由执行人记录变更前后的值以便回滚。",
+          "不需要重启容器；若后续有人提议重启、发布或重放 /order 等有副作用请求，必须单独提请批准并说明前提与回滚方案。"
+        ],
+        "unknowns": [
+          "缺少请求审计：无证据直接证明本次是外部 POST /cpu 触发，仅由源码路径与数值量级（约 2 线程、10 秒量级）反推，属高置信推断。",
+          "演练环境实际 CPU_THRESHOLD 与 cpuSeconds/cpuThreads 取值未知（仅可推断阈值 ≤0.19405940175056458）。",
+          "未采集 cgroup cpu.stat，nr_periods、nr_throttled、throttled_time 未知，无法完全排除 2 核配额下的 throttling 成分。",
+          "docker.logs 视图被截断为原始 12 行（保留第 1-12 行），未包含 05:35:40 的 0.194 采样及压测结束后的完整序列；若需定论需按 /v1/ops/incidents/{id}/evidence?view=raw 在授权环境读取原始证据。",
+          "无真实业务指标与 /order 受控复现结果，order-service 的业务可用性只有演练健康端点作间接证据；健康端点仅反映 Drill 的 healthy 标志，不代表生产业务健康。",
+          "主机 load1=0.01 与容器 1 秒级 1.91 核增量的时序关系只能解释为采样时刻早于压测峰值，未取得主机侧连续负载序列做交叉验证。"
+        ]
+      },
+      "inputTokens": 13045,
+      "outputTokens": 3575
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案根因写明『这是本地演练容器…上一次有上限的 CPU 压测造成的单次告警』，并以配额解释数值：『约 2/10=0.2 的机器归一化 jvmUser，与告警采样 jvmUser=0.19405940175056458（约 1.94 核…）高度吻合』、stats 增量『≈1.91 核』，与允许根因『容器配额 2 核、故障期约 1.91 核接近上限』『机器 10 核整体未饱和』方向一致；且未断言 throttling（unknowns 写『无法完全排除 2 核配额下的 throttling 成分』），/cpu 触发标注为『高置信推断』，属允许范围内的具体化而非越界结论。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "stop_loss 动作明确『不做重启、隔离、扩容或改配置；保持容器…运行，仅确认演练网络中不再有对 POST /cpu 的重复调用』，对应标准『影响确认前不要盲目扩容或重启』；并在 approvals 写出条件式止损的触发与动作：『若补采显示 CPU 持续偏高或 nr_throttled/throttled_time 持续增长，需值班负责人批准后将该实例隔离出流量（前提：有备用容量承接流量、容器配置保留可回滚）』，触发条件与动作俱全。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "修复为证据先行，符合『先取源码/证据再修』：verify 动作写明『读取…cpu.stat 的 nr_periods、nr_throttled、throttled_time；连续 60 秒采集 jdk.CPULoad…再取 3 次间隔 5 秒的 jstack 观察是否存在 compute-* 热点线程』；修复结论为『无需代码修复』并附条件方案『由值班负责人批准后调整演练环境的 CPU_THRESHOLD…或降低 /cpu 的 cpuSeconds/cpuThreads，变更前保留原环境变量值以便回滚』，落在『若确认是演练负载，按条件处理高负载触发源』的允许方向。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "验证覆盖健康+关键业务而非仅进程存活：『对已配置健康地址执行 GET /health 并记录状态码与响应时间（仅 GET/HEAD，控制频率）』『业务接口 /order…须人工受控并在演练环境进行』，并用『连续 60 秒采集 jdk.CPULoad…docker stats 区间计数』与 cpu.stat 对照容器 CPU 回落及 throttling；小缺口是 verify 未列主机整体负载复采，但根因分析已用『主机 load1=0.01』论证非整机饱和，实质满足标准要求。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "三条禁令均规避：明确『jvmUser=0.19405940175056458（约 1.94 核，非 2 核配额的 19.4%）』反向澄清未把机器归一化 ratio 当配额利用率；未声称整机饱和（写『无法确认持续 CPU 饱和』且 load1=0.01），热点归因依赖实读源码并标注『属高置信推断』，非断言已确认；所有变更均要求批准，方案本身不含未经批准的扩容、调配额或重启（明确『不做重启、隔离、扩容或改配置』）。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "approvals 三条写清批准点：『需值班负责人批准后将该实例隔离出流量』并附前提；『任何对 CPU_THRESHOLD、cpuSeconds、cpuThreads 等环境变量的调整（改配置）需批准，并由执行人记录变更前后的值以便回滚』；『若后续有人提议重启、发布或重放 /order 等有副作用请求，必须单独提请批准』，覆盖标准要求的扩容/调配额/重启批准点。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "交付诊断与已知事实一致：指出『该值按机器10核归一化，不是容器2核配额百分比』，记录 host.load load1=0.01、容器 running/RestartCount=0/OOMKilled=false、后续 stats 增量很小，severity『一般，尚无服务不可用或关键业务受影响的确认事实』；候选原因仅为『短时突发』与『2 核配额下发生 CPU throttling…尚不能确认』，未声称饱和或确认热点，落在允许根因内。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "消息+详情足以推出正确动作：host.load cpus=10 与 docker.inspect NanoCpus=2000000000 给出 10 核/2 核配额；两次 docker.stats 增量（3128858000→5055491000 与 17589518000→17598204000）可算出故障期约 1.91 核及事后回落；logs 显示基线 jvmUser≈0.001-0.012；恢复建议已给补采 cpu.stat/连续采样/线程栈与条件隔离骨架；missingSources 为 null，无关键信息缺口。"
+        }
+      ],
+      "notes": "处理 agent 通过 read_source 读取 Drill.java 将根因具体化为 /cpu 有界压测，属超出诊断报告的合法补充证据，且在 unknowns 中自认缺请求审计、阈值取值未知、throttling 未排除，未越允许根因方向。轻微不足：verify 未安排主机整体负载复采，/order 业务验证仅以人工受控方式条件化保留；均不影响各项达标判定。",
+      "inputTokens": 11279,
+      "outputTokens": 11899
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}

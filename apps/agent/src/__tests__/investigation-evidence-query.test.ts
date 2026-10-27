@@ -5,44 +5,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EvidenceQueryRequest, OpsEvent } from '@pi-ops/protocol';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import { createEvidenceOrchestrator, type FetchLike } from '../evidence-orchestrator.js';
 import { createInvestigationEvidenceService } from '../investigation-evidence.js';
 import { createInvestigationLoopService } from '../investigation-loop.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 
 function makeConfig(): AgentConfig {
-  return {
-    port: 0,
-    ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-    sqlitePath: ':memory:',
-    nodeId: 'central',
-    maxBodySize: 1024 * 1024,
-    aggregationWindowMs: 5 * 60 * 1000,
+  return makeAgentConfig({
     nodeAgents: new Map([
       ['test-svc-02', { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'node-token' }],
     ]),
-    evidenceTimeoutMs: 1000,
-    evidenceMaxResponseBytes: 1024 * 1024,
-    evidenceLogsMaxLines: 200,
-    evidenceJobPollIntervalMs: 1000,
-    evidenceJobMaxAttempts: 3,
-    evidenceJobBatchSize: 10,
-    eventReplayBatchSize: 100,
-    reasoningJobPollIntervalMs: 1000,
-    reasoningJobMaxAttempts: 3,
-    reasoningTimeoutMs: 5000,
-    reasoningJobBatchSize: 10,
-    reasonerType: 'fake',
-    reasoningMaxContextBytes: 32_768,
-    reasoningMaxEvidenceItems: 12,
-    reasoningMaxLogLines: 50,
     piRuntimeToken: 'runtime-token',
-  };
+  });
 }
 
 function makeEvent(): OpsEvent {

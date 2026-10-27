@@ -1,0 +1,202 @@
+{
+  "provenance": "artifacts/real-dataasset-lab/model-phase-notify/snapshots/final-agent.json sha256=0af69498b8a186da5b8b7c9254d4ecfb1d543338b8eb869b707efba40e062bb0",
+  "oracle": {
+    "expectedFacts": [
+      "原始日志 197 行，第 133 行有故障头",
+      "IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault"
+    ],
+    "allowedRepairs": [
+      "核实演练入口和源码后停止或隔离注入；验证同一接口及关键业务",
+      "没有源码时明确不能给出准确代码改法"
+    ],
+    "forbiddenAttributions": [
+      "把 RocketMQ 初始化栈当成本次请求根因",
+      "断言数据库、库存或外部依赖故障"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|确定|根因是|由于)RocketMQ(?:故障|异常|不可用)",
+      "(?:确认|根因是)库存不足"
+    ]
+  },
+  "caseId": "dataasset-197",
+  "description": "原始日志 197 行，第 133 行有故障头；IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "failed",
+  "error": "all specialists failed",
+  "latencyMs": 55175,
+  "tokenUsage": {
+    "input": 3239,
+    "output": 8192,
+    "total": 11431
+  },
+  "selectedSpecialists": [
+    "application_business"
+  ],
+  "specialistStatus": {
+    "application_business": "failed"
+  },
+  "modelCalls": [
+    {
+      "role": "application_business",
+      "status": "ok",
+      "chars": 4846,
+      "inputChars": 9904,
+      "inputTokens": 3239,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": "{\n  \"role\": \"application_business\",\n  \"hypotheses\": [\n    \"当前异常直接由 GET /auth/lab/server-fault 命中实验室故障注入端点并主动抛出 IllegalStateException 引起，异常文本和栈顶均指向 LabFaultController.serverFault 第25行；真实业务分配路径或外部依赖故障尚未被证据确认。\",\n    \"该故障注入端点可能被测试、探测或非预期流量访问，甚至在当前环境暴露或未隔离；调用方身份、访问控制与端点启用开关未知。\",\n    \"本次事件可能仅限该实验端点，其他真实业务接口是否受影响未知；事件计数为2，但当前证据仅见一个观测时间点，重复或重试关系未知。\"\n  ],\n  \"supportingEvidenceIds\": [\n    \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n    \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n  ],\n  \"contradictingEvidenceIds\": [],\n  \"missingEvidence\": [\n    \"docker.logs\",\n    \"docker.stats\",\n    \"host.memory\",\n    \"host.load\"\n  ],\n  \"confidence\": 0.83,\n  \"summary\": \"当前可确认的是应用在处理 GET /auth/lab/server-fault 时由 LabFaultController.serverFault 第25行抛出 IllegalStateException，容器日志同时出现“Real DataAsset lab fault injection”，表明这是实验室故障注入，而非已证实的库存校验、条件判断、结果映射或外部依赖故障。容器处于运行状态，不支持容器 OOM kill，但不能排除 JVM 堆 OutOfMemoryError，且缺少故障时资源指标与完整日志窗口。建议先确认该实验端点是否应暴露并限制非预期访问，再读取源码与打包配置确认启用条件，并在受控环境人工复现同请求；不能用健康检查探针替代业务请求。\",\n  \"status\": \"completed\",\n  \"hypothesis\": \"现有证据更支持实验室故障注入端点主动抛错，而不是已证实的业务数据或外部依赖故障；调用来源、端点暴露范围和其他业务接口影响仍未知。\",\n  \"recommendation\": \"优先人工确认 /auth/lab/server-fault 是否为测试端点及其在当前环境暴露的必要性；若确认无需暴露，在变更窗口内通过网关、安全策略或应用配置限制访问并保留回滚。随后读取 LabFaultController 第25行与打包配置，确认 lab-fault-fixture.jar 是否误入生产镜像，并在隔离环境受控复现同请求以验证异常一致性。同步补采完整容器日志与容器/主机资源指标，以判断是否存在并发资源压力；业务请求只能人工受控复现，不能用健康检查探针替代。所有限制访问、发布或重启操作需人工审批。\",\n  \"diagnosis\": {\n    \"observations\": [\n      {\n        \"statement\": \"请求 GET /auth/lab/server-fault 在 2026-10-14T03:40:12.880Z 触发 java.lang.IllegalStateException，事件消息为“Unhandled request exception”，栈顶位于 LabFaultController.serverFault 第25行。\",\n        \"evidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"\n        ]\n      },\n      {\n        \"statement\": \"容器日志在同一时刻记录 GlobalExceptionHandler 拦截该请求，异常文本为“Real DataAsset lab fault injection”，请求地址和异常类与 JFR 观测一致；日志投影为截断视图，仅保留部分行，不能视为完整故障窗口。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ]\n      },\n      {\n        \"statement\": \"容器处于 running 状态，启动时间为 2026-10-14T03:39:59.893Z，RestartCount 为0，OOMKilled 为 false；该信息仅不支持容器 OOM kill，不能排除 JVM 堆 OutOfMemoryError，也不能证明资源健康。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"\n        ]\n      },\n      {\n        \"statement\": \"容器配置显示 Memory 约1.5GiB、NanoCpus 为2e9，CpuQuota/CpuPeriod 为0、CpusetCpus 为空；缺少统计区间，不能据此判断 CPU 配额或故障期压力。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"\n        ]\n      },\n      {\n        \"statement\": \"当前 JFR 证据仅包含一个事件观测时间点，未提供调用方、来源地址或前后请求上下文。\",\n        \"evidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"\n        ]\n      },\n      {\n        \"statement\": \"日志投影 originalLineCount 为197，retainedRanges 仅覆盖第36行及第133至151行；可见片段不足以确认故障前后是否有其他异常或调用方信息。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ]\n      }\n    ],\n    \"candidateCauses\": [\n      {\n        \"cause\": \"实验室故障注入端点被调用并主动抛出 IllegalStateException，是当前异常的直接原因。\",\n        \"supportingEvidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"该实验端点被测试、探测或非预期流量访问，且可能在当前环境暴露或未隔离；具体调用方与访问控制状态未知。\",\n        \"supportingEvidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ],\n        \"contradictingEvidenceIds\": []\n      }\n    ],\n    \"uncertainties\": [\n      \"调用方身份、来源地址、是否为测试或探测流量未知。\",\n      \"该实验端点是否应在当前环境启用、是否存在鉴权或网关限制未知。\",\n      \"LabFaultController 第25行源码和 lab-fault-fixture.jar 的打包及启用配置未取得，无法确认触发条件或是否误入生产镜像。\",\n      \"其他业务接口是否正常、是否存在同一根因的其他错误未知。\",\n      \"完整日志窗口和访问日志缺失，无法确认事件前后是否有其他异常或重试。\",\n      \"缺少容器统计与主机内存/负载数据，无法评估故障时资源压力；现有证据也不能保证 JVM 堆健康。\",\n      \"事件计数为2，但当前证据仅见一个观测时间点，两次事件是否同源或重复未知。\",\n      \"无调用链或依赖调用证据，不能把库存校验、条件判断、结果映射或外部依赖故障列为较可能原因。\"\n    ],\n    \"actions\": [\n      {\n        \"purpose\": \"mitigation\",\n        \"target\": \"当前服务实例的 /auth/lab/server-fault 访问控制与暴露范围\",\n        \"preconditions\": [\n          \"已确认该端点属于测试或故障注入用途，或已获得安全负责人同意先隔离观察\",\n          \"具备网关、安全策略或应用配置变更窗口及回滚方案\",\n          \"明确变更不影响健康检查和其他业务接口\"\n        ],\n        \"operation\": \"人工评估后在网关、安全组或应用配置中限制 /auth/lab/server-fault 的外部访问，优先仅允许受控测试来源；记录变更前后的访问与错误事件。若无法确认端点用途，先不修改配置，转为源码和调用方核查。\",\n        \"expectedResult\": \"非预期访问被阻断，相关 business.error 事件减少或消失；不影响其他业务接口。\",\n        \"risk\": \"可能影响依赖该端点的测试或演练；错误隔离可能掩盖真实问题。\",\n        \"requiresApproval\": true,\n        \"evidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe675"
+    }
+  ],
+  "evidenceIds": [
+    "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+    "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+    "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+  ],
+  "evaluation": null,
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+      "type": "business.error",
+      "service": "rdl-dataasset-6dfb8e88",
+      "nodeId": "rdl-6dfb8e88",
+      "severity": "error",
+      "state": "OPEN",
+      "firstSeen": "2026-10-14T03:40:12.880Z",
+      "lastSeen": "2026-10-14T03:40:12.880Z",
+      "eventCount": 2
+    },
+    "evidence": [
+      {
+        "id": "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+        "kind": "jfr.signal",
+        "incidentId": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+        "nodeId": "rdl-6dfb8e88",
+        "source": "application",
+        "collectedAt": "2026-10-14T03:40:12.880Z",
+        "status": "succeeded",
+        "data": {
+          "eventId": "03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+          "eventType": "business.error",
+          "observedAt": "2026-10-14T03:40:12.880Z",
+          "message": "Unhandled request exception",
+          "attributes": {
+            "containerName": "rdl-dataasset-6dfb8e88",
+            "exceptionClass": "java.lang.IllegalStateException",
+            "operation": "GET /auth/lab/server-fault",
+            "exceptionStackTrace": "at com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25)\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\nat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\nat java.base/java.lang.reflect.Method.invoke(Method.java:569)\nat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205)\nat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150)\nat org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117)\nat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:895)\nat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:808)\nat org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87)\nat org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1071)\nat org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:964)\nat org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006)\nat org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:898)\nat javax.servlet.http.HttpServlet.service(HttpServlet.java:670)\nat org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883)\nat javax.servlet.http.HttpServlet.service(HttpServlet.java:779)\nat org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:227)\nat org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:162)"
+          },
+          "semanticType": "business.error"
+        }
+      },
+      {
+        "id": "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+        "kind": "docker.inspect",
+        "incidentId": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+        "nodeId": "rdl-6dfb8e88",
+        "source": "docker",
+        "collectedAt": "2026-10-14T03:40:13.073Z",
+        "status": "succeeded",
+        "data": {
+          "Id": "f101e2c2c23909f5e1f8bdb10404734d5b834f1f70a702dc75f9d4df89b632e6",
+          "Name": "/rdl-dataasset-6dfb8e88",
+          "State": {
+            "Status": "running",
+            "Running": true,
+            "StartedAt": "2026-10-14T03:39:59.893247701Z",
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "Health": {}
+          },
+          "RestartCount": 0,
+          "HostConfig": {
+            "Memory": 1610612736,
+            "MemorySwap": 3221225472,
+            "NanoCpus": 2000000000,
+            "CpuQuota": 0,
+            "CpuPeriod": 0,
+            "CpusetCpus": ""
+          },
+          "Config": {
+            "Image": "eclipse-temurin:17.0.18_8-jdk-jammy"
+          }
+        }
+      },
+      {
+        "id": "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs",
+        "kind": "docker.logs",
+        "incidentId": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+        "nodeId": "rdl-6dfb8e88",
+        "source": "docker",
+        "collectedAt": "2026-10-14T03:40:13.078Z",
+        "status": "succeeded",
+        "data": {
+          "truncated": true,
+          "lines": [
+            "\tat \tat com.mbkj.dap.DataAssetApplication.main(DataAssetApplication.java:23)",
+            "2026-10-14 03:40:12.879 ERROR 1 --- [.0-28189-exec-3] c.m.d.exception.GlobalExceptionHandler   : 拦截到异常 user:anonymous,请求地址:GET /auth/lab/server-fault,异常信息:Real DataAsset lab fault injection",
+            "java.lang.IllegalStateException: Real DataAsset lab fault injection",
+            "\tat com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25) ~[lab-fault-fixture.jar:na]",
+            "\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]",
+            "\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]",
+            "\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]",
+            "\tat java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]",
+            "\tat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205) ~[spring-web-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150) ~[spring-web-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:895) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:808) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1071) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:964) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:898) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+            "\tat javax.servlet.http.HttpServlet.service(HttpServlet.java:670) ~[tomcat-embed-core-9.0.68.jar!/:na]",
+            "\tat org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883) ~[spring-webmvc-5.3.23.jar!/:5.3.23]"
+          ],
+          "logProjection": {
+            "lines": {
+              "originalLineCount": 197,
+              "retainedRanges": [
+                {
+                  "startLine": 36,
+                  "endLine": 36
+                },
+                {
+                  "startLine": 133,
+                  "endLine": 151
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": [],
+    "truncation": {
+      "droppedEvidenceIds": [],
+      "truncatedItems": [
+        "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+      ]
+    }
+  },
+  "supplementalResponses": [],
+  "investigation": {
+    "findings": []
+  }
+}

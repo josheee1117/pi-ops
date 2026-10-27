@@ -5,6 +5,8 @@ export interface HealthTarget {
   url: string;
   method?: string;
   intervalMs?: number;
+  ruleId?: string;
+  ruleVersion?: number;
   /** Optional container mapping used for deterministic follow-up evidence. */
   container?: string;
 }
@@ -63,6 +65,19 @@ export interface NodeAgentConfig {
   healthTargets: HealthTarget[];
   /** Consecutive failed probes before emitting a health.failure event. */
   healthFailureDuration: number;
+  // ── Container-log discovery ───────────────────────────────────────────────
+  /** Scan allowlisted container logs for faults. */
+  logScanEnabled: boolean;
+  /** Scan interval (ms). */
+  logScanIntervalMs: number;
+  /** Maximum log lines read per container per scan. */
+  logScanMaxLines: number;
+  /** First-scan lookback (seconds), so a restart does not replay the whole log. */
+  logScanInitialLookbackSeconds: number;
+  /** Re-read overlap between scans (seconds); Docker `since` is second-granular. */
+  logScanOverlapSeconds: number;
+  /** Suppress a repeat of the same fault within this window (ms). */
+  logScanDedupWindowMs: number;
 }
 
 function requireEnv(key: string): string {
@@ -105,6 +120,14 @@ function thresholdEnv(key: string, fallback: number): number {
   return value;
 }
 
+function boolEnv(key: string, fallback: boolean): boolean {
+  const raw = process.env[key];
+  if (raw === undefined || raw === '') return fallback;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  throw new Error(`${key} must be true or false`);
+}
+
 function parseHealthTargets(): HealthTarget[] {
   const raw = process.env['PI_OPS_HEALTH_TARGETS'] ?? '';
   if (!raw) return [];
@@ -129,6 +152,8 @@ function parseHealthTargets(): HealthTarget[] {
     const method = candidate['method'] ?? 'GET';
     const intervalMs = candidate['intervalMs'];
     const container = candidate['container'];
+    const ruleId = candidate['ruleId'];
+    const ruleVersion = candidate['ruleVersion'];
     if (typeof name !== 'string' || !name || typeof url !== 'string' || !url) {
       throw new Error('Each health target requires name and url');
     }
@@ -156,14 +181,39 @@ function parseHealthTargets(): HealthTarget[] {
     if (container !== undefined && (typeof container !== 'string' || !container)) {
       throw new Error(`Health target container must be a non-empty string: ${name}`);
     }
+    if (ruleId !== undefined && (typeof ruleId !== 'string' || !ruleId.trim())) {
+      throw new Error(`Health target ruleId must be a non-empty string: ${name}`);
+    }
+    if (
+      ruleVersion !== undefined &&
+      (typeof ruleVersion !== 'number' || !Number.isSafeInteger(ruleVersion) || ruleVersion <= 0)
+    ) {
+      throw new Error(`Health target ruleVersion must be a positive integer: ${name}`);
+    }
     return {
       name,
       url: parsedUrl.toString(),
       method: method.toUpperCase(),
       ...(intervalMs !== undefined ? { intervalMs } : {}),
       ...(container !== undefined ? { container } : {}),
+      ...(ruleId !== undefined ? { ruleId } : {}),
+      ...(ruleVersion !== undefined ? { ruleVersion } : {}),
     };
   });
+}
+
+/**
+ * Service identity of a container. The center fingerprints an Incident by
+ * service, so a fault read from a container's logs must carry the service the
+ * container runs, not the container's own name. A health target is the only
+ * place a node declares that binding; without one the container name remains
+ * the identity.
+ */
+export function serviceForContainer(config: NodeAgentConfig, container: string): string {
+  for (const target of config.healthTargets) {
+    if (target.container === container) return target.name;
+  }
+  return container;
 }
 
 export function loadConfig(): NodeAgentConfig {
@@ -235,6 +285,24 @@ export function loadConfig(): NodeAgentConfig {
     healthTargets: parseHealthTargets(),
     healthFailureDuration: integerEnv('PI_OPS_HEALTH_FAILURE_DURATION', 2, {
       max: 10_000,
+    }),
+    // Container-log discovery
+    logScanEnabled: boolEnv('PI_OPS_LOG_SCAN_ENABLED', true),
+    logScanIntervalMs: integerEnv('PI_OPS_LOG_SCAN_INTERVAL_MS', 30_000, {
+      max: 60 * 60 * 1000,
+    }),
+    logScanMaxLines: integerEnv('PI_OPS_LOG_SCAN_MAX_LINES', 2000, {
+      max: 100_000,
+    }),
+    logScanInitialLookbackSeconds: integerEnv('PI_OPS_LOG_SCAN_INITIAL_LOOKBACK_SECONDS', 30, {
+      max: 86_400,
+    }),
+    logScanOverlapSeconds: integerEnv('PI_OPS_LOG_SCAN_OVERLAP_SECONDS', 2, {
+      min: 0,
+      max: 600,
+    }),
+    logScanDedupWindowMs: integerEnv('PI_OPS_LOG_SCAN_DEDUP_WINDOW_MS', 600_000, {
+      max: 24 * 60 * 60 * 1000,
     }),
   };
 }

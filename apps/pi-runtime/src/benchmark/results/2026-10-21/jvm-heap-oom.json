@@ -1,0 +1,243 @@
+{
+  "provenance": "deploy/local/data/jdk17/20261004-053012-36c038/artifacts/after-stop-pi-ops-tables.json sha256=5b579c1f469701ee02ef652e26b1e42e1771cc3fcece34383f8c9682ff136ed3",
+  "oracle": {
+    "expectedFacts": [
+      "Java heap space，Drill.exhaustHeap",
+      "OOMKilled=false 不排除 JVM 堆 OOM",
+      "后续日志写明 retained memory released，但业务恢复未知"
+    ],
+    "allowedRepairs": [
+      "核实后停止分配或结束演练",
+      "查实堆参数和引用链后决定修复；验证健康及关键请求"
+    ],
+    "forbiddenAttributions": [
+      "断言容器被 OOM kill",
+      "声称已知 Xmx 或已恢复业务"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|已被|发生了)容器OOMs*kill",
+      "(?:业务|服务)已完全恢复"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+    "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+    "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+    "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+  },
+  "caseId": "jvm-heap-oom",
+  "description": "Java heap space，Drill.exhaustHeap；OOMKilled=false 不排除 JVM 堆 OOM；后续日志写明 retained memory released，但业务恢复未知",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "failed",
+  "error": "all specialists failed",
+  "latencyMs": 106071,
+  "tokenUsage": {
+    "input": 7677,
+    "output": 16384,
+    "total": 24061
+  },
+  "selectedSpecialists": [
+    "jvm",
+    "container_host"
+  ],
+  "specialistStatus": {
+    "jvm": "failed",
+    "container_host": "failed"
+  },
+  "modelCalls": [
+    {
+      "role": "jvm",
+      "status": "ok",
+      "chars": 168,
+      "inputChars": 10098,
+      "inputTokens": 3838,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": "{\"role\":\"jvm\",\"hypotheses\":[\"JVM 堆在 Drill.exhaustHeap 分配路径耗尽，可能为演练式一次性分配或当前堆容量不足；触发逻辑与对象保留情况待源码确认。\",\"JVM 堆上限与容器 512MiB 内存限制不匹配或堆上限偏小，分配高峰触发 OOM；缺少 -Xmx/MaxRAMPercentage"
+    },
+    {
+      "role": "container_host",
+      "status": "ok",
+      "chars": 0,
+      "inputChars": 10109,
+      "inputTokens": 3839,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": ""
+    }
+  ],
+  "evidenceIds": [
+    "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+    "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+    "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+    "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+  ],
+  "evaluation": null,
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+      "type": "jvm.oom",
+      "service": "order-service-本地演练-20261004-053012-36c038",
+      "nodeId": "local-dev",
+      "severity": "critical",
+      "state": "OPEN",
+      "firstSeen": "2026-10-04T05:30:25.213503029Z",
+      "lastSeen": "2026-10-04T05:30:25.213503029Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+        "kind": "jfr.signal",
+        "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+        "nodeId": "local-dev",
+        "source": "jfr",
+        "collectedAt": "2026-10-04T05:30:25.213503029Z",
+        "status": "succeeded",
+        "data": {
+          "eventId": "7756319e-ebdc-4c1d-996a-c1737569dac1",
+          "eventType": "jvm.oom",
+          "observedAt": "2026-10-04T05:30:25.213503029Z",
+          "message": "com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space",
+          "attributes": {
+            "containerName": "order-local-drill-20261004-053012-36c038",
+            "jfrEventName": "com.example.MemoryFailure",
+            "jfrStartTime": "2026-10-04T05:30:25.213503029Z",
+            "jfrEndTime": "2026-10-04T05:30:25.213503029Z",
+            "exceptionClass": "java.lang.OutOfMemoryError",
+            "exceptionMessage": "Java heap space",
+            "stackTrace": "java.lang.OutOfMemoryError: Java heap space\n\tat Drill.exhaustHeap(Drill.java:285)\n\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\n\tat java.base/java.lang.Thread.run(Thread.java:840)",
+            "jfrStackTrace": "{\n  truncated = false\n  frames = [\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\n}\n"
+          },
+          "semanticType": "jvm.oom"
+        }
+      },
+      {
+        "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+        "kind": "docker.inspect",
+        "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+        "nodeId": "local-dev",
+        "source": "docker",
+        "collectedAt": "2026-10-04T05:30:25.320Z",
+        "status": "succeeded",
+        "data": {
+          "Id": "a03aa12d7ee3b7996bf8fb4abdbacf00bad271707afeb9d7f7f3814364695bf7",
+          "Name": "/order-local-drill-20261004-053012-36c038",
+          "State": {
+            "Status": "running",
+            "Running": true,
+            "StartedAt": "2026-10-04T05:30:13.873953679Z",
+            "OOMKilled": false,
+            "ExitCode": 0,
+            "Health": {}
+          },
+          "RestartCount": 0,
+          "HostConfig": {
+            "Memory": 536870912,
+            "MemorySwap": 536870912,
+            "NanoCpus": 2000000000,
+            "CpuQuota": 0,
+            "CpuPeriod": 0,
+            "CpusetCpus": ""
+          },
+          "Config": {
+            "Image": "pi-ops-jdk17-local-jdk17-drill"
+          }
+        }
+      },
+      {
+        "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+        "kind": "host.memory",
+        "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+        "nodeId": "local-dev",
+        "source": "host",
+        "collectedAt": "2026-10-04T05:30:25.318Z",
+        "status": "succeeded",
+        "data": {
+          "total": 12601012224,
+          "free": 11419987968,
+          "used": 1181024256,
+          "usedPercent": 9.37245544251287,
+          "usagePercent": "9.37",
+          "uptime": 49221.48
+        }
+      },
+      {
+        "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+        "kind": "docker.logs",
+        "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+        "nodeId": "local-dev",
+        "source": "docker",
+        "collectedAt": "2026-10-04T05:30:25.321Z",
+        "status": "succeeded",
+        "data": {
+          "truncated": true,
+          "lines": [
+            "JDK17 ready; RecordingStream active; sender=true",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:15.183466153Z\",\"jfrEndTime\":\"2026-10-04T05:30:15.183466153Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.0}",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:16.193073265Z\",\"jfrEndTime\":\"2026-10-04T05:30:16.193073265Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.010891089215874672,\"jvmSystem\":0.0,\"machineTotal\":0.014851485379040241}",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:17.205233643Z\",\"jfrEndTime\":\"2026-10-04T05:30:17.205233643Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.004945598542690277,\"jvmSystem\":0.0,\"machineTotal\":0.004945598542690277}",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:18.214267510Z\",\"jfrEndTime\":\"2026-10-04T05:30:18.214267510Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.047571852803230286}",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:19.224778780Z\",\"jfrEndTime\":\"2026-10-04T05:30:19.224778780Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.011881188489496708,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.05247524753212929}",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:24.259390925Z\",\"jfrEndTime\":\"2026-10-04T05:30:24.259390925Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.020812686532735825}",
+            "java.lang.OutOfMemoryError: Java heap space",
+            "\tat Drill.exhaustHeap(Drill.java:285)",
+            "\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)",
+            "Allocation work completed; retained memory released",
+            "JFR_EVENT {\"producer\":{\"id\":\"order-service-本地演练-20261004-053012-36c038-jfr\",\"version\":\"0.2.0\",\"type\":\"application\"},\"events\":[{\"schemaVersion\":1,\"id\":\"7756319e-ebdc-4c1d-996a-c1737569dac1\",\"time\":\"2026-10-04T05:30:25.213503029Z\",\"source\":\"jfr\",\"nodeId\":\"local-dev\",\"service\":\"order-service-本地演练-20261004-053012-36c038\",\"type\":\"jvm.oom\",\"severity\":\"critical\",\"message\":\"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\",\"attributes\":{\"jfrEventName\":\"com.example.MemoryFailure\",\"jfrStartTime\":\"2026-10-04T05:30:25.213503029Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.213503029Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"exceptionClass\":\"java.lang.OutOfMemoryError\",\"exceptionMessage\":\"Java heap space\",\"stackTrace\":\"java.lang.OutOfMemoryError: Java heap space\\n\\tat Drill.exhaustHeap(Drill.java:285)\\n\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\n\\tat java.base/java.lang.Thread.run(Thread.java:840)\",\"jfrStackTrace\":\"{\\n  truncated = false\\n  frames = [\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\n}\\n\"}}]}",
+            "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:25.270812561Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.270812561Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.013847675174474716,\"jvmSystem\":0.0019782392773777246,\"machineTotal\":0.02571711130440235}"
+          ],
+          "logProjection": {
+            "lines": {
+              "originalLineCount": 19,
+              "retainedRanges": [
+                {
+                  "startLine": 1,
+                  "endLine": 6
+                },
+                {
+                  "startLine": 11,
+                  "endLine": 14
+                },
+                {
+                  "startLine": 16,
+                  "endLine": 18
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": [],
+    "truncation": {
+      "droppedEvidenceIds": [],
+      "truncatedItems": [
+        "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+      ]
+    }
+  },
+  "supplementalResponses": [],
+  "investigation": {
+    "findings": []
+  }
+}

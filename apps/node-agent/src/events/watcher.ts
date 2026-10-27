@@ -1,5 +1,6 @@
 import Docker from 'dockerode';
 import { Readable } from 'node:stream';
+import { createInterface } from 'node:readline';
 import type { NodeAgentConfig } from '../config.js';
 import type { EventSender } from './sender.js';
 import {
@@ -95,6 +96,9 @@ export function createDockerWatcher(
 
   function processEvent(dockerEvent: DockerEvent): void {
     trackCursor(dockerEvent);
+    // Discovery has the same exact-name scope as evidence; an empty allowlist observes none.
+    const name = dockerEvent.Actor?.Attributes?.['name'];
+    if (dockerEvent.Type !== 'container' || typeof name !== 'string' || !config.allowedContainers.has(name)) return;
 
     const restartFlag = stateTracker.track(dockerEvent);
     if (restartFlag === 'restart') {
@@ -134,49 +138,24 @@ export function createDockerWatcher(
     }
   }
 
-  function consume(current: Readable): Promise<void> {
-    return new Promise((resolve) => {
-      let buffer = '';
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        current.off('data', onData);
-        current.off('end', onEnd);
-        current.off('error', onError);
-        resolve();
-      };
-      const parseLines = (final = false) => {
-        const lines = buffer.split('\n');
-        buffer = final ? '' : (lines.pop() ?? '');
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            processEvent(JSON.parse(line) as DockerEvent);
-          } catch {
-            // Malformed event — skip
-          }
+  async function consume(current: Readable): Promise<void> {
+    const lines = createInterface({ input: current, crlfDelay: Infinity });
+    const close = () => lines.close();
+    current.once('close', close);
+    try {
+      for await (const line of lines) {
+        if (!running) break;
+        if (!line.trim()) continue;
+        try {
+          processEvent(JSON.parse(line) as DockerEvent);
+        } catch {
+          // Malformed event; skip.
         }
-      };
-      const onData = (chunk: Buffer) => {
-        if (!running) return;
-        buffer += chunk.toString('utf-8');
-        parseLines();
-      };
-      const onEnd = () => {
-        parseLines(true);
-        finish();
-      };
-      const onError = (err: Error) => {
-        if (running) {
-          console.error(`[node-agent] Docker event stream error: ${err.message}`);
-        }
-        finish();
-      };
-      current.on('data', onData);
-      current.on('end', onEnd);
-      current.on('error', onError);
-    });
+      }
+    } finally {
+      current.off('close', close);
+      lines.close();
+    }
   }
 
   async function runLoop(): Promise<void> {

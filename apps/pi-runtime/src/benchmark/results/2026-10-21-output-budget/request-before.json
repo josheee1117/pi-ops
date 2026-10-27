@@ -1,0 +1,19 @@
+{
+  "transport": "fake fetch; no network",
+  "request": {
+    "model": "deepseek-v4.1-flash",
+    "max_completion_tokens": 8192,
+    "thinking": null,
+    "reasoning_effort": null,
+    "stream": true,
+    "messageCount": 2
+  },
+  "effectiveThinking": "off",
+  "response": {
+    "text": "ok",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "inputTokens": 1,
+    "outputTokens": 1
+  }
+}

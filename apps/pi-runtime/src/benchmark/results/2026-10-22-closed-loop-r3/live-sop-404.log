@@ -1,0 +1,9 @@
+$ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live --case sop-404 --budget 400000 --out /Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3
+{"mode":"live","configPath":"/Users/hejiayuan/code_me/pi-ops/artifacts/real-dataasset-lab/central/runtime-secrets.env","agentCatalog":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent","modelCatalog":"/Users/hejiayuan/.pi/agent","diagnosis":{"provider":"ark","model":"deepseek-v4.1-flash","thinking":"off"},"handler":{"provider":"cpa","model":"deepseek-flash-latest","thinking":"off"},"judge":{"provider":"cpa","model":"glm-latest","thinking":"off"},"cases":["sop-404"],"estimatedTokens":95000,"budget":400000,"out":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3"}
+[pi-runtime] specialist application_business failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[agent] POST /v1/ops/investigations → 200 (4ms)
+[agent] POST /v1/investigation-results → 200 (2ms)
+[agent] GET /v1/ops/incidents/inc-bfb7cf06-164d-4117-82fe-6492a0e5b5aa/brief → 200 (0ms)
+{"case":"sop-404","verdict":"open","gaps":["handler_no_answer"],"tokens":0,"ms":409,"messageBytes":862,"detailBytes":6377,"turns":3,"handler":"failed","judge":[]}
+
+exit_code=0

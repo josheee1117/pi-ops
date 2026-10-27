@@ -1,0 +1,582 @@
+{
+  "provenance": "apps/node-agent/src/__tests__/log-events.test.ts reports stack overflow as its own type。合成固定输入，不声称真实演练。",
+  "oracle": {
+    "expectedFacts": [
+      "StackOverflowError，重复 Recurse.down:7",
+      "没有源码，递归终止条件和影响未知"
+    ],
+    "allowedRepairs": [
+      "隔离触发请求，读对应版本递归与终止条件；查实后修复并验证"
+    ],
+    "forbiddenAttributions": [
+      "当成 Java heap space 或容器 OOM kill",
+      "直接增大堆代替修复递归"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|根因是|由于)Java heap space",
+      "(?:确认|根因是)容器OOM"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "12ac6201de621bf64b6bc4d1378c018066ea3901a960c2af6aa7d3253d9d357f",
+    "apps/agent/src/notification.ts": "214f83c48caa26b6a12f828671944c9bda92d096da67090aa06acaf764ecb6d1",
+    "apps/pi-runtime/src/specialists.ts": "2abcceb7d5938a5de02cc80e084d4fd4dbb4d1510f1eca56de30867e544198c3",
+    "apps/pi-runtime/src/coordinator.ts": "3f625259a9618a38e4ae612700da0c13ab9400fea6055bce7e9e8a98b1e6f19b"
+  },
+  "caseId": "stack-overflow",
+  "description": "StackOverflowError，重复 Recurse.down:7；没有源码，递归终止条件和影响未知",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "completed",
+  "latencyMs": 33765,
+  "tokenUsage": {
+    "input": 4699,
+    "output": 3095,
+    "total": 7794
+  },
+  "selectedSpecialists": [
+    "jvm",
+    "container_host"
+  ],
+  "specialistStatus": {
+    "jvm": "completed",
+    "container_host": "failed"
+  },
+  "modelCalls": [
+    {
+      "role": "jvm",
+      "status": "ok",
+      "chars": 2707,
+      "inputChars": 4247,
+      "inputTokens": 397,
+      "outputTokens": 1086,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"role\":\"jvm\",\"hypotheses\":[\"栈溢出为真实JVM错误，栈顶日志显示 com.example.Recurse.down 反复递归；触发该递归的业务条件尚不清楚，目前没有配置或源码可确认根因。\",\"CUDA或复杂调用链：暂不成立，无堆栈之外证据。\"],\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.inspect\",\"docker.stats\",\"host.memory\",\"host.load\"],\"confidence\":0.5,\"summary\":\"当前证据仅提供截断后的docker日志，其中可见 StackOverflowError，以及 com.example.Recurse.down 重复栈帧，因此执行异常确认为栈溢出。日志被截断，完整栈、线程全名、业务入口和递归终止条件均未知；因此，触发条件、是否在故障期间发生外部故障、JVM堆与CPU压力以及容器资源限额均无法判定。本次判断没有把JFR事件名或异常文本当作业务根因。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"应用日志中出现 java.lang.StackOverflowError，并以 com.example.Recurse.down(Recurse.java:7) 重复栈帧结束，表明失败发生在该递归方法附近。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"日志采集结果标记 truncated=true，仅保留3行，无法查看上层调用栈、触发业务路径或终止条件代码。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"当前没有容器资源统计、主机负载或内存证据，无法评估同时存在的CPU、堆或资源限额压力。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"com.example.Recurse.down 所在调用路径缺少或无法达到递归终止条件，导致栈深度持续增长；具体触发输入和代码条件未验证。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"异常文本只证明发生了栈溢出，尚不能区分由业务数据触发的深递归，还是由生产环境中不同的部署版本或配置导致；需要源码和部署信息确认。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"完整异常栈和线程上下文缺失，无法确定递归入口和触发参数。\",\"该服务部署版本、JVM栈大小参数和 Recurse 源码未提供，无法确认终止条件缺陷或配置问题。\",\"容器资源限额与故障窗口内CPU、内存和throttling情况未知。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service@test-svc-02 的容器与主机运行时快照\",\"preconditions\":[\"确认容器仍存在且docker stats可读取\",\"操作只读，不影响业务\"],\"operation\":\"采集 docker.inspect（含Env、Cmd、Cpus/Memory限额）、docker.stats、host.load、host.memory，并拉取同一时间窗口未截断的docker.logs，按原始时间对齐。\",\"expectedResult\":\"获得部署参数、资源限额、主机压力与完整异常栈，用于区分堆栈异常与资源诱发。\",\"risk\":\"只读命令带来轻微系统负载；若容器已退出则信息可能缺失。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"com.example.Recurse.down 递归终止逻辑与调用入口\",\"preconditions\":[\"已取得与当前部署版本一致的源码\",\"已确认复现输入或完整异常栈\",\"变更需代码评审与人工审批\"],\"operation\":\"阅读 Recurse.down 及其调用方，核对循环/递归终止条件和入参校验；在受控环境用已记录的触发输入复现，修正终止条件或限制递归深度后再灰度发布，并准备旧版本回滚。\",\"expectedResult\":\"递归深度受控，不再出现StackOverflowError，且业务结果符合预期。\",\"risk\":\"修改业务递归逻辑可能改变边界结果；灰度不足会扩大影响。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后 data-asset-service 实例的日志与健康探测\",\"preconditions\":[\"修复版本已部署到测试实例\",\"已配置健康URL\"],\"operation\":\"在受控复现用例和正常业务流量下运行，检查日志不再出现StackOverflowError，并执行http.probe GET/HEAD健康检查；对比修复前后JVM错误计数。\",\"expectedResult\":\"异常不再复现，健康探测成功，业务关键路径结果正常。\",\"risk\":\"测试流量可能触发其他未覆盖分支；探测仅代表健康接口，不代表业务全链路。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+    },
+    {
+      "role": "container_host",
+      "status": "ok",
+      "chars": 0,
+      "inputChars": 4258,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "error",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": ""
+    },
+    {
+      "role": "container_host",
+      "status": "ok",
+      "chars": 2008,
+      "inputChars": 4342,
+      "inputTokens": 1597,
+      "outputTokens": 766,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"role\":\"container_host\",\"hypothesis\":\"容器内 JVM 发生 StackOverflowError，位置在 com.example.Recurse.down(Recurse.java:7)，提示递归调用异常；触发条件与业务影响未知。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.stats\",\"host.memory\",\"docker.inspect\"],\"confidence\":0.4,\"summary\":\"仅见 3 行被截断的异常片段：StackOverflowError 与重复的 Recurse.down 栈帧（Recurse.java:7），可确认 JVM 抛出该错误及抛出位置，不能确认递归条件、调用入参、内存与 CPU 压力及容器 OOMKill 状态；递归属于观测栈帧推断。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"日志截断后仅保留 3 行，含 java.lang.StackOverflowError 及两条重复栈帧 com.example.Recurse.down(Recurse.java:7)。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"com.example.Recurse.down 递归缺少终止条件或终止条件输入异常，导致 JVM 栈耗尽；源码未读，触发逻辑未知。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"缺失完整日志，无法确认异常前后的请求与调用链。\",\"缺失源码，无法确认 Recurse.down 的终止条件与入参来源。\",\"缺失 stats/host.memory，无法排除同时存在的内存或负载压力。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"test-svc-02 的 data-asset-service 容器完整日志与源码 Recurse.java:7\",\"preconditions\":[\"已获取该容器日志读取权限\"],\"operation\":\"人工拉取故障前后完整 docker 日志与容器 stats，并阅读 Recurse.java 的递归终止条件及入参校验；按结果分支：若终止条件缺失则关修复，若终止条件依赖异常入参则追查数据来源。\",\"expectedResult\":\"确认递归触发条件与是否有伴生内存/负载压力\",\"risk\":\"读取日志与源码对在线业务无影响\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 容器 test-svc-02\",\"preconditions\":[\"确认异常持续影响业务\",\"已准备回滚与重启审批\"],\"operation\":\"经人工批准后重启容器以止损，保留现场日志；观察重启后异常是否复现。\",\"expectedResult\":\"恢复服务可用并保留复现样本\",\"risk\":\"重启导致短时不可用，未修复根因可能复发\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后的 data-asset-service\",\"preconditions\":[\"修复已上线或已定位触发入参\"],\"operation\":\"以触发异常的相同入参在受控环境复现验证，并通过 http.probe 对已配置健康 URL 做 GET 检查服务恢复；确认无新的 StackOverflowError。\",\"expectedResult\":\"同类请求不再触发栈溢出，健康检查通过\",\"risk\":\"受控复现可能再次影响实例\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+    },
+    {
+      "role": "coordinator",
+      "status": "ok",
+      "chars": 3056,
+      "inputChars": 6999,
+      "inputTokens": 2705,
+      "outputTokens": 1243,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "stopReason": "stop",
+      "thinkingChars": 0,
+      "requestParameters": {
+        "maxTokens": 16384,
+        "thinking": {
+          "type": "disabled"
+        },
+        "reasoningEffort": null
+      },
+      "text": "{\"hypothesis\":\"data-asset-service@test-svc-02 发生真实 JVM StackOverflowError，栈顶显示 com.example.Recurse.down(Recurse.java:7) 重复递归帧，说明失败点在该递归调用附近。但日志被截断仅3行，完整栈、线程、业务入口、触发输入、部署版本与JVM栈参数均未知；递归终止条件缺陷或深递归触发只是待验证候选，尚不能确认，也未排除资源压力共存。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.5,\"recommendation\":\"先只读补证：采集不截断的docker.logs完整栈、docker.inspect（Env/Cmd/资源限额）、docker.stats、host.load、host.memory，并按原始时间对齐。取得与部署版本一致的Recurse.down源码和调用方后，核对递归终止条件与入参校验；在受控环境用已记录输入复现。修复需代码评审、人工审批、灰度发布并保留回滚。验证：受控复现与正常流量下日志不再出现StackOverflowError，健康GET/HEAD探测通过；http.probe不能替代业务POST复现。\",\"diagnosis\":{\"observations\":[{\"statement\":\"日志出现 java.lang.StackOverflowError，并以 com.example.Recurse.down(Recurse.java:7) 重复栈帧结束，失败点在该递归方法附近。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"日志 truncated=true 仅保留3行，看不到上层调用栈、业务入口或递归终止条件代码。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"缺少容器资源统计、主机负载与内存证据，无法评估故障窗口内CPU、堆或限额压力；运行中容器不代表JVM健康。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"com.example.Recurse.down 调用路径的递归终止条件缺失或无法达到，栈深度持续增长；触发输入与代码条件尚未验证。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"异常文本只证明栈溢出发生，无法区分业务数据触发深递归，还是部署版本差异、JVM栈大小配置等因素；需源码与部署信息确认。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"完整异常栈与线程上下文缺失，递归入口和触发参数未知。\",\"该服务部署版本、JVM -Xss 等栈参数和 Recurse 源码未提供，无法确认终止条件缺陷或配置问题。\",\"容器限额与故障窗口内CPU、内存、throttling情况未知。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service@test-svc-02 的容器与主机运行时快照\",\"preconditions\":[\"确认容器仍存在且 docker stats 可读取\",\"仅执行只读命令，不影响业务\"],\"operation\":\"采集 docker.inspect（含Env、Cmd、Cpu/Memory限额）、docker.stats、host.load、host.memory，并拉取同时段未截断docker.logs，按原始时间对齐。\",\"expectedResult\":\"获得部署参数、资源限额、主机压力与完整异常栈，用于区分递归逻辑与资源诱发。\",\"risk\":\"只读命令带来轻微负载；容器已退出则信息可能缺失。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"与当前部署版本一致的 Recurse 源码及调用链\",\"preconditions\":[\"已确认实际部署版本或镜像tag\",\"只读取代码与配置，不改动\"],\"operation\":\"定位 Recurse.down 与全部调用方，检查递归终止条件、入参校验和栈大小配置，并核对异常栈中的入口方法；若无源码则记录缺口。\",\"expectedResult\":\"确认是否存在可达的终止条件缺陷或配置不符，明确触发路径。\",\"risk\":\"版本不一致将导致误判；需以部署元数据核对。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"com.example.Recurse.down 的递归终止逻辑与调用入口\",\"preconditions\":[\"已取得与部署一致源码并确认触发输入\",\"变更已通过代码评审与人工审批\",\"具备旧版本回滚包\"],\"operation\":\"在受控环境用已记录触发输入复现并验证缺陷；修正终止条件或限制递归深度，经代码评审后灰度发布，保留回滚。\",\"expectedResult\":\"递归深度受控，不再出现StackOverflowError，业务结果符合预期。\",\"risk\":\"修改递归逻辑可能改变边界结果；灰度不足会扩大影响。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后 data-asset-service 实例的日志与健康探测\",\"preconditions\":[\"修复版本已部署到测试实例\",\"已配置健康URL\"],\"operation\":\"运行受控复现用例与正常业务流量，检查日志无StackOverflowError，并执行http.probe GET/HEAD健康检查；对比修复前后错误计数。\",\"expectedResult\":\"异常不再复现，健康探测成功，关键业务路径结果正常。\",\"risk\":\"测试流量可能触发其他分支；健康探测不代表全链路业务正常。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+    }
+  ],
+  "evidenceIds": [
+    "evd-stack-overflow-docker.logs"
+  ],
+  "evaluation": {
+    "checks": {
+      "evidenceIdsValid": {
+        "status": "pass"
+      },
+      "requiredKindsCited": {
+        "status": "pass"
+      },
+      "conflictPreserved": {
+        "status": "not_applicable"
+      },
+      "missingEvidenceValid": {
+        "status": "pass"
+      },
+      "capabilityBoundary": {
+        "status": "pass"
+      },
+      "uncertaintyDiscipline": {
+        "status": "not_applicable"
+      }
+    },
+    "machineScore": 100,
+    "dimensions": [
+      {
+        "name": "evidence_grounding",
+        "points": 30,
+        "earned": 30,
+        "status": "scored"
+      },
+      {
+        "name": "citation_validity",
+        "points": 20,
+        "earned": 20,
+        "status": "scored"
+      },
+      {
+        "name": "conflict_handling",
+        "points": 20,
+        "earned": null,
+        "status": "not_machine_scorable"
+      },
+      {
+        "name": "missing_evidence_discipline",
+        "points": 15,
+        "earned": 15,
+        "status": "scored"
+      },
+      {
+        "name": "uncertainty_discipline",
+        "points": 15,
+        "earned": null,
+        "status": "not_machine_scorable"
+      }
+    ],
+    "notMachineScorable": [
+      "conflict_handling",
+      "uncertainty_discipline"
+    ],
+    "citedEvidenceIds": [
+      "evd-stack-overflow-docker.logs"
+    ],
+    "citedKinds": [
+      "docker.logs"
+    ],
+    "missingEvidenceRequested": [
+      "docker.inspect",
+      "docker.stats",
+      "host.memory",
+      "host.load"
+    ],
+    "advisoryRemediationMentions": [],
+    "hardPass": true
+  },
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-stack-overflow",
+      "type": "jvm.stack_overflow",
+      "service": "data-asset-service",
+      "nodeId": "test-svc-02",
+      "severity": "critical",
+      "state": "OPEN",
+      "firstSeen": "2026-10-20T02:05:00.000Z",
+      "lastSeen": "2026-10-20T02:05:00.000Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "evd-stack-overflow-docker.logs",
+        "kind": "docker.logs",
+        "incidentId": "inc-stack-overflow",
+        "nodeId": "test-svc-02",
+        "source": "docker",
+        "collectedAt": "2026-10-20T02:05:00.000Z",
+        "status": "succeeded",
+        "data": {
+          "truncated": true,
+          "lines": [
+            "java.lang.StackOverflowError",
+            "\tat com.example.Recurse.down(Recurse.java:7)",
+            "\tat com.example.Recurse.down(Recurse.java:7)"
+          ],
+          "logProjection": {
+            "lines": {
+              "originalLineCount": 3,
+              "retainedRanges": [
+                {
+                  "startLine": 1,
+                  "endLine": 3
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": [],
+    "truncation": {
+      "droppedEvidenceIds": [],
+      "truncatedItems": [
+        "evd-stack-overflow-docker.logs"
+      ]
+    }
+  },
+  "supplementalResponses": [
+    {
+      "schemaVersion": 1,
+      "runtimeRequestId": "request-stack-overflow",
+      "results": [
+        {
+          "requestId": "ereq-stack-overflow-docker.inspect",
+          "type": "docker.inspect",
+          "status": "unavailable",
+          "error": "No recorded supplemental evidence for this capability."
+        },
+        {
+          "requestId": "ereq-stack-overflow-docker.stats",
+          "type": "docker.stats",
+          "status": "unavailable",
+          "error": "No recorded supplemental evidence for this capability."
+        }
+      ]
+    }
+  ],
+  "message": {
+    "content": "### data-asset-service 诊断完成\n**com.example.Recurse.down 调用路径的递归终止条件缺失或无法达到，栈深度持续增长；触发输入与代码条件尚未验证。\n异常文本只证明栈溢出发生，无法区分业务数据触发深递归，还是部署版本差异、JVM栈大小配置等因素；需源码与部署信息确认。**\n机器：test-svc-02\n时间：10月20日 10:05（北京时间）\n诊断原文时间按 UTC 阅读；显式时区以原文为准。\n\n**依据**\n日志出现 java.lang.StackOverflowError，并以 com.example.Recurse.down(Recurse.java:7) 重复栈帧结束，失败点在该递归方法附近。\n日志 truncated=true 仅保留3行，看不到上层调用栈、业务入口或递归终止条件代码。\n缺少容器资源统计、主机负载与内存证据，无法评估故障窗口内CPU、堆或限额压力；运行中容器不代表JVM健康。\n\n**未知**\n完整异常栈与线程上下文缺失，递归入口和触发参数未知。\n该服务部署版本、JVM -Xss 等栈参数和 Recurse 源码未提供，无法确认终止条件缺陷或配置问题。\n容器限额与故障窗口内CPU、内存、throttling情况未知。\n\n**下一步**\n1. 修复（需批准）：com.example.Recurse.down 的递归终止逻辑与调用入口\n前提：已取得与部署一致源码并确认触发输入；变更已通过代码评审与人工审批；具备旧版本回滚包\n在受控环境用已记录触发输入复现并验证缺陷；修正终止条件或限制递归深度，经代码评审后灰度发布，保留回滚。\n预期：递归深度受控，不再出现StackOverflowError，业务结果符合预期。\n风险：修改递归逻辑可能改变边界结果；灰度不足会扩大影响。\n2. 验证（需批准）：修复后 data-asset-service 实例的日志与健康探测\n前提：修复版本已部署到测试实例；已配置健康URL\n运行受控复现用例与正常业务流量，检查日志无StackOverflowError，并执行http.probe GET/HEAD健康检查；对比修复前后错误计数。\n预期：异常不再复现，健康探测成功，关键业务路径结果正常。\n风险：测试流量可能触发其他分支；健康探测不代表全链路业务正常。\n3. 补证：data-asset-service@test-svc-02 的容器与主机运行时快照\n前提：确认容器仍存在且 docker stats 可读取；仅执行只读命令，不影响业务\n采集 docker.inspect（含Env、Cmd、Cpu/Memory限额）、docker.stats、host.load、host.memory，并拉取同时段未截断docker.logs，按原始时间对齐。\n预期：获得部署参数、资源限额、主机压力与完整异常栈，用于区分递归逻辑与资源诱发。\n风险：只读命令带来轻微负载；容器已退出则信息可能缺失。\n4. 补证：与当前部署版本一致的 Recurse 源码及调用链\n前提：已确认实际部署版本或镜像tag；只读取代码与配置，不改动\n定位 Recurse.down 与全部调用方，检查递归终止条件、入参校验和栈大小配置，并核对异常栈中的入口方法；若无源码则记录缺口。\n预期：确认是否存在可达的终止条件缺陷或配置不符，明确触发路径。\n风险：版本不一致将导致误判；需以部署元数据核对。\n\n<font color=\"comment\">模型自评 50%，不是准确率</font>\n\n编号：inc-stack-overflow",
+    "bytes": 3393,
+    "fetchCalls": 1
+  },
+  "messageEvaluation": {
+    "checks": {
+      "structuredDiagnosis": {
+        "status": "pass"
+      },
+      "actionsComplete": {
+        "status": "pass"
+      },
+      "citationsExist": {
+        "status": "pass"
+      },
+      "forbiddenAttributionScreen": {
+        "status": "pass",
+        "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+      },
+      "messageWithinLimit": {
+        "status": "pass",
+        "detail": "3393 bytes"
+      },
+      "mitigationVisible": {
+        "status": "fail"
+      },
+      "repairOrUnknownVisible": {
+        "status": "pass"
+      },
+      "verificationVisible": {
+        "status": "pass"
+      }
+    },
+    "purposes": {
+      "mitigation": {
+        "inDiagnosis": false,
+        "inMessage": false
+      },
+      "repair": {
+        "inDiagnosis": true,
+        "inMessage": true
+      },
+      "verification": {
+        "inDiagnosis": true,
+        "inMessage": true
+      }
+    },
+    "forbiddenMatches": [],
+    "hardPass": false
+  },
+  "investigation": {
+    "report": {
+      "hypothesis": "data-asset-service@test-svc-02 发生真实 JVM StackOverflowError，栈顶显示 com.example.Recurse.down(Recurse.java:7) 重复递归帧，说明失败点在该递归调用附近。但日志被截断仅3行，完整栈、线程、业务入口、触发输入、部署版本与JVM栈参数均未知；递归终止条件缺陷或深递归触发只是待验证候选，尚不能确认，也未排除资源压力共存。",
+      "supportingEvidenceIds": [
+        "evd-stack-overflow-docker.logs"
+      ],
+      "contradictingEvidenceIds": [],
+      "confidence": 0.5,
+      "recommendation": "先只读补证：采集不截断的docker.logs完整栈、docker.inspect（Env/Cmd/资源限额）、docker.stats、host.load、host.memory，并按原始时间对齐。取得与部署版本一致的Recurse.down源码和调用方后，核对递归终止条件与入参校验；在受控环境用已记录输入复现。修复需代码评审、人工审批、灰度发布并保留回滚。验证：受控复现与正常流量下日志不再出现StackOverflowError，健康GET/HEAD探测通过；http.probe不能替代业务POST复现。",
+      "diagnosis": {
+        "observations": [
+          {
+            "statement": "日志出现 java.lang.StackOverflowError，并以 com.example.Recurse.down(Recurse.java:7) 重复栈帧结束，失败点在该递归方法附近。",
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          },
+          {
+            "statement": "日志 truncated=true 仅保留3行，看不到上层调用栈、业务入口或递归终止条件代码。",
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          },
+          {
+            "statement": "缺少容器资源统计、主机负载与内存证据，无法评估故障窗口内CPU、堆或限额压力；运行中容器不代表JVM健康。",
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          }
+        ],
+        "candidateCauses": [
+          {
+            "cause": "com.example.Recurse.down 调用路径的递归终止条件缺失或无法达到，栈深度持续增长；触发输入与代码条件尚未验证。",
+            "supportingEvidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ],
+            "contradictingEvidenceIds": []
+          },
+          {
+            "cause": "异常文本只证明栈溢出发生，无法区分业务数据触发深递归，还是部署版本差异、JVM栈大小配置等因素；需源码与部署信息确认。",
+            "supportingEvidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ],
+            "contradictingEvidenceIds": []
+          }
+        ],
+        "uncertainties": [
+          "完整异常栈与线程上下文缺失，递归入口和触发参数未知。",
+          "该服务部署版本、JVM -Xss 等栈参数和 Recurse 源码未提供，无法确认终止条件缺陷或配置问题。",
+          "容器限额与故障窗口内CPU、内存、throttling情况未知。"
+        ],
+        "actions": [
+          {
+            "purpose": "evidence_collection",
+            "target": "data-asset-service@test-svc-02 的容器与主机运行时快照",
+            "preconditions": [
+              "确认容器仍存在且 docker stats 可读取",
+              "仅执行只读命令，不影响业务"
+            ],
+            "operation": "采集 docker.inspect（含Env、Cmd、Cpu/Memory限额）、docker.stats、host.load、host.memory，并拉取同时段未截断docker.logs，按原始时间对齐。",
+            "expectedResult": "获得部署参数、资源限额、主机压力与完整异常栈，用于区分递归逻辑与资源诱发。",
+            "risk": "只读命令带来轻微负载；容器已退出则信息可能缺失。",
+            "requiresApproval": false,
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          },
+          {
+            "purpose": "evidence_collection",
+            "target": "与当前部署版本一致的 Recurse 源码及调用链",
+            "preconditions": [
+              "已确认实际部署版本或镜像tag",
+              "只读取代码与配置，不改动"
+            ],
+            "operation": "定位 Recurse.down 与全部调用方，检查递归终止条件、入参校验和栈大小配置，并核对异常栈中的入口方法；若无源码则记录缺口。",
+            "expectedResult": "确认是否存在可达的终止条件缺陷或配置不符，明确触发路径。",
+            "risk": "版本不一致将导致误判；需以部署元数据核对。",
+            "requiresApproval": false,
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          },
+          {
+            "purpose": "repair",
+            "target": "com.example.Recurse.down 的递归终止逻辑与调用入口",
+            "preconditions": [
+              "已取得与部署一致源码并确认触发输入",
+              "变更已通过代码评审与人工审批",
+              "具备旧版本回滚包"
+            ],
+            "operation": "在受控环境用已记录触发输入复现并验证缺陷；修正终止条件或限制递归深度，经代码评审后灰度发布，保留回滚。",
+            "expectedResult": "递归深度受控，不再出现StackOverflowError，业务结果符合预期。",
+            "risk": "修改递归逻辑可能改变边界结果；灰度不足会扩大影响。",
+            "requiresApproval": true,
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          },
+          {
+            "purpose": "verification",
+            "target": "修复后 data-asset-service 实例的日志与健康探测",
+            "preconditions": [
+              "修复版本已部署到测试实例",
+              "已配置健康URL"
+            ],
+            "operation": "运行受控复现用例与正常业务流量，检查日志无StackOverflowError，并执行http.probe GET/HEAD健康检查；对比修复前后错误计数。",
+            "expectedResult": "异常不再复现，健康探测成功，关键业务路径结果正常。",
+            "risk": "测试流量可能触发其他分支；健康探测不代表全链路业务正常。",
+            "requiresApproval": true,
+            "evidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ]
+          }
+        ]
+      }
+    },
+    "findings": [
+      {
+        "role": "jvm",
+        "hypotheses": [
+          "栈溢出为真实JVM错误，栈顶日志显示 com.example.Recurse.down 反复递归；触发该递归的业务条件尚不清楚，目前没有配置或源码可确认根因。",
+          "CUDA或复杂调用链：暂不成立，无堆栈之外证据。"
+        ],
+        "supportingEvidenceIds": [
+          "evd-stack-overflow-docker.logs"
+        ],
+        "contradictingEvidenceIds": [],
+        "missingEvidence": [
+          "docker.inspect",
+          "docker.stats",
+          "host.memory",
+          "host.load"
+        ],
+        "confidence": 0.5,
+        "summary": "当前证据仅提供截断后的docker日志，其中可见 StackOverflowError，以及 com.example.Recurse.down 重复栈帧，因此执行异常确认为栈溢出。日志被截断，完整栈、线程全名、业务入口和递归终止条件均未知；因此，触发条件、是否在故障期间发生外部故障、JVM堆与CPU压力以及容器资源限额均无法判定。本次判断没有把JFR事件名或异常文本当作业务根因。",
+        "diagnosis": {
+          "observations": [
+            {
+              "statement": "应用日志中出现 java.lang.StackOverflowError，并以 com.example.Recurse.down(Recurse.java:7) 重复栈帧结束，表明失败发生在该递归方法附近。",
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "statement": "日志采集结果标记 truncated=true，仅保留3行，无法查看上层调用栈、触发业务路径或终止条件代码。",
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "statement": "当前没有容器资源统计、主机负载或内存证据，无法评估同时存在的CPU、堆或资源限额压力。",
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "com.example.Recurse.down 所在调用路径缺少或无法达到递归终止条件，导致栈深度持续增长；具体触发输入和代码条件未验证。",
+              "supportingEvidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            },
+            {
+              "cause": "异常文本只证明发生了栈溢出，尚不能区分由业务数据触发的深递归，还是由生产环境中不同的部署版本或配置导致；需要源码和部署信息确认。",
+              "supportingEvidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "完整异常栈和线程上下文缺失，无法确定递归入口和触发参数。",
+            "该服务部署版本、JVM栈大小参数和 Recurse 源码未提供，无法确认终止条件缺陷或配置问题。",
+            "容器资源限额与故障窗口内CPU、内存和throttling情况未知。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "data-asset-service@test-svc-02 的容器与主机运行时快照",
+              "preconditions": [
+                "确认容器仍存在且docker stats可读取",
+                "操作只读，不影响业务"
+              ],
+              "operation": "采集 docker.inspect（含Env、Cmd、Cpus/Memory限额）、docker.stats、host.load、host.memory，并拉取同一时间窗口未截断的docker.logs，按原始时间对齐。",
+              "expectedResult": "获得部署参数、资源限额、主机压力与完整异常栈，用于区分堆栈异常与资源诱发。",
+              "risk": "只读命令带来轻微系统负载；若容器已退出则信息可能缺失。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "purpose": "repair",
+              "target": "com.example.Recurse.down 递归终止逻辑与调用入口",
+              "preconditions": [
+                "已取得与当前部署版本一致的源码",
+                "已确认复现输入或完整异常栈",
+                "变更需代码评审与人工审批"
+              ],
+              "operation": "阅读 Recurse.down 及其调用方，核对循环/递归终止条件和入参校验；在受控环境用已记录的触发输入复现，修正终止条件或限制递归深度后再灰度发布，并准备旧版本回滚。",
+              "expectedResult": "递归深度受控，不再出现StackOverflowError，且业务结果符合预期。",
+              "risk": "修改业务递归逻辑可能改变边界结果；灰度不足会扩大影响。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "修复后 data-asset-service 实例的日志与健康探测",
+              "preconditions": [
+                "修复版本已部署到测试实例",
+                "已配置健康URL"
+              ],
+              "operation": "在受控复现用例和正常业务流量下运行，检查日志不再出现StackOverflowError，并执行http.probe GET/HEAD健康检查；对比修复前后JVM错误计数。",
+              "expectedResult": "异常不再复现，健康探测成功，业务关键路径结果正常。",
+              "risk": "测试流量可能触发其他未覆盖分支；探测仅代表健康接口，不代表业务全链路。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            }
+          ]
+        },
+        "status": "completed"
+      },
+      {
+        "role": "container_host",
+        "hypotheses": [
+          "诊断不完整。容器内 JVM 发生 StackOverflowError，位置在 com.example.Recurse.down(Recurse.java:7)，提示递归调用异常；触发条件与业务影响未知。"
+        ],
+        "summary": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+        "supportingEvidenceIds": [],
+        "contradictingEvidenceIds": [],
+        "missingEvidence": [],
+        "confidence": 0.2,
+        "status": "completed"
+      }
+    ]
+  }
+}

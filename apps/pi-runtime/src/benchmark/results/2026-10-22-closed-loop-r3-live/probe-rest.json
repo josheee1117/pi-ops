@@ -1,0 +1,52 @@
+{
+  "probedAt": "2026-10-22T06:02:22.025Z",
+  "catalog": "/Users/hejiayuan/.pi/agent",
+  "note": "minimal completeSimple; no runtime api key override; ark key not used",
+  "results": [
+    {
+      "spec": "cpa/deepseek-v4.1-flash",
+      "ok": false,
+      "stopReason": "error",
+      "errorMessage": "503: {\"message\":\"当前分组 default 下对于模型 deepseek-v4-flash 无可用渠道 (request id: 20261022140214707966347hcz7gAip6KZjw)\",\"type\":\"new_api_error\"}",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "",
+      "latencyMs": 412
+    },
+    {
+      "spec": "cpa/gemini-3.8-flash-high",
+      "ok": true,
+      "stopReason": "stop",
+      "errorMessage": null,
+      "usage": {
+        "input": 8,
+        "output": 62,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 61,
+        "totalTokens": 70,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "OK",
+      "latencyMs": 7359
+    }
+  ]
+}

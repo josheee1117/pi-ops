@@ -1,0 +1,10 @@
+$ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live --config /tmp/pi-ops-r3-live/diagnosis.env --agent-catalog /Users/hejiayuan/.pi/agent --model-catalog /Users/hejiayuan/.pi/agent --handler cpa/deepseek-v4.1-flash --judge cpa/gemini-3.8-flash-high --case cpu-quota-burst --budget 202104 --out apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-live
+{"mode":"live","configPath":"/tmp/pi-ops-r3-live/diagnosis.env","agentCatalog":"/Users/hejiayuan/.pi/agent","modelCatalog":"/Users/hejiayuan/.pi/agent","diagnosis":{"provider":"cpa","model":"deepseek-v4.1-flash","thinking":"off"},"handler":{"provider":"cpa","model":"deepseek-v4.1-flash","thinking":"off"},"judge":{"provider":"cpa","model":"gemini-3.8-flash-high","thinking":"off"},"cases":["cpu-quota-burst"],"estimatedTokens":95000,"budget":202104,"out":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-live"}
+[agent] POST /v1/ops/investigations → 200 (4ms)
+[agent] POST /v1/investigation-results → 200 (3ms)
+[agent] GET /v1/ops/incidents/inc-23102c99-6f08-48e0-b66e-8167d94389a7/brief → 200 (1ms)
+[agent] GET /v1/ops/incidents/inc-23102c99-6f08-48e0-b66e-8167d94389a7/brief → 200 (2ms)
+{"case":"cpu-quota-burst","verdict":"open","gaps":["handler_reasoning"],"tokens":135650,"ms":376534,"messageBytes":958,"detailBytes":19527,"turns":3,"handler":"answered","judge":["no_forbidden"]}
+
+exit_code=0
+wall_ms=377864

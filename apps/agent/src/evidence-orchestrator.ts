@@ -74,6 +74,22 @@ function dockerLogsQuery(
   };
 }
 
+/** Shared trusted mapping for initial collection and Runtime capability requests. */
+export function resolveDockerEvidenceQuery(
+  incident: IncidentRow,
+  event: OpsEvent,
+  type: 'docker.inspect' | 'docker.stats' | 'docker.logs',
+  logsMaxLines: number,
+): EvidenceQueryRequest | undefined {
+  const container = stringAttribute(event, 'containerName')
+    ?? (event.source === 'docker' && ['container.oom', 'container.die'].includes(event.type)
+      ? incident.service : undefined);
+  if (!container) return undefined;
+  return type === 'docker.logs'
+    ? dockerLogsQuery(incident.id, container, event.time, logsMaxLines)
+    : { type, incidentId: incident.id, container };
+}
+
 /**
  * Deterministically map an Incident to bounded, typed evidence requests.
  * No model or prompt participates in this decision.
@@ -84,31 +100,31 @@ export function planEvidenceQueries(
   logsMaxLines: number,
 ): EvidenceQueryRequest[] {
   const configuredContainer = stringAttribute(triggeringEvent, 'containerName');
-  const container = configuredContainer ?? incident.service;
+  const docker = (...types: Array<'docker.inspect' | 'docker.stats' | 'docker.logs'>) =>
+    types.map((type) => resolveDockerEvidenceQuery(incident, triggeringEvent, type, logsMaxLines))
+      .filter((query): query is EvidenceQueryRequest => query !== undefined);
 
   switch (incident.type) {
     case 'container.oom':
       return [
-        { type: 'docker.inspect', incidentId: incident.id, container },
-        { type: 'docker.stats', incidentId: incident.id, container },
-        dockerLogsQuery(incident.id, container, triggeringEvent.time, logsMaxLines),
+        ...docker('docker.inspect', 'docker.stats', 'docker.logs'),
         { type: 'host.memory', incidentId: incident.id },
       ];
 
     case 'container.die':
       return [
-        { type: 'docker.inspect', incidentId: incident.id, container },
-        dockerLogsQuery(incident.id, container, triggeringEvent.time, logsMaxLines),
+        ...docker('docker.inspect', 'docker.logs'),
       ];
 
-    case 'jvm.cpu_pressure': {
-      const queries: EvidenceQueryRequest[] = [];
-      if (configuredContainer) {
-        queries.push({ type: 'docker.stats', incidentId: incident.id, container: configuredContainer });
-      }
-      queries.push({ type: 'host.load', incidentId: incident.id });
-      return queries;
-    }
+    case 'jvm.cpu_pressure':
+      return [...docker('docker.stats', 'docker.inspect'), { type: 'host.load', incidentId: incident.id }];
+
+    case 'jvm.oom':
+      return [...docker('docker.inspect', 'docker.logs'), { type: 'host.memory', incidentId: incident.id }];
+
+    case 'jvm.stack_overflow':
+      // Recursion depth, not memory pressure, so the log carries the fact.
+      return [...docker('docker.inspect', 'docker.logs')];
 
     case 'jvm.gc_pressure': {
       const queries: EvidenceQueryRequest[] = [];
@@ -133,10 +149,7 @@ export function planEvidenceQueries(
 
     case 'business.error': {
       if (!configuredContainer) return [];
-      return [
-        { type: 'docker.inspect', incidentId: incident.id, container: configuredContainer },
-        dockerLogsQuery(incident.id, configuredContainer, triggeringEvent.time, logsMaxLines),
-      ];
+      return docker('docker.inspect', 'docker.logs');
     }
 
     case 'health.failure': {

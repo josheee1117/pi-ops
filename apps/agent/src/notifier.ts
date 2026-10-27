@@ -1,4 +1,5 @@
 import type { NotificationPayload } from './notification.js';
+import { plainSummary } from './on-call-brief.js';
 
 export interface Notifier {
   send(notification: NotificationPayload): Promise<void>;
@@ -88,42 +89,29 @@ export function createHttpWebhookNotifier(options: {
   };
 }
 
-function formatWeComMarkdown(notification: NotificationPayload): string {
-  const incident = notification.incident;
-  const titles = {
-    INCIDENT_OPEN: '🚨 Incident OPEN',
-    INVESTIGATION_COMPLETED: '🔎 Investigation COMPLETED',
-    INCIDENT_RECOVERED: '✅ Incident RECOVERED',
-  };
-  const lines = [
-    `### ${titles[notification.type]}`,
-    `> service: ${incident.service}`,
-    `> node: ${incident.nodeId}`,
-    `> type: ${incident.type}`,
-    `> time: ${notification.type === 'INCIDENT_OPEN' ? incident.firstSeen : incident.lastSeen}`,
-    `> eventCount: ${notification.facts.eventCount}`,
-    `> evidence: ${notification.facts.evidenceIds.length}`,
-  ];
-  const analysis = notification.type === 'INVESTIGATION_COMPLETED' ? notification.analysis : undefined;
-  if (analysis) lines.push(`> hypothesis: ${analysis.hypothesis} (${analysis.confidence})`, `> recommendation: ${analysis.recommendation}`);
-  lines.push(`> incident id: ${incident.id}`);
-  let content = lines.join('\n');
-  for (const field of ['recommendation', 'hypothesis'] as const) {
-    if (Buffer.byteLength(content) <= 4000 || !analysis) break;
-    const bytes = Buffer.from(analysis[field]);
-    let end = Math.max(0, bytes.length - (Buffer.byteLength(content) - 4000));
-    while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
-    const value = bytes.subarray(0, end).toString('utf8');
-    lines[lines.length - (field === 'recommendation' ? 2 : 3)] = field === 'recommendation'
-      ? `> recommendation: ${value}` : `> hypothesis: ${value} (${analysis.confidence})`;
-    content = lines.join('\n');
-  }
-  if (Buffer.byteLength(content) > 4000) throw new TerminalNotificationError('wecom notification facts exceed limit');
-  return content;
+export function formatWeComMarkdown(notification: NotificationPayload, detailsBaseUrl = ''): string {
+  const summary = plainSummary(notification);
+  const status = notification.notice === 'manual-confirmation' ? '需要人工确认'
+    : notification.notice === 'recovered-before-delivery' ? '曾发生、现已恢复'
+      : notification.type === 'INCIDENT_RECOVERED' ? '已恢复'
+        : notification.type === 'INVESTIGATION_COMPLETED' ? '诊断更新' : '故障通知';
+  const text = (value: string) => value.replace(/[\r\n]/g, ' ').replace(/[<>*`]/g, '');
+  const url = `${detailsBaseUrl.replace(/\/$/, '')}/v1/ops/incidents/${encodeURIComponent(notification.incident.id)}/brief?format=markdown`;
+  return [
+    `### ${status}`,
+    `场景：${text(summary.scene)}`,
+    `发生了什么：${text(summary.whatHappened)}`,
+    `严重程度：${summary.severity.level}，${text(summary.severity.reason)}`,
+    '恢复建议：', ...summary.recovery.map((item, index) => `${index + 1}. ${text(item)}`),
+    `编号：${text(notification.incident.id)}`,
+    `详情获取方式：GET ${url}`,
+    '鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。',
+  ].join('\n');
 }
 
 export function createWeComNotifier(options: {
   webhookUrl: string;
+  detailsBaseUrl?: string;
   timeoutMs: number;
   maxResponseBytes: number;
   fetch?: typeof fetch;
@@ -131,7 +119,7 @@ export function createWeComNotifier(options: {
   const fetchImpl = options.fetch ?? fetch;
   return {
     async send(notification) {
-      const content = formatWeComMarkdown(notification);
+      const content = formatWeComMarkdown(notification, options.detailsBaseUrl);
       try {
         const response = await fetchImpl(options.webhookUrl, {
           method: 'POST',

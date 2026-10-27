@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { loadConfig } from '../config.js';
 
 const CONFIG_KEYS = [
+  'PI_OPS_INCIDENT_DETAILS_BASE_URL',
   'PI_OPS_INGEST_TOKEN',
   'PI_OPS_OPERATOR_TOKEN',
   'PI_OPS_PI_RUNTIME_TOKEN',
@@ -21,7 +22,6 @@ const CONFIG_KEYS = [
   'PI_OPS_EVIDENCE_JOB_BATCH_SIZE',
   'PI_OPS_EVENT_REPLAY_BATCH_SIZE',
   'PI_OPS_REASONING_JOB_POLL_INTERVAL_MS',
-  'PI_OPS_REASONING_JOB_MAX_ATTEMPTS',
   'PI_OPS_REASONING_TIMEOUT_MS',
   'PI_OPS_REASONING_JOB_BATCH_SIZE',
   'PI_OPS_REASONER_TYPE',
@@ -72,6 +72,13 @@ describe('loadConfig node-agent registry', () => {
         token: 'node-token',
       });
     });
+  });
+
+  it('loads a safe detail base URL and rejects credential-bearing URLs', () => {
+    withConfigEnv({ PI_OPS_INCIDENT_DETAILS_BASE_URL: 'https://ops.example/' }, () => assert.equal(loadConfig().incidentDetailsBaseUrl, 'https://ops.example'));
+    for (const url of ['file:///tmp/ops', 'https://token@ops.example', 'https://ops.example?token=secret', 'https://ops.example/#secret']) {
+      withConfigEnv({ PI_OPS_INCIDENT_DETAILS_BASE_URL: url }, () => assert.throws(() => loadConfig(), /PI_OPS_INCIDENT_DETAILS_BASE_URL/));
+    }
   });
 
   it('fails fast on malformed node-agent JSON', () => {

@@ -12,9 +12,11 @@ import {
 import type { createInvestigationLoopService } from './investigation-loop.js';
 import type { createInvestigationEvidenceService } from './investigation-evidence.js';
 import type { NotificationJobWorker } from './notification-worker.js';
+import { incidentBrief, renderIncidentBrief } from './incident-brief.js';
 import {
   MODEL_SAFE_MAX_LOG_LINES,
   toRuntimeSafeEvidence,
+  withoutSourceSnippetText,
 } from './incident-context.js';
 
 class RequestBodyTooLargeError extends Error {}
@@ -242,6 +244,7 @@ export function createApp(
             hypothesis: report.hypothesis,
             confidence: report.confidence,
             recommendation: report.recommendation,
+            ...(report.diagnosis ? { diagnosis: report.diagnosis } : {}),
             supportingEvidenceIds: report.supportingEvidenceIds,
             contradictingEvidenceIds: report.contradictingEvidenceIds,
           } : undefined,
@@ -254,6 +257,7 @@ export function createApp(
           })),
         };
       }),
+      notificationDecision: store.getNotificationDecision(incident.id) ?? { policyVersion: 'legacy' },
       notifications: store.listNotificationJobs(incident.id).map((job) => ({
         id: job.id,
         type: job.type,
@@ -262,6 +266,17 @@ export function createApp(
         createdAt: job.createdAt,
       })),
     });
+  });
+
+  app.get('/v1/ops/incidents/:id/brief', (c) => {
+    if (!operatorAuthorized(c, config)) return c.json({ error: 'unauthorized' }, 401);
+    const brief = incidentBrief(store, c.req.param('id'));
+    if (!brief) return c.json({ error: 'not found' }, 404);
+    if (c.req.query('format') === 'markdown') {
+      return c.body(renderIncidentBrief(brief), 200, { 'Content-Type': 'text/markdown; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    c.header('Cache-Control', 'no-store');
+    return c.json(brief);
   });
 
   app.get('/v1/ops/incidents/:id/evidence', (c) => {
@@ -274,8 +289,8 @@ export function createApp(
       view,
       evidence: rows.map((item) => (
         view === 'raw'
-          ? { id: item.id, kind: item.kind, status: item.status, collectedAt: item.collectedAt, data: item.data }
-          : toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES)
+          ? withoutSourceSnippetText({ id: item.id, kind: item.kind, status: item.status, collectedAt: item.collectedAt, data: item.data })
+          : withoutSourceSnippetText(toRuntimeSafeEvidence(item, MODEL_SAFE_MAX_LOG_LINES))
       )),
     });
   });

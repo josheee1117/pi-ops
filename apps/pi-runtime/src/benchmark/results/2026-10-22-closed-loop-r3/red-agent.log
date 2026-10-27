@@ -1,0 +1,48 @@
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+✔ uses the coordinator summary instead of parsing old prose or sending the full diagnosis (1.514875ms)
+✖ renders an honest bounded next step when evidence is insufficient without inventing a repair (1.123583ms)
+✔ uses deterministic copy for old, incomplete and manual-confirmation reports (0.218834ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 202.194166
+
+✖ failing tests:
+
+test at src/__tests__/on-call-brief.test.ts:26:1
+✖ renders an honest bounded next step when evidence is insufficient without inventing a repair (1.123583ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /修复尚未确定/. Input:
+  
+  '### 诊断更新\n' +
+    '场景：orders，业务接口请求\n' +
+    '发生了什么：应用接口出现未处理异常，影响范围待确认。\n' +
+    '严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n' +
+    '恢复建议：\n' +
+    '1. 经批准隔离持续失败的请求。\n' +
+    '2. 核对路由。\n' +
+    '3. 验证关键业务请求。\n' +
+    '编号：inc-1\n' +
+    '详情获取方式：GET /v1/ops/incidents/inc-1/brief?format=markdown\n' +
+    '鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。'
+  
+      at TestContext.<anonymous> (/Users/hejiayuan/code_me/pi-ops/apps/agent/src/__tests__/on-call-brief.test.ts:38:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '### 诊断更新\n场景：orders，业务接口请求\n发生了什么：应用接口出现未处理异常，影响范围待确认。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 经批准隔离持续失败的请求。\n2. 核对路由。\n3. 验证关键业务请求。\n编号：inc-1\n详情获取方式：GET /v1/ops/incidents/inc-1/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。',
+    expected: /修复尚未确定/,
+    operator: 'match',
+    diff: 'simple'
+  }
+undefined
+/Users/hejiayuan/code_me/pi-ops/apps/agent:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: tsx --test src/__tests__/on-call-brief.test.ts

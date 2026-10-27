@@ -1,6 +1,10 @@
 import { isDeepStrictEqual } from 'node:util';
 import {
   investigationReportInputSchema,
+  investigationDiagnosisSchema,
+  diagnosisEvidenceIds,
+  deterministicSummary,
+  investigationSummarySchema,
   MAX_EVIDENCE_ENRICHMENT_ROUNDS,
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
   MAX_EVIDENCE_TYPES_PER_SPECIALIST,
@@ -16,8 +20,9 @@ import {
 import { boundInvestigationContext, ContextTooLargeError } from './bound-context.js';
 import { ExecutionTimeoutError, withDeadline } from './deadline.js';
 import type { RuntimeEvidenceClient } from './evidence-client.js';
-import { createFakeRuntimeModel, parseModelJson, type RuntimeModel } from './model.js';
-import { runSpecialist, selectSpecialists } from './specialists.js';
+import { createFakeRuntimeModel, type RuntimeModel } from './model.js';
+import { structuredOutput, IncompleteModelOutputError, incompleteLegacy } from './structured-output.js';
+import { CURRENT_EVIDENCE_LIMITS, DIAGNOSIS_CONTRACT, runSpecialist, selectSpecialists } from './specialists.js';
 
 export interface CoordinatorOptions {
   model?: RuntimeModel;
@@ -119,12 +124,15 @@ export async function investigate(
     }
 
     const currentIds = new Set(working.evidence.map((item) => item.id));
-    const report = model.provider === 'fake'
-      ? synthesizeDeterministic(working, completed, currentIds)
-      : await synthesizeWithModel(model, working, completed, currentIds, signal, usage);
+    const degraded = completed.find((finding) => finding.summary.startsWith('诊断不完整'));
+    const rawReport = degraded && !completed.some((finding) => finding.diagnosis)
+      ? { hypothesis: degraded.hypotheses[0]!, recommendation: degraded.summary, confidence: Math.min(0.3, degraded.confidence), supportingEvidenceIds: [], contradictingEvidenceIds: [] }
+      : model.provider === 'fake'
+        ? synthesizeDeterministic(working, completed, currentIds)
+        : await synthesizeWithModel(model, working, completed, currentIds, signal, usage);
     return {
       status: 'completed',
-      report,
+      report: withPlainSummary(rawReport, working),
       selectedSpecialists,
       findings: completed,
       specialistStatus,
@@ -175,6 +183,16 @@ async function runRound(
       findingsByRole.set(role, result.finding);
       specialistStatus[role] = 'completed';
     } catch (error) {
+      if (error instanceof IncompleteModelOutputError) {
+        usage.inputTokens += error.inputTokens;
+        usage.outputTokens += error.outputTokens;
+        const legacy = incompleteLegacy(error, {
+          hypothesis: `${context.incident.service} 收到 ${context.incident.type}，模型未能完成结构化分析，根因未知。`,
+          recommendation: '人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。',
+        });
+        findingsByRole.set(role, { role, hypotheses: [legacy.hypothesis], summary: legacy.recommendation,
+          supportingEvidenceIds: [], contradictingEvidenceIds: [], missingEvidence: [], confidence: 0.2, status: 'completed' });
+      }
       specialistStatus[role] = 'failed';
       const message = error instanceof Error ? error.message : String(error);
       console.log(`[pi-runtime] specialist ${role} failed: ${message}`);
@@ -299,6 +317,33 @@ function sameCanonicalEvidence(existing: RuntimeInvestigationContext['evidence']
   return true;
 }
 
+function withPlainSummary(report: RuntimeInvestigationReportInput, context: RuntimeInvestigationContext): RuntimeInvestigationReportInput {
+  const fallback = deterministicSummary(context.incident, context.summarySeverity);
+  const ids = context.evidence.map((item) => item.id);
+  const diagnosis = report.diagnosis ?? {
+    observations: [],
+    candidateCauses: [{ cause: report.hypothesis, supportingEvidenceIds: report.supportingEvidenceIds, contradictingEvidenceIds: report.contradictingEvidenceIds }],
+    uncertainties: ['诊断不完整，修复尚未确定。'],
+    actions: [{ purpose: 'evidence_collection' as const, target: context.incident.service,
+      preconditions: ['确认故障时间和对应部署版本。'], operation: report.recommendation,
+      expectedResult: '取得修复依据。', risk: '只读核对，不直接修改服务。', requiresApproval: false, evidenceIds: [] }],
+  };
+  const needsMitigation = fallback.severity.level === '严重' && !diagnosis.actions.some((item) => item.purpose === 'mitigation');
+  const mitigation = {
+    purpose: 'mitigation' as const, target: context.incident.service,
+    preconditions: ['故障仍持续且确认影响业务。', '负责人批准，已核对备用容量和回滚路径。'],
+    operation: '隔离故障流量或暂停已确认的触发任务；若影响扩大，按核对过的路径回滚。',
+    expectedResult: '降低失败请求，阻止影响扩大。', risk: '可能中断部分请求，不能自动执行。',
+    requiresApproval: true, evidenceIds: ids.slice(0, 20),
+  };
+  const summary = diagnosis.summary ?? fallback;
+  return { ...report, diagnosis: { ...diagnosis,
+    summary: { ...summary, severity: fallback.severity,
+      recovery: needsMitigation ? [fallback.recovery[0]!, ...summary.recovery.filter((item) => !item.startsWith('止损')).slice(0, 2)] : summary.recovery },
+    actions: needsMitigation && ids.length ? [mitigation, ...diagnosis.actions] : diagnosis.actions,
+  } };
+}
+
 function synthesizeDeterministic(
   context: RuntimeInvestigationContext,
   findings: SpecialistFinding[],
@@ -314,14 +359,28 @@ function synthesizeDeterministic(
   const recommendation = advisory
     ? `${best.summary}.${gaps} Advisory history (not Evidence): ${advisory}`
     : `${best.summary}.${gaps}`;
-  return {
+  return investigationReportInputSchema.parse({
     schemaVersion: 1,
     hypothesis: best.hypotheses[0] ?? best.summary,
     supportingEvidenceIds: supporting,
     contradictingEvidenceIds: contradicting,
     confidence: best.confidence,
-    recommendation: `${POLICY} ${recommendation}`.slice(0, 2000),
-  };
+    recommendation,
+    diagnosis: best.diagnosis ?? investigationDiagnosisSchema.parse({
+      observations: [],
+      candidateCauses: findings.flatMap((item) => item.hypotheses.map((cause) => ({
+        cause, supportingEvidenceIds: item.supportingEvidenceIds, contradictingEvidenceIds: item.contradictingEvidenceIds,
+      }))).slice(0, 5),
+      uncertainties: missing.map((type) => `Missing evidence: ${type}`),
+      actions: [{
+        purpose: 'evidence_collection', target: context.incident.service,
+        preconditions: ['修复尚未确定，先由值班人员核对当前证据与故障窗口。'],
+        operation: '对照故障窗口日志和当前部署配置。若发现配置与对应版本契约不同，记录差异并提交人工确认；若一致，继续核对调用链。',
+        expectedResult: '区分配置差异与调用链故障，取得依据后再确定修复。',
+        risk: '只读检查，不修改服务。', requiresApproval: false, evidenceIds: supporting,
+      }],
+    }),
+  });
 }
 
 async function synthesizeWithModel(
@@ -332,32 +391,57 @@ async function synthesizeWithModel(
   signal: AbortSignal,
   usage: { inputTokens: number; outputTokens: number },
 ): Promise<RuntimeInvestigationReportInput> {
-  const response = await model.invoke({
+  let response;
+  try {
+    response = await structuredOutput(model, {
     system: [
       'COORDINATOR_SYNTHESIS',
       'Return ONLY one JSON object. No markdown. No extra text.',
-      'Required keys: hypothesis, supportingEvidenceIds, contradictingEvidenceIds, confidence, recommendation.',
+      'Required keys: hypothesis, supportingEvidenceIds, contradictingEvidenceIds, confidence, recommendation, diagnosis.',
       'supportingEvidenceIds and contradictingEvidenceIds must be strings from the provided evidenceIds.',
       'confidence is 0 to 1. Do not persist chain-of-thought.',
+      'Write hypothesis and recommendation in concise Simplified Chinese for the on-call engineer. Keep JSON keys unchanged. Evidence IDs in JSON arrays stay unchanged.',
+      DIAGNOSIS_CONTRACT,
+      'Do not repeat internal policy text in the recommendation. Do not claim that a running container proves JVM health or that an exception message proves an external dependency failure.',
       POLICY,
+      CURRENT_EVIDENCE_LIMITS,
     ].join('\n'),
     user: JSON.stringify({
       incident: context.incident,
+      summarySeverity: deterministicSummary(context.incident, context.summarySeverity).severity,
       evidenceIds: [...currentIds],
+      evidence: context.evidence,
       findings,
       historicalKnowledge: context.historicalKnowledge ?? null,
     }),
     signal,
-  });
-  usage.inputTokens += response.inputTokens ?? 0;
-  usage.outputTokens += response.outputTokens ?? 0;
-  const parsed = investigationReportInputSchema.safeParse(normalizeReportPayload(parseModelJson(response.text)));
-  if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
+    }, (value) => {
+      const parsed = investigationReportInputSchema.extend({ diagnosis: investigationDiagnosisSchema.extend({ summary: investigationSummarySchema }) }).safeParse(normalizeReportPayload(value));
+      if (!parsed.success) throw new Error(`invalid coordinator synthesis: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`);
+      if (deterministicSummary(context.incident, context.summarySeverity).severity.level === '严重'
+        && parsed.data.diagnosis.actions.length === 8 && !parsed.data.diagnosis.actions.some((item) => item.purpose === 'mitigation')) {
+        throw new Error('invalid coordinator synthesis: unavailable service requires room for mitigation');
+      }
+      return parsed.data;
+    });
+  } catch (error) {
+    if (!(error instanceof IncompleteModelOutputError)) throw error;
+    usage.inputTokens += error.inputTokens;
+    usage.outputTokens += error.outputTokens;
+    const best = [...findings].sort((a, b) => b.confidence - a.confidence)[0]!;
+    return { ...incompleteLegacy(error, { hypothesis: best.hypotheses[0] ?? best.summary, recommendation: best.summary }),
+      supportingEvidenceIds: best.supportingEvidenceIds, contradictingEvidenceIds: best.contradictingEvidenceIds,
+      confidence: Math.min(best.confidence, 0.3) };
+  }
+  usage.inputTokens += response.inputTokens;
+  usage.outputTokens += response.outputTokens;
+  const parsed = { data: response.value };
   const supporting = parsed.data.supportingEvidenceIds.filter((id) => currentIds.has(id));
   const contradicting = parsed.data.contradictingEvidenceIds.filter((id) => currentIds.has(id));
   if (
     parsed.data.supportingEvidenceIds.some((id) => !currentIds.has(id))
     || parsed.data.contradictingEvidenceIds.some((id) => !currentIds.has(id))
+    || diagnosisEvidenceIds(parsed.data.diagnosis).some((id) => !currentIds.has(id))
   ) {
     throw new Error('coordinator cited evidence that does not belong to the current incident');
   }
@@ -365,9 +449,6 @@ async function synthesizeWithModel(
     ...parsed.data,
     supportingEvidenceIds: supporting,
     contradictingEvidenceIds: contradicting,
-    recommendation: parsed.data.recommendation.includes('Evidence describes the current incident')
-      ? parsed.data.recommendation
-      : `${POLICY} ${parsed.data.recommendation}`.slice(0, 2000),
   };
 }
 
@@ -413,6 +494,22 @@ function normalizeReportPayload(data: unknown): unknown {
   }
   record.supportingEvidenceIds = asIdList(record.supportingEvidenceIds);
   record.contradictingEvidenceIds = asIdList(record.contradictingEvidenceIds);
+  record.diagnosis = liftFlatSummary(record.diagnosis);
+  return record;
+}
+
+const SUMMARY_KEYS = ['scene', 'whatHappened', 'severity', 'recovery'] as const;
+
+function liftFlatSummary(diagnosis: unknown): unknown {
+  if (!diagnosis || typeof diagnosis !== 'object' || Array.isArray(diagnosis)) return diagnosis;
+  const record = { ...(diagnosis as Record<string, unknown>) };
+  if (record.summary !== undefined || !SUMMARY_KEYS.every((key) => key in record)) return record;
+  const summary: Record<string, unknown> = {};
+  for (const key of SUMMARY_KEYS) {
+    summary[key] = record[key];
+    delete record[key];
+  }
+  record.summary = summary;
   return record;
 }
 

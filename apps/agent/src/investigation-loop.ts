@@ -12,7 +12,7 @@ import {
   runtimeRequestIdFor,
   type InvestigationSession,
 } from './investigation-session.js';
-import type { InvestigationRuntimeResult } from '@pi-ops/protocol';
+import { diagnosisEvidenceIds, investigationDiagnosisSchema, type InvestigationRuntimeResult } from '@pi-ops/protocol';
 import type { InvestigationReportCallback, PiRuntimeClient } from './pi-runtime-client.js';
 import { createNoopPiRuntimeClient } from './pi-runtime-client.js';
 import type { ReasoningResult } from './reasoner.js';
@@ -21,11 +21,9 @@ import {
   REASONING_STRATEGY_VERSION,
 } from './reasoning-strategy.js';
 import { hashEvidenceSnapshot } from './reasoning-worker.js';
-import {
-  buildNotificationJob,
-  incidentFactsFromRow,
-} from './notification.js';
 import type { EventStore, IncidentRow } from './store.js';
+import { sourceSnippetEvidence } from './source-snippet.js';
+import type { SourceRoots } from './source-roots.js';
 
 const MAX_TEXT_CHARS = 2000;
 
@@ -39,6 +37,7 @@ export function createInvestigationLoopService(
   options: {
     now?: () => string;
     runtime?: PiRuntimeClient;
+    sourceRoots?: SourceRoots;
   } = {},
 ) {
   const now = options.now ?? (() => new Date().toISOString());
@@ -49,7 +48,17 @@ export function createInvestigationLoopService(
       const incident = store.getIncident(incidentId);
       if (!incident) throw new Error(`Incident ${incidentId} does not exist`);
       const evidence = store.listEvidence(incident.id);
-      const context = buildInvestigationContext(incident, evidence, store);
+      const snippet = sourceSnippetEvidence({
+        incident, evidence, roots: options.sourceRoots ?? {}, collectedAt: now(),
+      });
+      const existingSnippet = snippet && evidence.find((item) => item.kind === snippet.kind
+        && JSON.stringify(item.data) === JSON.stringify(snippet.data));
+      if (snippet && !existingSnippet) store.insertEvidence(snippet);
+      const context = buildInvestigationContext(
+        incident,
+        snippet ? store.listEvidence(incident.id) : evidence,
+        store,
+      );
       const contextSnapshotHash = hashInvestigationContext(context);
       store.insertInvestigationContextSnapshot(contextSnapshotHash, context, now());
       const evidenceGeneration = store.getEvidenceJob(`job-${incident.id}`)?.generation ?? 1;
@@ -226,21 +235,7 @@ export function createInvestigationLoopService(
         store.markDelegationTaskCompleted(task.id, report.createdAt);
         if (job.status !== 'COMPLETED') store.markReasoningJobCompleted(job.id);
         store.updateInvestigationSessionStatus(session.id, 'COMPLETED', report.createdAt);
-        store.scheduleNotificationJob(buildNotificationJob({
-          type: 'INVESTIGATION_COMPLETED',
-          incident: incidentFactsFromRow(incident),
-          evidenceIds: evidence.filter((item) => item.status === 'succeeded').map((item) => item.id),
-          now: report.createdAt,
-          investigationSessionId: session.id,
-          reasoningResultId: result.id,
-          analysis: {
-            investigationSessionId: session.id,
-            reasoningResultId: result.id,
-            hypothesis: report.hypothesis,
-            confidence: report.confidence,
-            recommendation: report.recommendation,
-          },
-        }));
+        store.evaluateNotification(incident.id, report.createdAt);
       });
       return report;
     },
@@ -250,16 +245,19 @@ export function createInvestigationLoopService(
       if (session.status === 'COMPLETED') {
         throw new Error(`InvestigationSession ${sessionId} is already completed`);
       }
-      const task = store.getDelegationTask(session.delegationTaskId);
-      if (task && task.status !== 'COMPLETED') {
-        store.markDelegationTaskFailed(task.id, error);
-      }
-      const plan = task ? store.getInvestigationPlan(task.investigationPlanId) : undefined;
-      const job = plan ? store.getReasoningJob(plan.reasoningJobId) : undefined;
-      if (job && job.status !== 'COMPLETED' && job.status !== 'FAILED') {
-        store.markReasoningJobFailed(job.id, error);
-      }
-      store.updateInvestigationSessionStatus(session.id, 'FAILED', now());
+      store.withTransaction(() => {
+        const task = store.getDelegationTask(session.delegationTaskId);
+        if (task && task.status !== 'COMPLETED') {
+          store.markDelegationTaskFailed(task.id, error);
+        }
+        const plan = task ? store.getInvestigationPlan(task.investigationPlanId) : undefined;
+        const job = plan ? store.getReasoningJob(plan.reasoningJobId) : undefined;
+        if (job && job.status !== 'COMPLETED' && job.status !== 'FAILED') {
+          store.markReasoningJobFailed(job.id, error);
+        }
+        store.updateInvestigationSessionStatus(session.id, 'FAILED', now());
+        store.evaluateNotification(session.incidentId, now());
+      });
       return store.getInvestigationSession(session.id)!;
     },
   };
@@ -329,6 +327,7 @@ function buildReport(
     contradictingEvidenceIds: [...input.contradictingEvidenceIds],
     confidence: input.confidence,
     recommendation: input.recommendation,
+    ...(input.diagnosis !== undefined ? { diagnosis: investigationDiagnosisSchema.parse(input.diagnosis) } : {}),
     createdAt,
   };
 }
@@ -368,6 +367,7 @@ function validateReport(
   for (const evidenceId of uniqueIds([
     ...report.supportingEvidenceIds,
     ...report.contradictingEvidenceIds,
+    ...diagnosisEvidenceIds(report.diagnosis),
   ])) {
     if (!known.has(evidenceId)) {
       throw new Error(`evidence id ${evidenceId} does not belong to the Incident`);

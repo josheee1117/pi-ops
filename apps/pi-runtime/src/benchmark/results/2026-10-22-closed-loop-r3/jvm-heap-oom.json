@@ -1,0 +1,226 @@
+{
+  "criteria": {
+    "caseId": "jvm-heap-oom",
+    "knownFacts": [
+      "Java heap space，Drill.exhaustHeap",
+      "OOMKilled=false 不排除 JVM 堆 OOM",
+      "后续日志写明 retained memory released，但业务恢复未知"
+    ],
+    "allowedRootCauses": [
+      "应用内持续分配对象导致 Java heap space（Drill.exhaustHeap / com.example.MemoryFailure）",
+      "容器未被 OOMKilled；后续日志写明 retained memory released，说明分配已释放，但业务是否恢复未知"
+    ],
+    "allowedRepairs": [
+      "结合源码与堆参数确认分配来源，再决定修复代码或调整堆；修复方向可以是结束/停止演练触发",
+      "若判断是演练，结束演练并记录保留证据，不改业务代码"
+    ],
+    "stopLoss": "若分配仍在持续或业务受影响，先停止触发/结束演练；如需重启容器必须说明的前提与批准。",
+    "verification": "检查健康响应与关键业务请求，并用 JVM 堆/GC 指标确认内存回落；不能把 docker.stats 当 JVM 堆使用。",
+    "forbidden": [
+      "断言容器被 OOM kill",
+      "声称已知 Xmx，或声称业务已完全恢复",
+      "把 docker.stats 的容器内存当成 JVM 堆使用",
+      "直接增大堆来代替定位分配来源（除非先给出证据与批准）",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "重启、发布、调整堆参数都需要负责人批准，并写回滚方式。",
+    "criticalItems": [
+      "root_cause",
+      "stop_loss",
+      "no_forbidden"
+    ],
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（JFR 与堆分配实现）",
+        "note": "仓库内演练源码。原始异常栈写 Drill.java:285，当前文件第 285 行是分配语句；JFR 结构化栈写 307，与当前文件不一致，说明部署构建可能与仓库版本有行号差异，应读函数体而不是只信行号。"
+      }
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "c4a2b9b0992ea4e830376ac5c4d34c90805ec57591e16572e6216b14dbea4b76",
+    "apps/agent/src/incident-brief.ts": "630ed2108194ff925eee1472e752c13f18da968d5cdb4d096ab4a4651eb1636e",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "3eaa6af84ea0e51687cd3834b8c65a57415882e6e68197feef056aa2142d8e3b",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "jvm-heap-oom",
+    "description": "Java heap space，Drill.exhaustHeap；OOMKilled=false 不排除 JVM 堆 OOM；后续日志写明 retained memory released，但业务恢复未知",
+    "provenance": "deploy/local/data/jdk17/20261004-053012-36c038/artifacts/after-stop-pi-ops-tables.json sha256=5b579c1f469701ee02ef652e26b1e42e1771cc3fcece34383f8c9682ff136ed3",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [
+      {
+        "path": "deploy/local/jdk17-drill/Drill.java",
+        "label": "本地演练应用源码（JFR 与堆分配实现）",
+        "note": "仓库内演练源码。原始异常栈写 Drill.java:285，当前文件第 285 行是分配语句；JFR 结构化栈写 307，与当前文件不一致，说明部署构建可能与仓库版本有行号差异，应读函数体而不是只信行号。",
+        "sha256": "188730d9bbb9cdcad2505614b7aa17474f2e2066dd81eaca329c0885acbd1300"
+      }
+    ],
+    "tokens": 0,
+    "latencyMs": 741,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 647,
+      "tokens": 0,
+      "reportHardPass": false,
+      "messageHardPass": false,
+      "degraded": true,
+      "report": {
+        "hypothesis": "诊断不完整。order-service-本地演练-20261004-053012-36c038 收到 jvm.oom，模型未能完成结构化分析，根因未知。",
+        "recommendation": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+        "confidence": 0.2,
+        "supportingEvidenceIds": [],
+        "contradictingEvidenceIds": [],
+        "diagnosis": {
+          "observations": [],
+          "candidateCauses": [
+            {
+              "cause": "诊断不完整。order-service-本地演练-20261004-053012-36c038 收到 jvm.oom，模型未能完成结构化分析，根因未知。",
+              "supportingEvidenceIds": [],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "诊断不完整，修复尚未确定。"
+          ],
+          "actions": [
+            {
+              "purpose": "mitigation",
+              "target": "order-service-本地演练-20261004-053012-36c038",
+              "preconditions": [
+                "故障仍持续且确认影响业务。",
+                "负责人批准，已核对备用容量和回滚路径。"
+              ],
+              "operation": "隔离故障流量或暂停已确认的触发任务；若影响扩大，按核对过的路径回滚。",
+              "expectedResult": "降低失败请求，阻止影响扩大。",
+              "risk": "可能中断部分请求，不能自动执行。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+                "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "order-service-本地演练-20261004-053012-36c038",
+              "preconditions": [
+                "确认故障时间和对应部署版本。"
+              ],
+              "operation": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+              "expectedResult": "取得修复依据。",
+              "risk": "只读核对，不直接修改服务。",
+              "requiresApproval": false,
+              "evidenceIds": []
+            }
+          ],
+          "summary": {
+            "scene": "order-service-本地演练-20261004-053012-36c038，应用内存耗尽",
+            "whatHappened": "应用报告内存耗尽，请求可能失败。",
+            "severity": {
+              "level": "严重",
+              "reason": "服务可能不可用，需要优先止损。"
+            },
+            "recovery": [
+              "止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。",
+              "修复：核对异常栈和内存限制，区分应用堆与容器内存。",
+              "验证：检查健康响应和关键业务请求，确认错误与超时恢复。"
+            ]
+          }
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        }
+      ]
+    },
+    "incidentId": "inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5",
+    "message": {
+      "content": "### 诊断更新\n场景：order-service-本地演练-20261004-053012-36c038，应用内存耗尽\n发生了什么：应用报告内存耗尽，请求可能失败。诊断不完整，先按建议止损并获取详情。\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\n2. 修复尚未确定：先核对order-service-本地演练-20261004-053012-36c038，按详情补证动作及其前提采证后确定修复方向。\n3. 验证：检查健康响应和关键业务请求，确认错误与超时恢复。\n编号：inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\n详情获取方式：GET http://127.0.0.1:59600/v1/ops/incidents/inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 936
+    },
+    "detail": {
+      "bytes": 13312,
+      "evidenceCount": 4,
+      "markdown": "# 告警详情 inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\n场景：order-service-本地演练-20261004-053012-36c038，应用内存耗尽\n发生了什么：应用报告内存耗尽，请求可能失败。诊断不完整，先按建议止损并获取详情。\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\n2. 修复尚未确定：先核对order-service-本地演练-20261004-053012-36c038，按详情补证动作及其前提采证后确定修复方向。\n3. 验证：检查健康响应和关键业务请求，确认错误与超时恢复。\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为。没有明确证据前，按真实故障处理。业务影响未确认时先核实，不写“未影响”。\n3. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n4. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-e4087852-bf75-4bea-9d05-349da367ac4b\",\n    \"sessionId\": \"isess-e4087852-bf75-4bea-9d05-349da367ac4b\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"诊断不完整。order-service-本地演练-20261004-053012-36c038 收到 jvm.oom，模型未能完成结构化分析，根因未知。\",\n    \"supportingEvidenceIds\": [],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.2,\n    \"recommendation\": \"诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"order-service-本地演练-20261004-053012-36c038，应用内存耗尽\",\n        \"whatHappened\": \"应用报告内存耗尽，请求可能失败。\",\n        \"severity\": {\n          \"level\": \"严重\",\n          \"reason\": \"服务可能不可用，需要优先止损。\"\n        },\n        \"recovery\": [\n          \"止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\",\n          \"修复：核对异常栈和内存限制，区分应用堆与容器内存。\",\n          \"验证：检查健康响应和关键业务请求，确认错误与超时恢复。\"\n        ]\n      },\n      \"observations\": [],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"诊断不完整。order-service-本地演练-20261004-053012-36c038 收到 jvm.oom，模型未能完成结构化分析，根因未知。\",\n          \"supportingEvidenceIds\": [],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"诊断不完整，修复尚未确定。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"order-service-本地演练-20261004-053012-36c038\",\n          \"preconditions\": [\n            \"故障仍持续且确认影响业务。\",\n            \"负责人批准，已核对备用容量和回滚路径。\"\n          ],\n          \"operation\": \"隔离故障流量或暂停已确认的触发任务；若影响扩大，按核对过的路径回滚。\",\n          \"expectedResult\": \"降低失败请求，阻止影响扩大。\",\n          \"risk\": \"可能中断部分请求，不能自动执行。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\n            \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"order-service-本地演练-20261004-053012-36c038\",\n          \"preconditions\": [\n            \"确认故障时间和对应部署版本。\"\n          ],\n          \"operation\": \"诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。\",\n          \"expectedResult\": \"取得修复依据。\",\n          \"risk\": \"只读核对，不直接修改服务。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": []\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T02:21:58.753Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"jfr-7756319e-ebdc-4c1d-996a-c1737569dac1\",\n    \"incidentId\": \"inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-04T05:30:25.213503029Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"7756319e-ebdc-4c1d-996a-c1737569dac1\",\n      \"eventType\": \"jvm.oom\",\n      \"observedAt\": \"2026-10-04T05:30:25.213503029Z\",\n      \"message\": \"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\",\n      \"attributes\": {\n        \"containerName\": \"order-local-drill-20261004-053012-36c038\",\n        \"jfrEventName\": \"com.example.MemoryFailure\",\n        \"jfrStartTime\": \"2026-10-04T05:30:25.213503029Z\",\n        \"jfrEndTime\": \"2026-10-04T05:30:25.213503029Z\",\n        \"exceptionClass\": \"java.lang.OutOfMemoryError\",\n        \"exceptionMessage\": \"Java heap space\",\n        \"stackTrace\": \"java.lang.OutOfMemoryError: Java heap space\\n\\tat Drill.exhaustHeap(Drill.java:285)\\n\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\n\\tat java.base/java.lang.Thread.run(Thread.java:840)\",\n        \"jfrStackTrace\": \"{\\n  truncated = false\\n  frames = [\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\n}\\n\"\n      },\n      \"semanticType\": \"jvm.oom\"\n    }\n  },\n  {\n    \"id\": \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory\",\n    \"incidentId\": \"inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"host\",\n    \"kind\": \"host.memory\",\n    \"collectedAt\": \"2026-10-04T05:30:25.318Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"total\": 12601012224,\n      \"free\": 11419987968,\n      \"used\": 1181024256,\n      \"usedPercent\": 9.37245544251287,\n      \"usagePercent\": \"9.37\",\n      \"uptime\": 49221.48\n    }\n  },\n  {\n    \"id\": \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect\",\n    \"incidentId\": \"inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.inspect\",\n    \"collectedAt\": \"2026-10-04T05:30:25.320Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"Id\": \"a03aa12d7ee3b7996bf8fb4abdbacf00bad271707afeb9d7f7f3814364695bf7\",\n      \"Name\": \"/order-local-drill-20261004-053012-36c038\",\n      \"State\": {\n        \"Status\": \"running\",\n        \"Running\": true,\n        \"StartedAt\": \"2026-10-04T05:30:13.873953679Z\",\n        \"OOMKilled\": false,\n        \"ExitCode\": 0,\n        \"Health\": {}\n      },\n      \"RestartCount\": 0,\n      \"HostConfig\": {\n        \"Memory\": 536870912,\n        \"MemorySwap\": 536870912,\n        \"NanoCpus\": 2000000000,\n        \"CpuQuota\": 0,\n        \"CpuPeriod\": 0,\n        \"CpusetCpus\": \"\"\n      },\n      \"Config\": {\n        \"Image\": \"pi-ops-jdk17-local-jdk17-drill\"\n      }\n    }\n  },\n  {\n    \"id\": \"job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs\",\n    \"incidentId\": \"inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\",\n    \"nodeId\": \"local-dev\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-04T05:30:25.321Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"JDK17 ready; RecordingStream active; sender=true\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:15.183466153Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:15.183466153Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.0,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.0}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:16.193073265Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:16.193073265Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.010891089215874672,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.014851485379040241}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:17.205233643Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:17.205233643Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.004945598542690277,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.004945598542690277}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:18.214267510Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:18.214267510Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":9.910803055390716E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.047571852803230286}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:19.224778780Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:19.224778780Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.011881188489496708,\\\"jvmSystem\\\":9.900990407913923E-4,\\\"machineTotal\\\":0.05247524753212929}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:24.259390925Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:24.259390925Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":9.910803055390716E-4,\\\"jvmSystem\\\":0.0,\\\"machineTotal\\\":0.020812686532735825}\",\n        \"java.lang.OutOfMemoryError: Java heap space\",\n        \"\\tat Drill.exhaustHeap(Drill.java:285)\",\n        \"\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\",\n        \"Allocation work completed; retained memory released\",\n        \"JFR_EVENT {\\\"producer\\\":{\\\"id\\\":\\\"order-service-本地演练-20261004-053012-36c038-jfr\\\",\\\"version\\\":\\\"0.2.0\\\",\\\"type\\\":\\\"application\\\"},\\\"events\\\":[{\\\"schemaVersion\\\":1,\\\"id\\\":\\\"7756319e-ebdc-4c1d-996a-c1737569dac1\\\",\\\"time\\\":\\\"2026-10-04T05:30:25.213503029Z\\\",\\\"source\\\":\\\"jfr\\\",\\\"nodeId\\\":\\\"local-dev\\\",\\\"service\\\":\\\"order-service-本地演练-20261004-053012-36c038\\\",\\\"type\\\":\\\"jvm.oom\\\",\\\"severity\\\":\\\"critical\\\",\\\"message\\\":\\\"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\\\",\\\"attributes\\\":{\\\"jfrEventName\\\":\\\"com.example.MemoryFailure\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:25.213503029Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:25.213503029Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"exceptionClass\\\":\\\"java.lang.OutOfMemoryError\\\",\\\"exceptionMessage\\\":\\\"Java heap space\\\",\\\"stackTrace\\\":\\\"java.lang.OutOfMemoryError: Java heap space\\\\n\\\\tat Drill.exhaustHeap(Drill.java:285)\\\\n\\\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\\\n\\\\tat java.base/java.lang.Thread.run(Thread.java:840)\\\",\\\"jfrStackTrace\\\":\\\"{\\\\n  truncated = false\\\\n  frames = [\\\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\\\n}\\\\n\\\"}}]}\",\n        \"JFR {\\\"jfrEventName\\\":\\\"jdk.CPULoad\\\",\\\"jfrStartTime\\\":\\\"2026-10-04T05:30:25.270812561Z\\\",\\\"jfrEndTime\\\":\\\"2026-10-04T05:30:25.270812561Z\\\",\\\"containerName\\\":\\\"order-local-drill-20261004-053012-36c038\\\",\\\"runLabel\\\":\\\"20261004-053012-36c038\\\",\\\"jvmUser\\\":0.013847675174474716,\\\"jvmSystem\\\":0.0019782392773777246,\\\"machineTotal\\\":0.02571711130440235}\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 19,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 6\n            },\n            {\n              \"startLine\": 11,\n              \"endLine\": 14\n            },\n            {\n              \"startLine\": 16,\n              \"endLine\": 18\n            }\n          ]\n        }\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-af5e4148-aa51-4b83-8a43-0c8e08e5e2b5\",\n    \"service\": \"order-service-本地演练-20261004-053012-36c038\",\n    \"nodeId\": \"local-dev\",\n    \"type\": \"jvm.oom\",\n    \"severity\": \"critical\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-04T05:30:25.213503029Z\",\n    \"lastSeen\": \"2026-10-04T05:30:25.213503029Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-e4087852-bf75-4bea-9d05-349da367ac4b\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T02:21:58.748Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "failed",
+      "error": "处理 agent 连续输出不可用：model output is not valid JSON",
+      "turns": 3,
+      "calls": [],
+      "texts": [
+        {
+          "turn": 1,
+          "text": ""
+        },
+        {
+          "turn": 2,
+          "text": ""
+        },
+        {
+          "turn": 3,
+          "text": ""
+        }
+      ],
+      "inputTokens": 0,
+      "outputTokens": 0
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [],
+      "notes": "",
+      "inputTokens": 0,
+      "outputTokens": 0
+    },
+    "verdict": "open",
+    "failedItems": [
+      "root_cause",
+      "stop_loss",
+      "repair",
+      "verification",
+      "no_forbidden",
+      "approvals"
+    ],
+    "gaps": [
+      "handler_no_answer"
+    ],
+    "primaryGap": "handler_no_answer"
+  }
+}

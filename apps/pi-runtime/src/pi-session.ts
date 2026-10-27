@@ -84,6 +84,17 @@ export async function createPiSdkRuntimeModel(
         void session.abort();
       };
       request.signal?.addEventListener('abort', abort, { once: true });
+      let requestParameters: RuntimeModelResponse['requestParameters'];
+      session.agent.onPayload = (payload) => {
+        if (payload && typeof payload === 'object') {
+          const body = payload as Record<string, unknown>;
+          const maxTokens = body['max_tokens'] ?? body['max_completion_tokens'];
+          requestParameters = {
+            ...(typeof maxTokens === 'number' ? { maxTokens } : {}),
+            thinking: body['thinking'] ?? null, reasoningEffort: body['reasoning_effort'] ?? null,
+          };
+        }
+      };
       try {
         if (request.signal?.aborted) throw new Error('aborted');
         await session.prompt(request.user);
@@ -101,6 +112,9 @@ export async function createPiSdkRuntimeModel(
           model: assistant.model ?? config.piModel,
           inputTokens: assistant.usage.input,
           outputTokens: assistant.usage.output,
+          stopReason: assistant.stopReason,
+          thinkingChars: assistant.content.filter((part) => part.type === 'thinking').reduce((sum, part) => sum + (part.type === 'thinking' ? part.thinking.length : 0), 0),
+          requestParameters,
         };
       } finally {
         request.signal?.removeEventListener('abort', abort);
@@ -109,6 +123,3 @@ export async function createPiSdkRuntimeModel(
     },
   };
 }
-
-/** @deprecated use createPiSdkRuntimeModel */
-export const createPiRuntimeModel = createPiSdkRuntimeModel;

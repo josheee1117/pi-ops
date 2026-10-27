@@ -1,6 +1,6 @@
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { EvidenceJob, EventStore } from './store.js';
-import { computeFingerprint, RECOVERY_TYPE_MAP } from './fingerprint.js';
+import { RECOVERY_TYPE_MAP } from './fingerprint.js';
 import { persistJfrSignalEvidence } from './jfr-evidence.js';
 
 export { computeFingerprint } from './fingerprint.js';
@@ -100,7 +100,8 @@ export function createIncidentEngine(
     while (true) {
       const matches = store.listPendingRecoveries(fingerprint).map((recovery) => ({
         recovery,
-        incident: store.findRecoveryIncident(fingerprint, recovery.time),
+        incident: store.findRecoveryIncident(fingerprint, recovery.time)
+          ?? store.findRecoveryIncident(store.legacyEventFingerprint(recovery), recovery.time),
       }));
       let progress = false;
       for (const { recovery, incident } of matches) {
@@ -132,11 +133,13 @@ export function createIncidentEngine(
         };
       }
 
-      const fingerprint = computeFingerprint(event);
+      const fingerprint = store.computeEventFingerprint(event);
       const isExplicitRecovery = RECOVERY_TYPE_MAP[event.type] !== undefined;
+      const legacyFingerprint = store.legacyEventFingerprint(event);
       const existing = isExplicitRecovery
-        ? store.findRecoveryIncident(fingerprint, timestamp)
-        : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs);
+        ? store.findRecoveryIncident(fingerprint, timestamp) ?? store.findRecoveryIncident(legacyFingerprint, timestamp)
+        : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs)
+          ?? store.findIncidentForEvent(legacyFingerprint, timestamp, config.aggregationWindowMs);
 
       if (existing && isExplicitRecovery) {
         reconcileFingerprint(fingerprint);
@@ -169,6 +172,7 @@ export function createIncidentEngine(
         maybeCollectEvidence(existing.id, event, previousSeverity);
         maybePersistJfr(existing.id, existing.node_id, event);
         reconcileFingerprint(fingerprint);
+        store.evaluateNotification(existing.id);
         return {
           ignored: false,
           incidentId: existing.id,
@@ -210,6 +214,7 @@ export function createIncidentEngine(
         });
       reconcileFingerprint(fingerprint);
       maybePersistJfr(newIncident.id, newIncident.node_id, event);
+      store.evaluateNotification(newIncident.id);
 
       return {
         ignored: false,

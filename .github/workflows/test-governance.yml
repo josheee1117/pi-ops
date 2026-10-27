@@ -85,13 +85,14 @@ jobs:
 
           status="$(node -e 'const fs=require("node:fs"); const r=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(String(r.status || "INTERNAL_ERROR"));' "$result")"
 
-          # The ordinary HEAD-side gate detects governance changes but is not
-          # the authorization boundary. On pull requests only, defer the exact
-          # review-required state to the BASE-controlled Governance Trust Anchor.
-          # Every real gate failure remains non-zero, and direct pushes never get
-          # this delegation path.
+          # final is advisory, so review-required PRs must pass the full suite here.
+          # Other gate failures and non-PR events keep the original exit code.
           if [[ "$EVENT_NAME" == "pull_request" && "$status" == "GOVERNANCE_REVIEW_REQUIRED" ]]; then
-            echo "::notice::GOVERNANCE_REVIEW_REQUIRED deferred to authoritative Governance Trust Anchor"
+            echo "::notice::GOVERNANCE_REVIEW_REQUIRED: final is advisory, running the full suite here"
+            pnpm typecheck
+            pnpm test
+            pnpm test:governance:self
+            pnpm test:arch
             exit 0
           fi
 

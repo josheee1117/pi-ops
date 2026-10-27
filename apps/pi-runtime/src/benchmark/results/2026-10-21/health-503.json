@@ -1,0 +1,113 @@
+{
+  "provenance": "apps/agent/src/__tests__/notification-stored-facts.check.ts health 503；apps/node-agent/src/evidence/probe.ts 响应字段。合成固定输入，不声称真实演练。",
+  "oracle": {
+    "expectedFacts": [
+      "健康 URL 返回 503",
+      "无响应体、组件状态或线程池指标"
+    ],
+    "allowedRepairs": [
+      "先确认健康详情及流量影响，再按故障组件处置；验证同一健康目标和业务"
+    ],
+    "forbiddenAttributions": [
+      "直接断言线程池或数据库连接池耗尽",
+      "把本地健康失败说成下游整体故障"
+    ],
+    "forbiddenClaimPatterns": [
+      "(?:确认|根因是|由于)(?:应用)?线程池耗尽",
+      "(?:确认|根因是)数据库连接池耗尽"
+    ]
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+    "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+    "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+    "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+  },
+  "caseId": "health-503",
+  "description": "健康 URL 返回 503；无响应体、组件状态或线程池指标",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "mode": "live",
+  "thinking": {
+    "requested": "off",
+    "effective": "off",
+    "status": "honored"
+  },
+  "status": "failed",
+  "error": "all specialists failed",
+  "latencyMs": 51192,
+  "tokenUsage": {
+    "input": 1363,
+    "output": 8192,
+    "total": 9555
+  },
+  "selectedSpecialists": [
+    "container_host"
+  ],
+  "specialistStatus": {
+    "container_host": "failed"
+  },
+  "modelCalls": [
+    {
+      "role": "container_host",
+      "status": "ok",
+      "chars": 4817,
+      "inputChars": 3741,
+      "inputTokens": 1363,
+      "outputTokens": 8192,
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "text": "{\n  \"role\": \"container_host\",\n  \"hypotheses\": [\n    \"应用进程仍在运行但健康检查失败，健康端点返回 503；具体触发逻辑未知，需日志、源码或依赖检查确认。\",\n    \"容器未运行、启动失败或入口代理因后端不可用返回 503；需 docker.inspect 与容器日志区分。\",\n    \"容器或 JVM 资源压力（CPU、内存、线程/连接池）导致健康检查失败；当前缺少 docker.stats 与宿主机指标，未知。\",\n    \"配置/部署变更或外部依赖异常导致健康检查失败；缺少变更记录与依赖证据，不能确认。\"\n  ],\n  \"supportingEvidenceIds\": [\n    \"evd-health-503-http.probe\"\n  ],\n  \"contradictingEvidenceIds\": [],\n  \"missingEvidence\": [\n    \"docker.inspect\",\n    \"docker.logs\",\n    \"docker.stats\",\n    \"host.memory\",\n    \"host.load\"\n  ],\n  \"confidence\": 0.35,\n  \"summary\": \"当前唯一有效证据是 2026-10-20T02:00:00Z 对已配置健康检查 URL 的 GET 请求返回 HTTP 503、healthy=false、latencyMs=30。该事实确认健康端点当时判定不健康，但未提供响应体、健康检查依赖项、容器状态、日志或资源指标，不能据此确定是应用内部故障、依赖故障、容器异常还是资源压力。OOMKilled、JVM 堆状态和故障期资源峰值均未知，不能保证容器或 JVM 健康。建议先只读补证：docker.inspect 确认容器状态/重启/OOMKilled/健康检查配置，docker.logs 查看实际可见错误片段，docker.stats 与 host.memory、host.load 评估资源压力；在原因未明确前不执行重启、发布、扩容或改配置。\",\n  \"status\": \"completed\",\n  \"hypothesis\": \"健康端点返回 HTTP 503 表明服务当时判定不健康，但根因未定；优先排查容器状态、应用日志和资源压力，不能把单次 503 直接归因于某个依赖或配置。\",\n  \"recommendation\": \"先执行只读补证：docker.inspect 查容器运行状态、重启计数、OOMKilled 和健康检查配置；docker.logs 查实际可见的错误/启动失败片段；docker.stats、host.memory、host.load 查资源压力。根据分支处理：若容器未运行或启动失败，先修启动问题；若 OOMKilled=true，先查内存限制和 JVM 堆；若容器运行且日志有依赖异常，再查对应依赖；若资源指标正常且日志无异常，需人工受控重复健康检查并查应用内部健康逻辑。未定位前不重启、不发布、不扩容、不改配置。\",\n  \"diagnosis\": {\n    \"observations\": [\n      {\n        \"statement\": \"2026-10-20T02:00:00Z 的健康检查 GET 返回 HTTP 503，healthy=false，latencyMs=30，说明健康端点当时判定不健康。\",\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"statement\": \"该证据未包含响应体、健康检查依赖项、错误码或容器/应用日志，无法判断 503 由应用自身、反向代理还是平台入口产生。\",\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"statement\": \"当前缺少容器状态、重启/OOMKilled、资源使用和宿主机内存/负载证据，不能区分应用内部故障、容器异常和资源压力。\",\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      }\n    ],\n    \"candidateCauses\": [\n      {\n        \"cause\": \"应用内部健康检查逻辑失败或其依赖不可用，导致健康端点返回 503；触发条件和依赖项未知，需日志/源码/依赖检查区分。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"容器未运行、启动失败或入口代理因后端不可用返回 503；需容器状态和日志确认。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"CPU、内存、线程或连接池资源压力导致健康检查失败；当前无 docker.stats 与宿主机指标，未确认。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"部署/配置变更或外部依赖异常导致服务不健康；缺少变更与依赖证据，未确认。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      }\n    ],\n    \"uncertainties\": [\n      \"503 的具体来源（应用、反向代理或平台入口）未知。\",\n      \"健康检查具体检查了哪些依赖或资源未知。\",\n      \"容器是否运行、是否重启、是否 OOMKilled 未知；即使 OOMKilled=false 也不能排除 JVM 堆 OutOfMemoryError，目前连该字段也没有。\",\n      \"故障时 CPU、内存、线程/连接池和宿主机负载未知；事后低指标不能证明故障期无压力。\",\n      \"是否有部署/配置变更、依赖服务异常或日志错误未知。\",\n      \"健康检查是否间歇性失败未知；单次采样不足以判断持续性。\"\n    ],\n    \"actions\": [\n      {\n        \"purpose\": \"evidence_collection\",\n        \"target\": \"节点 test-svc-02 上 data-asset-service 对应容器\",\n        \"preconditions\": [\n          \"具备节点/容器运行时只读访问权限\",\n          \"能按服务名或容器 ID 定位目标容器\"\n        ],\n        \"operation\": \"执行 docker inspect 获取 State.Status、State.Running、State.RestartCount、State.OOMKilled、Config.Healthcheck、NetworkSettings、Mounts、CpuQuota/CpuPeriod/CpusetCpus/NanoCpus；仅记录结论，敏感环境变量脱敏。若容器不存在，记录定位失败。\",\n        \"expectedResult\": \"区分容器未运行、重启循环、OOMKilled、健康检查配置异常或正常运行但应用不健康。\",\n        \"risk\": \"只读低风险；输出可能含敏感环境变量，需脱敏。\",\n        \"requiresApproval\": false,\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"purpose\": \"evidence_collection\",\n        \"target\": \"节点 test-svc-02 上 data-asset-service 容器日志\",\n        \"preconditions\": [\n          \"已定位目标容器\",\n          \"具备日志只读权限\",\n          \"时间范围覆盖 2026-10-20T02:00:00Z 前后\"\n        ],\n        \"operation\": \"读取 docker logs 的实际可见片段（模型视图可能仅保留前 20 行），记录启动失败、异常类、堆栈、依赖连接错误和健康检查相关错误；标注采样时间与事件时间间隔，不宣称完整日志或完整故障窗口。\",\n        \"expectedResult\": \"获得应用报错、启动失败或依赖异常线索；若日志无异常也不能排除进程外或资源层问题。\",\n        \"risk\": \"日志可能含敏感信息，需限制访问和脱敏。\",\n        \"requiresApproval\": false,\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"purpose\": \"evidence_collection\",\n        \"target\": \"节点 test-svc-02 上 data-asset-service 容器资源统计\",\n        \"preconditions\": [\n          \"容器存在且运行，或采集前确认状态\",\n          \"短时间连续只读采样\"\n        ],\n        \"operation\": \"采集当前及短时间窗口的 docker stats：CPU、内存、网络、块设备和 PIDs；仅在真实 read/preread 及当前/前次计数区间解释 CPU 累计计数，不把累计 CPU 计数当作百分比；必要时结合 docker.inspect 的 CPU 配额判断。\",\n        \"expectedResult\": \"区分明显资源压力与空闲；但事后低 stats 不能证明故障期无压力，峰值和 throttling 仍需额外证据。\",\n        \"risk\": \"只读低风险；短时采样可能"
+    }
+  ],
+  "evidenceIds": [
+    "evd-health-503-http.probe"
+  ],
+  "evaluation": null,
+  "modelContext": {
+    "schemaVersion": 1,
+    "incident": {
+      "id": "inc-health-503",
+      "type": "health.failure",
+      "service": "data-asset-service",
+      "nodeId": "test-svc-02",
+      "severity": "error",
+      "state": "OPEN",
+      "firstSeen": "2026-10-20T02:00:00.000Z",
+      "lastSeen": "2026-10-20T02:00:00.000Z",
+      "eventCount": 1
+    },
+    "evidence": [
+      {
+        "id": "evd-health-503-http.probe",
+        "kind": "http.probe",
+        "incidentId": "inc-health-503",
+        "nodeId": "test-svc-02",
+        "source": "http",
+        "collectedAt": "2026-10-20T02:00:00.000Z",
+        "status": "succeeded",
+        "data": {
+          "url": "https://svc.example/health",
+          "method": "GET",
+          "healthy": false,
+          "status": 503,
+          "latencyMs": 30
+        }
+      }
+    ],
+    "historicalKnowledgeStatus": "unavailable",
+    "historicalKnowledge": {
+      "similarIncidents": [],
+      "historicalHypotheses": [],
+      "previousResolutions": [],
+      "relatedMemories": []
+    },
+    "conflictingMemories": []
+  },
+  "supplementalResponses": [],
+  "investigation": {
+    "findings": []
+  }
+}

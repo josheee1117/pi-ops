@@ -1,0 +1,32 @@
+$ pnpm --filter @pi-ops/pi-runtime exec tsx --test src/benchmark/message-chain.test.ts
+Before evaluator changes, with the tests committed in a4dbffe:
+✖ accepts a recorded free-text summary with complete actions in the diagnosis
+AssertionError [ERR_ASSERTION]: {"checks":{"structuredDiagnosis":{"status":"pass"},"actionsComplete":{"status":"pass"},"citationsExist":{"status":"pass"},"forbiddenAttributionScreen":{"status":"pass","detail":"固定断言模式筛查，不代表语义上不存在禁止归因。"},"messageWithinLimit":{"status":"pass","detail":"850 bytes"},"mitigationVisible":{"status":"fail"},"repairOrUnknownVisible":{"status":"fail"},"verificationVisible":{"status":"fail"},"plainSummary":{"status":"pass"},"detailAddress":{"status":"pass"},"noDetailedSections":{"status":"pass"},"diagnosisComplete":{"status":"pass"}},"purposes":{"mitigation":{"inDiagnosis":true,"inMessage":false},"repair":{"inDiagnosis":true,"inMessage":false},"verification":{"inDiagnosis":true,"inMessage":false}},"forbiddenMatches":[],"degraded":false,"hardPass":false}
+false !== true
+ℹ tests 8
+ℹ pass 4
+ℹ fail 4
+
+$ pnpm --filter @pi-ops/agent exec tsx --test src/__tests__/incident-brief.test.ts
+Before incident-brief changes:
+✖ reads a complete diagnosis through real HTTP after ingress, callback and SQLite reopen
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为/.
+ℹ tests 1
+ℹ pass 0
+ℹ fail 1
+
+$ pnpm --filter @pi-ops/pi-runtime exec tsx --test src/benchmark/message-chain.test.ts
+After evaluator changes:
+✔ accepts a recorded free-text summary with complete actions in the diagnosis
+✔ rejects missing mitigation even when the message still recommends stopping loss
+✔ checks rendered recovery bounds, detail access, and repair or explicit uncertainty
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+
+$ pnpm --filter @pi-ops/agent exec tsx --test src/__tests__/incident-brief.test.ts
+After incident-brief changes:
+✔ reads a complete diagnosis through real HTTP after ingress, callback and SQLite reopen
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0

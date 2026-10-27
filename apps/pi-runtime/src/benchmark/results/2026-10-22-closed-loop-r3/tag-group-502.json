@@ -1,0 +1,180 @@
+{
+  "criteria": {
+    "caseId": "tag-group-502",
+    "knownFacts": [
+      "pageTagGroup:106 抛出 RuntimeException",
+      "业务响应 code=502，不等价于 HTTP 网关 502",
+      "底层 cause、持续性和影响未知"
+    ],
+    "allowedRootCauses": [
+      "pageTagGroup:106 抛出 RuntimeException，底层 cause 未知，需要读对应版本源码与完整日志",
+      "业务响应 code=502 是应用返回码，不等价于 HTTP 网关 502"
+    ],
+    "allowedRepairs": [
+      "读对应版本第 106 行及底层 cause，按实际分支修复",
+      "人工受控复现同一请求以取得完整 cause"
+    ],
+    "stopLoss": "若接口仍在报错且影响业务，经批准降级、切流或回滚最近变更；影响未确认时先补证。完全没有任何止损或“若仍影响则…”的条件处理不算通过。",
+    "verification": "同一请求返回正常，并检查关键业务请求。",
+    "forbidden": [
+      "断言库存不足、SQL、依赖或网关故障",
+      "伪造源码逻辑或配置值",
+      "未经批准改代码、发布或回滚",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "改代码、发布、回滚、切流需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [],
+    "missingSources": "标签服务源码不在本仓库（模块在其他工程），没有可读的第 106 行；只能提出读源码/补日志，不能声称已看过代码。"
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "c4a2b9b0992ea4e830376ac5c4d34c90805ec57591e16572e6216b14dbea4b76",
+    "apps/agent/src/incident-brief.ts": "630ed2108194ff925eee1472e752c13f18da968d5cdb4d096ab4a4651eb1636e",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "3eaa6af84ea0e51687cd3834b8c65a57415882e6e68197feef056aa2142d8e3b",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "tag-group-502",
+    "description": "pageTagGroup:106 抛出 RuntimeException；业务响应 code=502，不等价于 HTTP 网关 502；底层 cause、持续性和影响未知",
+    "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts tagGroup。仅重建已观测字段，不把旧诊断作为输入；无原始完整日志。",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [],
+    "tokens": 0,
+    "latencyMs": 783,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 669,
+      "tokens": 0,
+      "reportHardPass": false,
+      "messageHardPass": false,
+      "degraded": true,
+      "report": {
+        "hypothesis": "诊断不完整。data-asset-service 收到 business.error，模型未能完成结构化分析，根因未知。",
+        "recommendation": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+        "confidence": 0.2,
+        "supportingEvidenceIds": [],
+        "contradictingEvidenceIds": [],
+        "diagnosis": {
+          "observations": [],
+          "candidateCauses": [
+            {
+              "cause": "诊断不完整。data-asset-service 收到 business.error，模型未能完成结构化分析，根因未知。",
+              "supportingEvidenceIds": [],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "诊断不完整，修复尚未确定。"
+          ],
+          "actions": [
+            {
+              "purpose": "evidence_collection",
+              "target": "data-asset-service",
+              "preconditions": [
+                "确认故障时间和对应部署版本。"
+              ],
+              "operation": "诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。",
+              "expectedResult": "取得修复依据。",
+              "risk": "只读核对，不直接修改服务。",
+              "requiresApproval": false,
+              "evidenceIds": []
+            }
+          ],
+          "summary": {
+            "scene": "data-asset-service，业务接口请求",
+            "whatHappened": "应用接口出现未处理异常，影响范围待确认。",
+            "severity": {
+              "level": "一般",
+              "reason": "尚无服务不可用或关键业务受影响的确认事实。"
+            },
+            "recovery": [
+              "止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。",
+              "修复：按异常位置核对对应版本源码，修复尚未确定。",
+              "验证：检查健康响应和关键业务请求，确认错误与超时恢复。"
+            ]
+          }
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        {
+          "role": "application_business",
+          "status": "ok",
+          "stopReason": "error",
+          "inputTokens": 0,
+          "outputTokens": 0
+        }
+      ]
+    },
+    "incidentId": "inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc",
+    "message": {
+      "content": "### 诊断更新\n场景：data-asset-service，业务接口请求\n发生了什么：应用接口出现未处理异常，影响范围待确认。诊断不完整，先按建议止损并获取详情。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\n2. 修复：按异常位置核对对应版本源码，修复尚未确定。\n3. 验证：检查健康响应和关键业务请求，确认错误与超时恢复。\n编号：inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc\n详情获取方式：GET http://127.0.0.1:59622/v1/ops/incidents/inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 862
+    },
+    "detail": {
+      "bytes": 6253,
+      "evidenceCount": 2,
+      "markdown": "# 告警详情 inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc\n场景：data-asset-service，业务接口请求\n发生了什么：应用接口出现未处理异常，影响范围待确认。诊断不完整，先按建议止损并获取详情。\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\n2. 修复：按异常位置核对对应版本源码，修复尚未确定。\n3. 验证：检查健康响应和关键业务请求，确认错误与超时恢复。\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 容器名、环境名或源码具备注入能力，均不能证明本次是演练、误报或预期行为。没有明确证据前，按真实故障处理。业务影响未确认时先核实，不写“未影响”。\n3. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n4. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-886368ea-6869-42be-898a-9f53fa65a35a\",\n    \"sessionId\": \"isess-886368ea-6869-42be-898a-9f53fa65a35a\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"诊断不完整。data-asset-service 收到 business.error，模型未能完成结构化分析，根因未知。\",\n    \"supportingEvidenceIds\": [],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.2,\n    \"recommendation\": \"诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"data-asset-service，业务接口请求\",\n        \"whatHappened\": \"应用接口出现未处理异常，影响范围待确认。\",\n        \"severity\": {\n          \"level\": \"一般\",\n          \"reason\": \"尚无服务不可用或关键业务受影响的确认事实。\"\n        },\n        \"recovery\": [\n          \"止损：若仍影响业务，先确认备用容量与回滚路径，经批准切走故障流量或暂停触发任务。\",\n          \"修复：按异常位置核对对应版本源码，修复尚未确定。\",\n          \"验证：检查健康响应和关键业务请求，确认错误与超时恢复。\"\n        ]\n      },\n      \"observations\": [],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"诊断不完整。data-asset-service 收到 business.error，模型未能完成结构化分析，根因未知。\",\n          \"supportingEvidenceIds\": [],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"诊断不完整，修复尚未确定。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"data-asset-service\",\n          \"preconditions\": [\n            \"确认故障时间和对应部署版本。\"\n          ],\n          \"operation\": \"诊断不完整，以下仅供人工核对，修复尚未确定。人工核对当前故障窗口日志、异常栈和对应版本源码，确认影响后再决定处置；验证同一健康目标及关键业务请求。\",\n          \"expectedResult\": \"取得修复依据。\",\n          \"risk\": \"只读核对，不直接修改服务。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": []\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T02:22:02.206Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"evd-tag-group-502-docker.logs\",\n    \"incidentId\": \"inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-20T01:21:43.948Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"2026-10-20T01:21:43.948Z java.lang.RuntimeException\",\n        \"Caused by: java.lang.RuntimeException\",\n        \"at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)\",\n        \"2026-10-20T01:21:43.949Z POST /api/v1/tag/admin/tag-group/page deptId=5,current=1,size=10 code=502 msg=系统异常 success=false elapsed=25ms\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 4,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 4\n            }\n          ]\n        }\n      }\n    }\n  },\n  {\n    \"id\": \"evd-tag-group-502-jfr.signal\",\n    \"incidentId\": \"inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-20T01:21:43.948Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"evt-tag-group-502\",\n      \"eventType\": \"business.error\",\n      \"semanticType\": \"business.error\",\n      \"observedAt\": \"2026-10-20T01:21:43.948Z\",\n      \"message\": \"Unhandled request exception\",\n      \"attributes\": {\n        \"exceptionClass\": \"java.lang.RuntimeException\",\n        \"operation\": \"POST /api/v1/tag/admin/tag-group/page\",\n        \"exceptionStackTrace\": \"at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)\"\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-fb72c0bf-7711-4f8a-82cc-4d56868d71fc\",\n    \"service\": \"data-asset-service\",\n    \"nodeId\": \"test-svc-02\",\n    \"type\": \"business.error\",\n    \"severity\": \"error\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-20T01:21:43.948Z\",\n    \"lastSeen\": \"2026-10-20T01:21:43.948Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-886368ea-6869-42be-898a-9f53fa65a35a\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T02:22:02.201Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "failed",
+      "error": "处理 agent 连续输出不可用：model output is not valid JSON",
+      "turns": 3,
+      "calls": [],
+      "texts": [
+        {
+          "turn": 1,
+          "text": ""
+        },
+        {
+          "turn": 2,
+          "text": ""
+        },
+        {
+          "turn": 3,
+          "text": ""
+        }
+      ],
+      "inputTokens": 0,
+      "outputTokens": 0
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [],
+      "notes": "",
+      "inputTokens": 0,
+      "outputTokens": 0
+    },
+    "verdict": "open",
+    "failedItems": [
+      "root_cause",
+      "stop_loss",
+      "repair",
+      "verification",
+      "no_forbidden",
+      "approvals"
+    ],
+    "gaps": [
+      "handler_no_answer"
+    ],
+    "primaryGap": "handler_no_answer"
+  }
+}

@@ -41,6 +41,25 @@ export function buildReport(
   };
 }
 
+export function renderMessageReport(results: CaseResult[]): string {
+  const degraded = (result: CaseResult) => result.evaluation?.degraded === true || result.messageEvaluation?.degraded === true;
+  const lines = [results.every((item) => item.mode === 'fake') ? '# fake 值班消息渲染' : '# 真实模型值班消息评测', '', '以下消息来自 agent 渲染器的 fake fetch 捕获，没有外发。自动检查分别核对短消息合同与详情动作。止损、修复或明确未知、验证检查读取 diagnosis.actions 和修复未知说明，不要求消息带动作标签。自动通过不等于能推进恢复。fake 结果不代表真实模型诊断质量。', '',
+    '| 案例 | 模型 | thinking | 输入 token | 输出 token | 耗时 ms | 消息字节 | 自动结果 |',
+    '|---|---|---|---:|---:|---:|---:|---|'];
+  for (const result of results) {
+    const pass = result.messageEvaluation?.hardPass === true && result.evaluation?.hardPass === true;
+    lines.push(`| ${result.caseId} | ${result.provider}/${result.model} | ${result.thinking.effective ?? 'unknown'} | ${result.tokenUsage?.input ?? 'unknown'} | ${result.tokenUsage?.output ?? 'unknown'} | ${result.latencyMs} | ${result.message?.bytes ?? '未生成'} | ${pass ? '通过' : degraded(result) ? '未通过（诊断降级）' : '未通过'} |`);
+  }
+  for (const result of results) {
+    lines.push('', `## ${result.caseId}`, '', `状态为 ${result.status}。${degraded(result) ? '诊断降级。' : ''}${result.error ?? ''}`, '');
+    const checks = { ...result.evaluation?.checks, ...result.messageEvaluation?.checks };
+    if (!Object.keys(checks).length) lines.push('未形成报告，自动内容检查未执行，不能计为通过。');
+    for (const [name, value] of Object.entries(checks)) lines.push(`- ${name} ${value.status}。${value.detail ?? ''}`);
+    lines.push('', '### 最终消息原文', '', '```text', result.message?.content ?? '未生成最终消息。没有结构化报告，未调用企微渲染器。', '```');
+  }
+  return lines.join('\n') + '\n';
+}
+
 function checkMark(ok: boolean | undefined | null): string {
   if (ok === undefined || ok === null) return '—';
   return ok ? '✅' : '❌';

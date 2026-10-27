@@ -1,0 +1,21 @@
+{
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "stopReason": "error",
+  "errorMessage": "429: {\"code\":\"AccountQuotaExceeded\",\"message\":\"You have exceeded the 5-hour usage quota. It will reset at 2026-10-22 13:57:43 +0800 CST. We recommend upgrading your plan for more quota, or waiting for the reset. Request id: 021792635866659e78c31fe06d4434dfef0260629e4a08bd8398b\",\"param\":\"\",\"type\":\"TooManyRequests\"}",
+  "usage": {
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "totalTokens": 0,
+    "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+    }
+  },
+  "content": []
+}

@@ -44,6 +44,50 @@ function withConfigEnv(values: Record<string, string | undefined>, run: () => vo
   }
 }
 
+describe('Node Agent health rule bindings', () => {
+  it('preserves explicit bindings and leaves legacy targets unbound', () => {
+    withConfigEnv({
+      PI_OPS_HEALTH_TARGETS: JSON.stringify([
+        { name: 'legacy', url: 'http://localhost/legacy' },
+        { name: 'bound', url: 'http://localhost/bound', ruleId: 'api-health', ruleVersion: 3 },
+        { name: 'id-only', url: 'http://localhost/id-only', ruleId: 'api-health' },
+        { name: 'version-only', url: 'http://localhost/version-only', ruleVersion: 1 },
+      ]),
+    }, () => {
+      assert.deepEqual(loadConfig().healthTargets, [
+        { name: 'legacy', url: 'http://localhost/legacy', method: 'GET' },
+        { name: 'bound', url: 'http://localhost/bound', method: 'GET', ruleId: 'api-health', ruleVersion: 3 },
+        { name: 'id-only', url: 'http://localhost/id-only', method: 'GET', ruleId: 'api-health' },
+        { name: 'version-only', url: 'http://localhost/version-only', method: 'GET', ruleVersion: 1 },
+      ]);
+    });
+  });
+
+  it('rejects empty or non-string rule IDs', () => {
+    for (const ruleId of ['', '   ', '\t\n', null, 1, false, {}, []]) {
+      withConfigEnv({
+        PI_OPS_HEALTH_TARGETS: JSON.stringify([
+          { name: 'api', url: 'http://localhost/health', ruleId },
+        ]),
+      }, () => {
+        assert.throws(() => loadConfig(), /ruleId must be a non-empty string/);
+      });
+    }
+  });
+
+  it('rejects rule versions that are not positive safe integers', () => {
+    for (const ruleVersion of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '1', null, true, {}, []]) {
+      withConfigEnv({
+        PI_OPS_HEALTH_TARGETS: JSON.stringify([
+          { name: 'api', url: 'http://localhost/health', ruleVersion },
+        ]),
+      }, () => {
+        assert.throws(() => loadConfig(), /ruleVersion must be a positive integer/);
+      });
+    }
+  });
+});
+
 describe('Node Agent loadConfig numeric validation', () => {
   it('accepts strict bounded numeric values', () => {
     withConfigEnv({

@@ -1,6 +1,7 @@
 import type { AgentConfig } from './config.js';
 import { isRetryableNotificationError, type Notifier } from './notifier.js';
 import type { EventStore } from './store.js';
+import { createPollingWorker } from './polling-worker.js';
 
 export interface NotificationJobWorker {
   start(): void;
@@ -12,21 +13,21 @@ export interface NotificationJobWorker {
 export function createNotificationJobWorker(
   config: AgentConfig,
   store: EventStore,
-  notifier: Notifier,
+  notifier?: Notifier,
 ): NotificationJobWorker {
   const pollIntervalMs = config.notificationJobPollIntervalMs ?? 1000;
   const maxAttempts = config.notificationJobMaxAttempts ?? 5;
   const batchSize = config.notificationJobBatchSize ?? 20;
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let activeRun: Promise<void> | undefined;
-  let wakeQueued = false;
 
   async function drain(): Promise<void> {
+    store.reconcileNotifications();
+    if (!notifier) return;
     const jobs = store.listPendingNotificationJobs(batchSize);
     for (const job of jobs) {
       if (!store.markNotificationJobRunning(job.id)) continue;
       try {
-        await notifier.send(job.payload);
+        const payload = store.getNotificationJob(job.id)?.payload ?? job.payload;
+        await notifier.send({ ...payload, summarySeverity: store.getSummarySeverity(job.incidentId) });
         if (!store.markNotificationJobDelivered(job.id)) {
           console.warn('[agent] notification transition skipped because state changed');
         }
@@ -43,44 +44,10 @@ export function createNotificationJobWorker(
     }
   }
 
-  async function runOnce(): Promise<void> {
-    if (activeRun) return activeRun;
-    activeRun = drain().finally(() => {
-      activeRun = undefined;
-    });
-    return activeRun;
-  }
-
-  function wake(): void {
-    if (wakeQueued) return;
-    wakeQueued = true;
-    queueMicrotask(() => {
-      wakeQueued = false;
-      void runOnce().catch((err) => {
-        console.error(`[agent] notification worker error: ${err instanceof Error ? err.message : String(err)}`);
-      });
-    });
-  }
-
-  return {
-    start(): void {
-      const reset = store.resetRunningNotificationJobs();
-      if (reset > 0) {
-        console.log(`[agent] reset ${reset} interrupted notification job(s)`);
-      }
-      wake();
-      timer = setInterval(wake, pollIntervalMs);
-    },
-
-    async stop(): Promise<void> {
-      if (timer) {
-        clearInterval(timer);
-        timer = undefined;
-      }
-      if (activeRun) await activeRun;
-    },
-
-    wake,
-    runOnce,
-  };
+  return createPollingWorker({
+    name: 'notification',
+    intervalMs: pollIntervalMs,
+    reset: () => notifier ? store.resetRunningNotificationJobs() : 0,
+    drain,
+  });
 }

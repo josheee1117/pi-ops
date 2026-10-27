@@ -184,6 +184,7 @@ function formatZodError(error: ZodError): string {
 // ── Re-exports ───────────────────────────────────────────────────────────────
 
 export { z, ZodError };
+export { DEFAULT_SUMMARY_SEVERITY, deterministicSummary, summarySeverityForType } from './incident-summary.js';
 
 export {
   INVESTIGATION_RUNTIME_SCHEMA_VERSION,
@@ -196,6 +197,10 @@ export {
   MAX_EVIDENCE_ENRICHMENT_ROUNDS,
   MAX_EVIDENCE_TYPES_PER_SPECIALIST,
   MAX_EVIDENCE_REQUESTS_PER_INVESTIGATION,
+  investigationActionSchema,
+  investigationSummarySchema,
+  investigationDiagnosisSchema,
+  diagnosisEvidenceIds,
   specialistFindingSchema,
   investigationReportInputSchema,
   investigationRuntimeMetadataSchema,
@@ -216,6 +221,9 @@ export type {
   SpecialistRole,
   HistoricalKnowledgeStatus,
   SpecialistFinding,
+  InvestigationAction,
+  InvestigationSummary,
+  InvestigationDiagnosis,
   InvestigationReportInput as RuntimeInvestigationReportInput,
   InvestigationRuntimeMetadata,
   InvestigationSubmitRequest,

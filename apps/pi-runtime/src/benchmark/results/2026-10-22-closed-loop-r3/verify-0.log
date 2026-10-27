@@ -1,0 +1,162 @@
+$ pnpm --filter @pi-ops/pi-runtime test
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+> @pi-ops/pi-runtime@0.1.0 test /Users/hejiayuan/code_me/pi-ops/apps/pi-runtime
+> tsx --test "src/**/*.test.ts"
+
+✔ defaults to a bounded 300s investigation while preserving configurable short deadlines (2.26975ms)
+[pi-runtime] specialist database failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist database failed: specialist cited evidence that does not belong to the current incident
+▶ bounded multi-agent coordinator
+  ✔ fake model delay completes locally and stops when aborted (10.021792ms)
+  ✔ does not select database for jvm.gc_pressure (0.135833ms)
+  ✔ uses an injected RuntimeModel (2.933083ms)
+  ✔ requests readable Chinese findings and synthesis without changing protocol keys (0.986333ms)
+  ✔ isolates a specialist failure (0.300875ms)
+  ✔ fails only the specialist with invalid structured output (0.700666ms)
+  ✔ rejects specialist evidence that does not belong to the current incident (1.167375ms)
+  ✔ fails the runtime task when every specialist fails (0.110334ms)
+  ✔ does not let historical knowledge replace current Evidence (0.303458ms)
+  ✔ keeps runtime context bounded (35.82725ms)
+  ✔ fails explicitly when current Evidence alone exceeds the context limit (13.221ms)
+  ✔ returns execution timeout even when the model ignores AbortSignal (115.058083ms)
+  ✔ does not apply a late model result after timeout (132.544333ms)
+  ✔ reruns only specialists that requested newly collected evidence (21.587125ms)
+  ✔ keeps the investigation when enrichment is unavailable (0.701ms)
+  ✔ collects host.memory once and reruns both requesting specialists (0.707542ms)
+  ✔ rejects malformed and foreign evidence responses (0.348709ms)
+  ✔ performs zero external model calls in the fake CI runtime (0.553375ms)
+  ✔ reruns specialists with collected Evidence.data (1.313208ms)
+  ✔ changes the specialist finding when only Evidence.data changes (0.503584ms)
+  ✔ merges duplicate model-safe Evidence ids idempotently (0.303708ms)
+  ✔ fails closed when the same Evidence id has conflicting diagnostic content (0.195334ms)
+  ✔ fails closed when newly collected Evidence exceeds the context bound (0.467041ms)
+  ✔ does not let stale same-kind Evidence suppress a fresh request (0.59825ms)
+  ✔ strips duplicate historical fields so factsOnly is facts only (0.293875ms)
+  ✔ exposes no shell or remediation capability (0.072166ms)
+✔ bounded multi-agent coordinator (350.489125ms)
+[pi-runtime] investigation rreq-delivering status=completed provider=fake model=deterministic error= specialists=database,application_business calls=0 tokens=16/48
+▶ callback crash recovery
+  ✔ retries DELIVERING work after restart without rerunning the model (349.159917ms)
+✔ callback crash recovery (349.7155ms)
+[pi-runtime] specialist application_business failed: specialist cited evidence that does not belong to the current incident
+[pi-runtime] specialist application_business failed: specialist cited evidence that does not belong to the current incident
+[pi-runtime] specialist application_business failed: specialist cited evidence that does not belong to the current incident
+[pi-runtime] specialist application_business failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。invalid specialist output: diagnosis is required
+▶ diagnosis and action contract
+  ✔ requires repair for a located source defect and an explicit unknown recovery step otherwise (2.915792ms)
+  ✔ preserves an evidenced conditional repair and full diagnosis without phone limits or policy prefixes (3.633083ms)
+  ✔ keeps insufficient evidence honest with a concrete distinguishing check and branches (0.428792ms)
+  ✔ rejects foreign references in specialist and coordinator actions or diagnostic conclusions (41.347875ms)
+  ✔ degrades missing diagnosis at both live boundaries while accepting legacy report input (6.435209ms)
+  ✔ rejects incomplete, unbounded, or unsupported actions through the protocol schema (5.118542ms)
+✔ diagnosis and action contract (60.999ms)
+[pi-runtime] specialist jvm failed: specialist cited evidence that does not belong to the current incident
+▶ JVM specialist JFR evidence
+  ✔ cites jfr.signal from the current incident (2.354417ms)
+  ✔ rejects a foreign JFR Evidence id (0.839667ms)
+✔ JVM specialist JFR evidence (4.661333ms)
+[pi-runtime] specialist application_business failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist application_business failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output truncated
+[pi-runtime] specialist application_business failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。invalid specialist output: role: Required; hypotheses: Required; supportingEvidenceIds: Required; contradictingEvidenceIds: Required; missingEvidence: Required; confidence: Required; summary: Required; status: Required
+✔ retries truncated output once with shorter instructions and preserves a valid diagnosis (6.994917ms)
+✔ still generates a labeled legacy report when both attempts return truncated JSON (0.597417ms)
+✔ keeps a labeled legacy report when coordinator truncates twice after a valid specialist (1.282875ms)
+✔ does not use length-terminated JSON as a complete diagnosis even if it parses (0.248125ms)
+✔ retries schema-oversized output then degrades, while valid output needs no retry (2.561542ms)
+▶ optional Pi SDK smoke
+  ﹣ loads createAgentSession with noTools=all (0.358125ms) # SKIP
+✔ optional Pi SDK smoke (1.284208ms)
+[pi-runtime] specialist jvm failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist container_host failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist jvm failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist container_host failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+[pi-runtime] specialist container_host failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。model output is not valid JSON
+✔ constrains label-only inference and unconfirmed business impact in every specialist and summary prompt (4.780042ms)
+✔ fake and degraded coordinator reports have a human summary and an evidenced mitigation for unavailable services (120.447625ms)
+✔ requires summary in fresh coordinator output and supplies the rule level instead of the model level (4.636667ms)
+▶ pi-runtime HTTP
+  ✔ returns health and readiness (226.775333ms)
+[pi-runtime] investigation rreq-1 status=completed provider=fake model=deterministic error= specialists=database,application_business calls=0 tokens=16/48
+  ✔ starts one runtime task for a duplicate submit (57.37375ms)
+[pi-runtime] investigation rreq-1 status=completed provider=fake model=deterministic error= specialists=database,application_business calls=0 tokens=16/48
+  ✔ retries a failed callback until delivery succeeds (64.768ms)
+[pi-runtime] investigation rreq-restart status=completed provider=fake model=deterministic error= specialists=database,application_business calls=0 tokens=16/48
+  ✔ resumes pending delivery after restart without rerunning the model (22.518792ms)
+[pi-runtime] investigation rreq-dup status=completed provider=fake model=deterministic error= specialists=database,application_business calls=0 tokens=16/48
+  ✔ does not rerun execution on duplicate submit after restart (7.616834ms)
+[pi-runtime] investigation rreq-meta status=completed provider=fake model=deterministic error= specialists=database,application_business calls=0 tokens=16/48
+  ✔ persists runtime metadata on the task (4.521916ms)
+  ✔ rejects an arbitrary callback destination (10.7405ms)
+✔ pi-runtime HTTP (400.839833ms)
+▶ Pi Runtime thinking level resolution
+  ✔ H. production default stays off when the environment is unset (0.430667ms)
+  ✔ accepts exactly the SDK ThinkingLevel union (0.588334ms)
+  ✔ rejects an unsupported level instead of silently falling back (0.1755ms)
+  ✔ treats an empty value as unset so CI can pass an empty variable (0.03575ms)
+✔ Pi Runtime thinking level resolution (1.76125ms)
+[pi-runtime] specialist jvm failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。invalid specialist output: missingEvidence.0: Expected 'docker.inspect' | 'docker.logs' | 'docker.stats' | 'host.memory' | 'host.load' | 'http.probe', received object
+[pi-runtime] specialist container_host failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。invalid specialist output: missingEvidence.0: Expected 'docker.inspect' | 'docker.logs' | 'docker.stats' | 'host.memory' | 'host.load' | 'http.probe', received object
+[pi-runtime] specialist jvm failed: model exploded
+[pi-runtime] specialist container_host failed: model exploded
+▶ JVM diagnosis benchmark fixtures
+  ✔ A. every golden case context passes the real protocol schema (2.843ms)
+  ✔ every mustCiteKind exists in that case evidence (0.171917ms)
+  ✔ only jvm.cpu_pressure is benchmarked in v1 (0.280084ms)
+  ✔ B. the fake runtime completes every golden case deterministically (11.311417ms)
+✔ JVM diagnosis benchmark fixtures (15.802459ms)
+▶ benchmark evaluator
+  ✔ C. detects a fabricated Evidence ID (0.211459ms)
+  ✔ D. detects Evidence from a foreign Incident (0.060541ms)
+  ✔ fails when the case requires jfr.signal but nothing is cited (0.045959ms)
+  ✔ F. fails when the conflict case loses its contradicting Evidence (0.169625ms)
+  ✔ E. fails a forbidden jfr.signal missingEvidence request (0.724084ms)
+  ✔ G. fails a Runtime Evidence request outside the allowlist (0.264375ms)
+  ✔ accepts a request that stays inside RUNTIME_ALLOWED_EVIDENCE_TYPES (0.187041ms)
+  ✔ fails an unsupported-certainty report on the insufficient case (0.087708ms)
+  ✔ E. fails a request for a forbidden action capability (0.095042ms)
+  ✔ E2. prose that merely recommends a remediation is advisory, not a hard fail (0.13425ms)
+  ✔ marks non-applicable dimensions NOT_MACHINE_SCORABLE instead of guessing (0.109625ms)
+✔ benchmark evaluator (2.511833ms)
+▶ benchmark runner and report
+  ✔ selects cases by id and rejects unknown ones (1.089375ms)
+  ✔ H. thinking level defaults to off and unsupported values are rejected (0.240916ms)
+  ✔ I. reports clamped / unsupported thinking instead of a silent fallback (0.125625ms)
+  ✔ does not fabricate token usage for a provider that omits it (0.125625ms)
+  ✔ J. output never contains a credential value (3.04475ms)
+  ✔ renders a report with per-case rows and the manual review section (0.807916ms)
+  ✔ captures per-invocation model output so a failed specialist stays explainable (1.299292ms)
+  ✔ records a failed case without throwing (0.977167ms)
+✔ benchmark runner and report (7.933292ms)
+[agent] POST /v1/ops/investigations → 200 (13ms)
+[agent] POST /v1/investigation-results → 200 (103ms)
+[agent] GET /v1/ops/incidents/inc-a7b2d845-521d-408d-94ea-8638dfff7966/brief → 200 (41ms)
+[agent] GET /v1/ops/incidents/inc-a7b2d845-521d-408d-94ea-8638dfff7966/brief → 200 (7ms)
+✔ turns a stored diagnosis into a message the handler can fetch, and rejects foreign URLs and sources (488.442166ms)
+[agent] POST /v1/ops/investigations → 200 (1ms)
+[agent] POST /v1/investigation-results → 200 (2ms)
+[agent] GET /v1/ops/incidents/inc-f9100e72-5588-44e5-9f8f-10096b45c342/brief → 200 (0ms)
+✔ fails the case as not closed when the handler cannot produce an answer (40.910166ms)
+✔ derives closed, partial and open from judge items and case critical items (0.543709ms)
+✔ rejudges a saved case with the new rule without touching the source directory (6.119792ms)
+✔ retries once when the judge returns non-JSON (0.163667ms)
+✔ marks a diagnosis with the degraded prefix as not complete and not hard-passing (77.486917ms)
+[pi-runtime] specialist application_business failed: 诊断不完整：模型两次输出未通过 JSON 或结构校验。invalid specialist output: role: Required; hypotheses: Required; supportingEvidenceIds: Required; contradictingEvidenceIds: Required; missingEvidence: Required; confidence: Required; summary: Required; status: Required
+✔ keeps the actual 197-line fault and accurate clipping metadata through the agent projection (57.045583ms)
+✔ returns only requested recorded supplements through the same agent projection (0.878334ms)
+✔ accepts a recorded free-text summary with complete actions in the diagnosis (3.06525ms)
+✔ rejects missing mitigation even when the message still recommends stopping loss (0.430417ms)
+✔ checks rendered recovery bounds, detail access, and repair or explicit uncertainty (2.193292ms)
+✔ runs the real notifier with fake fetch and checks action completeness, bytes, and all diagnosis citations (173.84225ms)
+✔ renders all seven cases in fake mode with bounded summaries and detail links without network calls (19.957875ms)
+✔ records billed usage from a rejected specialist and stops before a run above the reserve (5.238958ms)
+ℹ tests 93
+ℹ suites 10
+ℹ pass 92
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 1990.6615
+
+exit_code=0

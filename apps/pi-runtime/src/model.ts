@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   type RuntimeInvestigationContext,
@@ -17,6 +18,9 @@ export interface RuntimeModelResponse {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  stopReason?: string;
+  thinkingChars?: number;
+  requestParameters?: { maxTokens?: number; thinking?: unknown; reasoningEffort?: unknown };
 }
 
 export interface RuntimeModel {
@@ -57,7 +61,7 @@ export function createFakeRuntimeModel(options: FakeRuntimeModelOptions = {}): R
     async invoke(request) {
       model.invocations += 1;
       if (request.signal?.aborted) throw new Error('aborted');
-      if (options.delayMs) await delay(options.delayMs, request.signal);
+      if (options.delayMs) await delay(options.delayMs, undefined, { signal: request.signal });
       const role = specialistRoleFrom(request.system);
       if (role) {
         const scripted = options.specialistText?.[role];
@@ -169,18 +173,4 @@ function specialistRoleFrom(system: string): SpecialistRole | undefined {
     return role;
   }
   return undefined;
-}
-
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error('aborted'));
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer);
-      reject(new Error('aborted'));
-    }, { once: true });
-  });
 }

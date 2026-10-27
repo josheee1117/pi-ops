@@ -11,37 +11,11 @@ import { createIncidentEngine, type IncidentEngine } from '../incident.js';
 import { createEvidenceOrchestrator, type FetchLike } from '../evidence-orchestrator.js';
 import { createEvidenceJobWorker, type EvidenceJobWorker } from '../evidence-worker.js';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_CONFIG: Omit<AgentConfig, 'sqlitePath'> = {
-  port: 0,
-  ingestToken: 'test-token',
-  operatorToken: 'operator-token',
-  investigationRetryMaxAttempts: 3,
-  investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-  nodeId: 'test-node',
-  maxBodySize: 1024 * 1024,
-  aggregationWindowMs: 5 * 60 * 1000,
-  nodeAgents: new Map(),
-  evidenceTimeoutMs: 5000,
-  evidenceMaxResponseBytes: 1024 * 1024,
-  evidenceLogsMaxLines: 200,
-  evidenceJobPollIntervalMs: 1000,
-  evidenceJobMaxAttempts: 3,
-  evidenceJobBatchSize: 10,
-  eventReplayBatchSize: 100,
-  reasoningJobPollIntervalMs: 1000,
-  reasoningJobMaxAttempts: 3,
-  reasoningTimeoutMs: 5000,
-  reasoningJobBatchSize: 10,
-  reasonerType: 'fake',
-  reasoningMaxContextBytes: 32_768,
-  reasoningMaxEvidenceItems: 12,
-  reasoningMaxLogLines: 50,
-};
+const DEFAULT_CONFIG = makeAgentConfig({ ingestToken: 'test-token', nodeId: 'test-node', evidenceTimeoutMs: 5000 });
 
 function makeTestConfig(sqlitePath: string): AgentConfig {
   return { ...DEFAULT_CONFIG, sqlitePath };

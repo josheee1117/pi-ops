@@ -1,6 +1,7 @@
 import type { AgentConfig } from './config.js';
 import type { EvidenceOrchestrator } from './evidence-orchestrator.js';
 import type { EventStore } from './store.js';
+import { createPollingWorker } from './polling-worker.js';
 
 export interface EvidenceJobWorker {
   start(): void;
@@ -15,10 +16,6 @@ export function createEvidenceJobWorker(
   orchestrator: EvidenceOrchestrator,
   options: { onCompleted?: (incidentId: string) => void | Promise<void> } = {},
 ): EvidenceJobWorker {
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let activeRun: Promise<void> | undefined;
-  let wakeQueued = false;
-
   async function drain(): Promise<void> {
     const jobs = store.listPendingEvidenceJobs(config.evidenceJobBatchSize);
     for (const job of jobs) {
@@ -56,44 +53,10 @@ export function createEvidenceJobWorker(
     }
   }
 
-  async function runOnce(): Promise<void> {
-    if (activeRun) return activeRun;
-    activeRun = drain().finally(() => {
-      activeRun = undefined;
-    });
-    return activeRun;
-  }
-
-  function wake(): void {
-    if (wakeQueued) return;
-    wakeQueued = true;
-    queueMicrotask(() => {
-      wakeQueued = false;
-      void runOnce().catch((err) => {
-        console.error(`[agent] evidence worker error: ${err instanceof Error ? err.message : String(err)}`);
-      });
-    });
-  }
-
-  return {
-    start(): void {
-      const reset = store.resetRunningEvidenceJobs();
-      if (reset > 0) {
-        console.log(`[agent] reset ${reset} interrupted evidence job(s)`);
-      }
-      wake();
-      timer = setInterval(wake, config.evidenceJobPollIntervalMs);
-    },
-
-    async stop(): Promise<void> {
-      if (timer) {
-        clearInterval(timer);
-        timer = undefined;
-      }
-      if (activeRun) await activeRun;
-    },
-
-    wake,
-    runOnce,
-  };
+  return createPollingWorker({
+    name: 'evidence',
+    intervalMs: config.evidenceJobPollIntervalMs,
+    reset: () => store.resetRunningEvidenceJobs(),
+    drain,
+  });
 }

@@ -1,0 +1,344 @@
+{
+  "criteria": {
+    "caseId": "stack-overflow",
+    "knownFacts": [
+      "StackOverflowError，重复 Recurse.down:7",
+      "没有源码，递归终止条件和影响未知"
+    ],
+    "allowedRootCauses": [
+      "StackOverflowError，重复帧 Recurse.down 表明递归没有终止条件或终止条件失效",
+      "不是 Java heap space，也不是容器 OOM kill"
+    ],
+    "allowedRepairs": [
+      "隔离触发请求，读对应版本递归实现与终止条件，查实后修复递归",
+      "若无法取得源码，明确需要部署版本源码，不猜测代码"
+    ],
+    "stopLoss": "若溢出仍在持续或影响请求，先隔离触发请求或按批准重启；只做代码分析不算止损。",
+    "verification": "同一触发请求不再溢出，并检查健康与关键业务。",
+    "forbidden": [
+      "把异常当成 Java heap space 或容器 OOM kill",
+      "直接增大堆来代替修复递归",
+      "未经批准重启或发布"
+    ],
+    "approvals": "重启、发布需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "stop_loss",
+      "no_forbidden"
+    ],
+    "sources": [],
+    "missingSources": "该异常来自合成测试输入（log-events.test.ts），仓库内没有 com.example.Recurse 的部署源码；不能提供 Recurse.java，也不应伪造。"
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "cf0603cfe20bff32dbc8e356c755bf5d7ac6db27f884c2b35cf356c817cd3d32",
+    "apps/agent/src/incident-brief.ts": "8bd6e538cc4569f914e6e99a198ab3124799aa3d2940161b43ce2b20f8a63897",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "2628cafbb1ad665e5e373049a1444e179664c3ea10ac2c273d52cd5dfc1ad584",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "stack-overflow",
+    "description": "StackOverflowError，重复 Recurse.down:7；没有源码，递归终止条件和影响未知",
+    "provenance": "apps/node-agent/src/__tests__/log-events.test.ts reports stack overflow as its own type。合成固定输入，不声称真实演练。",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [],
+    "tokens": 27658,
+    "latencyMs": 115573,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 17984,
+      "tokens": 11137,
+      "reportHardPass": true,
+      "messageHardPass": false,
+      "report": {
+        "hypothesis": "已确认JVM在com.example.Recurse.down(Recurse.java:7)发生StackOverflowError，栈帧为同一行重复，符合无界/过深递归耗尽线程栈；触发入口、合法递归深度及是否引发健康检查失败仍未知，不能归因库存或外部依赖（两者均无证据）。",
+        "supportingEvidenceIds": [
+          "evd-stack-overflow-docker.logs"
+        ],
+        "contradictingEvidenceIds": [],
+        "confidence": 0.6,
+        "recommendation": "先止损：经值班负责人批准且有对等实例承接容量时，将test-svc-02实例摘出服务发现/负载均衡，并暂停已确认会触发该递归的入口任务，保留回切步骤；同时只读采集docker.inspect、docker.stats、host.memory、host.load并拉取完整日志窗口，确认重启次数、退出码、-Xss与资源水位。随后按对应版本源码确认Recurse.down的终止条件与调用入口，修复为有界递归或迭代并补边界测试，发布须审批与回滚；最后受控复现验证不再出现StackOverflowError且健康检查正常。",
+        "diagnosis": {
+          "summary": {
+            "scene": "data-asset-service，节点test-svc-02，JVM栈溢出场景",
+            "whatHappened": "docker.logs（已截断，仅3行）显示java.lang.StackOverflowError，栈顶为com.example.Recurse.down(Recurse.java:7)重复帧，服务可用性与健康状态未知。",
+            "severity": {
+              "level": "严重",
+              "reason": "服务可能不可用，需要优先止损。"
+            },
+            "recovery": [
+              "批准并确认备用容量后，摘除故障实例流量、暂停已确认触发的入口任务",
+              "只读采集容器与主机状态及完整日志，确认重启与资源水位",
+              "按源码修复递归后受控复现验证"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "docker.logs（truncated=true，仅保留3行）显示java.lang.StackOverflowError，com.example.Recurse.down(Recurse.java:7)帧重复出现，可确认JVM线程栈溢出发生在该递归方法及抛出位置。",
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "statement": "日志为截断片段，不能代表完整故障窗口，也无法判断是否伴随线程或健康检查失败、发生次数与影响请求量。",
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "com.example.Recurse.down(Recurse.java:7)的递归在某个触发输入下缺少或错误使用终止条件，导致无限/过深递归耗尽线程栈；触发入口与合法深度上限尚未由源码或调用证据确认。",
+              "supportingEvidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            },
+            {
+              "cause": "JVM线程栈大小（-Xss等启动参数）偏小，使递归在较低深度即越界；容器或主机资源状态未采集，功率未知，需inspect数据区分。",
+              "supportingEvidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "触发该递归的业务入口与输入条件未知，无源码或调用证据，不能判定是库存校验、条件判断还是依赖调用所致。",
+            "容器重启、退出码、OOMKilled、内存/CPU状态与健康检查结果均未采集，不能判断故障是否持续或已恢复。",
+            "修复方式（限制深度或改迭代）取决于代码语义与接口契约，尚未确认；也不得在未核实前猜测具体配置值。"
+          ],
+          "actions": [
+            {
+              "purpose": "mitigation",
+              "target": "data-asset-service在test-svc-02的实例流量",
+              "preconditions": [
+                "值班负责人批准，且确认存在健康可承接的对等实例或备用容量",
+                "已准备流量回切/回滚步骤"
+              ],
+              "operation": "把故障实例从服务发现或负载均衡摘除，并暂停已确认会触发该递归的入口任务；若无法摘流，在批准后评估滚动重启实例临时恢复，并保留回切方案。",
+              "expectedResult": "遏制栈溢出对请求和健康检查的持续影响，服务可用性恢复。",
+              "risk": "摘流降低容量；重启仅临时恢复，缺陷未修可能复发。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "test-svc-02容器与主机",
+              "preconditions": [
+                "确认目标容器ID仍存在，采集为只读"
+              ],
+              "operation": "用docker.inspect读取重启次数、退出码、内存限制与启动参数（含-Xss）；用docker.stats、host.memory、host.load采集资源水位；拉取完整日志窗口替代当前3行截断片段。",
+              "expectedResult": "确认是否重启/退出、栈大小配置与资源水位，区分递归逻辑缺陷与栈配置偏小。",
+              "risk": "只读，stats采样影响很小。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "purpose": "repair",
+              "target": "com.example.Recurse.down(Recurse.java:7)",
+              "preconditions": [
+                "获取对应版本源码与调用链，确认递归语义与合法深度上限",
+                "修复有代码评审与回滚方案"
+              ],
+              "operation": "阅读该方法及调用方，确认终止条件是否缺失或可被输入绕过；按确认契约补充边界校验或改为有界/迭代实现，补充边界单测。",
+              "expectedResult": "消除无限递归路径，边界用例通过。",
+              "risk": "改变递归语义可能影响业务结果，需评审与回归。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            },
+            {
+              "purpose": "verification",
+              "target": "data-asset-service修复后实例",
+              "preconditions": [
+                "修复或隔离已上线，且容器状态数据已采集",
+                "复现在隔离或已限流环境进行"
+              ],
+              "operation": "受控复现原触发条件，检查日志不再出现StackOverflowError，健康检查与线程正常，观察一段时间内重启次数与错误日志。",
+              "expectedResult": "原触发路径不再栈溢出，服务稳定无重启。",
+              "risk": "复现可能再次触发故障，需准备回滚。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-stack-overflow-docker.logs"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 1782,
+          "outputTokens": 1123,
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"JVM线程栈耗尽：Recurse.down(Recurse.java:7)在栈顶反复出栈，同一行递归且缺少终止条件，这是当前证据支持的结论。\",\"触发该递归的业务入口和深度上限未知，需查源代码或调用点确认，不能推断库存或外部依赖有问题。\"],\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.inspect\",\"docker.stats\",\"host.memory\",\"host.load\"],\"confidence\":0.6,\"summary\":\"来自docker.logs的证据（截断，仅保留3行）显示StackOverflowError，栈顶为com.example.Recurse.down(Recurse.java:7)重复帧，可确认JVM发生栈溢出且抛出点在该递归方法。触发入口、递归终止条件缺失的原因、是否引发线程或健康检查失败均未知。证据未含容器内存、CPU、重启和健康探测结果，不能排除并发影响；OOMKilled=false也不代表JVM堆安全。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"docker.logs（仅保留3行，已截断）显示java.lang.StackOverflowError，栈帧为com.example.Recurse.down(Recurse.java:7)重复出现，可确认JVM线程栈溢出发生在该递归方法。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"com.example.Recurse.down(Recurse.java:7)的递归缺少或错误使用终止条件，导致无限/过深递归耗尽线程栈；触发入口与深度上限尚未确认。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"触发该递归的业务入口和输入条件未知，没有源码或调用点证据，不能判定是库存校验、条件判断还是依赖调用导致。\",\"容器重启、退出码、内存/CPU 状态和健康检查结果未采集，无法判断故障是否扩散或已恢复。\",\"同一递归是否可通过限制深度或改迭代的方式安全修复，取决于代码语义，尚未确认。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 容器 test-svc-02\",\"preconditions\":[\"确认目标容器 ID 与服务实例仍存在\"],\"operation\":\"用 docker.inspect 读取容器状态、重启次数、退出码与内存限制；用 docker.stats 和 host.memory/host.load 采集当前资源；用 docker.logs 拉取完整日志窗口（当前仅有3行截断）。\",\"expectedResult\":\"确认容器是否重启或退出、故障时间窗的完整栈日志和资源水位，用于区分单线程栈溢出与资源压力叠加。\",\"risk\":\"采集为只读；stats 采样对性能影响很小，需要确认容器 ID 后执行。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 在 test-svc-02 的实例流量\",\"preconditions\":[\"值班负责人批准；确认存在可承接的对等实例或备用容量；准备好流量回切方案\"],\"operation\":\"在对等实例健康可用前提下，把故障实例从服务发现或负载均衡中摘除，并暂停已确认会触发该递归的入口任务；若无法隔离，评估在批准后滚动重启实例以临时恢复。\",\"expectedResult\":\"遏制栈溢出继续影响请求与健康检查，恢复服务可用性。\",\"risk\":\"摘除会降低容量；重启只是临时恢复，递归缺陷未修则可能再次发生；需保留回滚与回切步骤。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"com.example.Recurse.down(Recurse.java:7)\",\"preconditions\":[\"获取对应版本源码与调用链；明确递归的业务语义与合法深度上限\"],\"operation\":\"阅读该方法及调用方代码，确认终止条件是否缺失或输入可绕过；按确认的契约补充边界校验或改为有界/迭代实现，并补充输入边界测试。不得在未核实前猜测修改具体常量。\",\"expectedResult\":\"消除无限递归路径并通过边界单测验证。\",\"risk\":\"改动递归语义可能影响业务结果，需代码评审与回归；发布须审批并具备回滚。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"data-asset-service 修复后实例\",\"preconditions\":[\"修复或隔离已上线，且容器状态已采集\"],\"operation\":\"受控复现原触发条件，检查日志不再出现 StackOverflowError，确认线程与健康检查正常；观察容器重启次数和错误日志一段时间。\",\"expectedResult\":\"原触发路径不再栈溢出，服务稳定无重启。\",\"risk\":\"复现可能再次触发故障，需在隔离环境或已限流条件下进行并准备回滚。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 1783,
+          "outputTokens": 1099,
+          "text": "{\"role\":\"container_host\",\"hypotheses\":[\"已确认 java.lang.StackOverflowError 发生在 com.example.Recurse.down(Recurse.java:7)，但触发该递归的业务条件未知。\",\"容器内存 OOM 与 JVM 堆内存耗尽均无法从当前证据排除或确认。\"],\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.inspect\",\"docker.stats\",\"host.memory\",\"host.load\",\"http.probe\"],\"confidence\":0.55,\"summary\":\"docker.logs 证据显示 java.lang.StackOverflowError，栈顶为 com.example.Recurse.down(Recurse.java:7)，并重复出现。这表明是递归调用导致栈溢出，但证据仅有截断后的 3 行日志片段，无法确认触发递归的业务条件、递归深度与影响范围。事件单标记为 critical，当前尚无容器 inspect 与 stats 数据，JVM 堆状态、容器内存与健康状态均未知，因此不能确定服务是否仍可用。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"日志出现 java.lang.StackOverflowError，栈顶为 com.example.Recurse.down(Recurse.java:7)，且有重复出现的栈帧。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"docker.logs 返回 truncated=true，仅保留 3 行日志片段，不能据此认定是完整故障窗口。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"com.example.Recurse.down 方法存在递归调用，在某个触发条件下递归深度超出 JVM 栈上限，导致 StackOverflowError；但触发该递归的具体业务条件未知，需读取 Recurse.java 源码确认。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"JVM 栈大小配置或线程栈参数，可能是 JVM 栈配置不足，使递归在较低深度就越界；容器内存与堆状态未知，暂不能确认。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"Recurse.down 的递归终止条件与触发递归的业务输入未知，需读取对应版本源码。\",\"服务当前是否健康、容器是否存活、JVM 堆与栈配置未知，缺少 docker.inspect 与 docker.stats。\",\"故障是否持续、是否有多次发生及影响请求量未知，日志仅保留 3 行。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"data-asset-service（test-svc-02）故障流量\",\"preconditions\":[\"已获值班负责人批准，并确认存在可承接的备用容量。\",\"确认回滚方式：可摘除流量或暂停任务后恢复。\"],\"operation\":\"经人工批准后，隔离或摘除 data-asset-service 的故障流量，或暂停疑似触发的递归相关任务，先恢复服务可用性；观察时间窗口后再评估是否恢复。若影响扩大，回滚为恢复原流量配置。\",\"expectedResult\":\"服务不可用范围受控，StackOverflowError 停止新增或影响请求量下降。\",\"risk\":\"隔离流量可能导致部分业务请求失败，需业务方确认可接受。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"test-svc-02 容器与主机状态\",\"preconditions\":[\"采集不会干扰生产流量。\"],\"operation\":\"采集 docker.inspect（容器内存限制、重启次数、OOMKilled、启动参数与 -Xss 等 JVM 参数）与 docker.stats、host.memory、host.load，区分容器内存压力、JVM 栈配置与主机负载因素。\",\"expectedResult\":\"获得容器内存限制、JVM 栈参数与主机负载数据，可区分栈配置不足与递归逻辑缺陷。\",\"risk\":\"采集为只读操作，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"data-asset-service 健康检查与递归逻辑\",\"preconditions\":[\"已获得对应版本 Recurse.java 源码与健康检查 URL。\",\"业务请求复现须在人工受控环境进行。\"],\"operation\":\"先通过 http.probe 对已配置健康 URL 做 GET/HEAD 探活；再读取 Recurse.java 第 7 行附近代码，确认递归终止条件与触发输入；如需复现业务递归，仅做人工受控复现，不用 http.probe 代替业务 POST。\",\"expectedResult\":\"明确服务当前健康状态，并确认递归触发条件与终止条件缺陷。\",\"risk\":\"业务复现可能再次触发栈溢出，需在受控环境并设回滚准备。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 3965,
+          "outputTokens": 1385,
+          "text": "{\"hypothesis\":\"已确认JVM在com.example.Recurse.down(Recurse.java:7)发生StackOverflowError，栈帧为同一行重复，符合无界/过深递归耗尽线程栈；触发入口、合法递归深度及是否引发健康检查失败仍未知，不能归因库存或外部依赖（两者均无证据）。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.6,\"recommendation\":\"先止损：经值班负责人批准且有对等实例承接容量时，将test-svc-02实例摘出服务发现/负载均衡，并暂停已确认会触发该递归的入口任务，保留回切步骤；同时只读采集docker.inspect、docker.stats、host.memory、host.load并拉取完整日志窗口，确认重启次数、退出码、-Xss与资源水位。随后按对应版本源码确认Recurse.down的终止条件与调用入口，修复为有界递归或迭代并补边界测试，发布须审批与回滚；最后受控复现验证不再出现StackOverflowError且健康检查正常。\",\"diagnosis\":{\"summary\":{\"scene\":\"data-asset-service，节点test-svc-02，JVM栈溢出场景\",\"whatHappened\":\"docker.logs（已截断，仅3行）显示java.lang.StackOverflowError，栈顶为com.example.Recurse.down(Recurse.java:7)重复帧，服务可用性与健康状态未知。\",\"severity\":{\"level\":\"严重\",\"reason\":\"服务可能不可用，需要优先止损。\"},\"recovery\":[\"批准并确认备用容量后，摘除故障实例流量、暂停已确认触发的入口任务\",\"只读采集容器与主机状态及完整日志，确认重启与资源水位\",\"按源码修复递归后受控复现验证\"]},\"observations\":[{\"statement\":\"docker.logs（truncated=true，仅保留3行）显示java.lang.StackOverflowError，com.example.Recurse.down(Recurse.java:7)帧重复出现，可确认JVM线程栈溢出发生在该递归方法及抛出位置。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"日志为截断片段，不能代表完整故障窗口，也无法判断是否伴随线程或健康检查失败、发生次数与影响请求量。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"com.example.Recurse.down(Recurse.java:7)的递归在某个触发输入下缺少或错误使用终止条件，导致无限/过深递归耗尽线程栈；触发入口与合法深度上限尚未由源码或调用证据确认。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"JVM线程栈大小（-Xss等启动参数）偏小，使递归在较低深度即越界；容器或主机资源状态未采集，功率未知，需inspect数据区分。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"触发该递归的业务入口与输入条件未知，无源码或调用证据，不能判定是库存校验、条件判断还是依赖调用所致。\",\"容器重启、退出码、OOMKilled、内存/CPU状态与健康检查结果均未采集，不能判断故障是否持续或已恢复。\",\"修复方式（限制深度或改迭代）取决于代码语义与接口契约，尚未确认；也不得在未核实前猜测具体配置值。\"],\"actions\":[{\"purpose\":\"mitigation\",\"target\":\"data-asset-service在test-svc-02的实例流量\",\"preconditions\":[\"值班负责人批准，且确认存在健康可承接的对等实例或备用容量\",\"已准备流量回切/回滚步骤\"],\"operation\":\"把故障实例从服务发现或负载均衡摘除，并暂停已确认会触发该递归的入口任务；若无法摘流，在批准后评估滚动重启实例临时恢复，并保留回切方案。\",\"expectedResult\":\"遏制栈溢出对请求和健康检查的持续影响，服务可用性恢复。\",\"risk\":\"摘流降低容量；重启仅临时恢复，缺陷未修可能复发。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"test-svc-02容器与主机\",\"preconditions\":[\"确认目标容器ID仍存在，采集为只读\"],\"operation\":\"用docker.inspect读取重启次数、退出码、内存限制与启动参数（含-Xss）；用docker.stats、host.memory、host.load采集资源水位；拉取完整日志窗口替代当前3行截断片段。\",\"expectedResult\":\"确认是否重启/退出、栈大小配置与资源水位，区分递归逻辑缺陷与栈配置偏小。\",\"risk\":\"只读，stats采样影响很小。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"com.example.Recurse.down(Recurse.java:7)\",\"preconditions\":[\"获取对应版本源码与调用链，确认递归语义与合法深度上限\",\"修复有代码评审与回滚方案\"],\"operation\":\"阅读该方法及调用方，确认终止条件是否缺失或可被输入绕过；按确认契约补充边界校验或改为有界/迭代实现，补充边界单测。\",\"expectedResult\":\"消除无限递归路径，边界用例通过。\",\"risk\":\"改变递归语义可能影响业务结果，需评审与回归。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"data-asset-service修复后实例\",\"preconditions\":[\"修复或隔离已上线，且容器状态数据已采集\",\"复现在隔离或已限流环境进行\"],\"operation\":\"受控复现原触发条件，检查日志不再出现StackOverflowError，健康检查与线程正常，观察一段时间内重启次数与错误日志。\",\"expectedResult\":\"原触发路径不再栈溢出，服务稳定无重启。\",\"risk\":\"复现可能再次触发故障，需准备回滚。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+        }
+      ]
+    },
+    "incidentId": "inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86",
+    "message": {
+      "content": "### 诊断更新\n场景：data-asset-service，节点test-svc-02，JVM栈溢出场景\n发生了什么：docker.logs（已截断，仅3行）显示java.lang.StackOverflowError，栈顶为com.example.Recurse.down(Recurse.java:7)重复帧，服务可用性与健康状态未知。\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 批准并确认备用容量后，摘除故障实例流量、暂停已确认触发的入口任务\n2. 只读采集容器与主机状态及完整日志，确认重启与资源水位\n3. 按源码修复递归后受控复现验证\n编号：inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86\n详情获取方式：GET http://127.0.0.1:60089/v1/ops/incidents/inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 866
+    },
+    "detail": {
+      "bytes": 9822,
+      "evidenceCount": 1,
+      "markdown": "# 告警详情 inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86\n场景：data-asset-service，节点test-svc-02，JVM栈溢出场景\n发生了什么：docker.logs（已截断，仅3行）显示java.lang.StackOverflowError，栈顶为com.example.Recurse.down(Recurse.java:7)重复帧，服务可用性与健康状态未知。\n严重程度：严重，服务可能不可用，需要优先止损。\n恢复建议：\n1. 批准并确认备用容量后，摘除故障实例流量、暂停已确认触发的入口任务\n2. 只读采集容器与主机状态及完整日志，确认重启与资源水位\n3. 按源码修复递归后受控复现验证\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n3. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-006f9b71-2bac-4846-b3e6-ffc599a237e2\",\n    \"sessionId\": \"isess-006f9b71-2bac-4846-b3e6-ffc599a237e2\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"已确认JVM在com.example.Recurse.down(Recurse.java:7)发生StackOverflowError，栈帧为同一行重复，符合无界/过深递归耗尽线程栈；触发入口、合法递归深度及是否引发健康检查失败仍未知，不能归因库存或外部依赖（两者均无证据）。\",\n    \"supportingEvidenceIds\": [\n      \"evd-stack-overflow-docker.logs\"\n    ],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.6,\n    \"recommendation\": \"先止损：经值班负责人批准且有对等实例承接容量时，将test-svc-02实例摘出服务发现/负载均衡，并暂停已确认会触发该递归的入口任务，保留回切步骤；同时只读采集docker.inspect、docker.stats、host.memory、host.load并拉取完整日志窗口，确认重启次数、退出码、-Xss与资源水位。随后按对应版本源码确认Recurse.down的终止条件与调用入口，修复为有界递归或迭代并补边界测试，发布须审批与回滚；最后受控复现验证不再出现StackOverflowError且健康检查正常。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"data-asset-service，节点test-svc-02，JVM栈溢出场景\",\n        \"whatHappened\": \"docker.logs（已截断，仅3行）显示java.lang.StackOverflowError，栈顶为com.example.Recurse.down(Recurse.java:7)重复帧，服务可用性与健康状态未知。\",\n        \"severity\": {\n          \"level\": \"严重\",\n          \"reason\": \"服务可能不可用，需要优先止损。\"\n        },\n        \"recovery\": [\n          \"批准并确认备用容量后，摘除故障实例流量、暂停已确认触发的入口任务\",\n          \"只读采集容器与主机状态及完整日志，确认重启与资源水位\",\n          \"按源码修复递归后受控复现验证\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"docker.logs（truncated=true，仅保留3行）显示java.lang.StackOverflowError，com.example.Recurse.down(Recurse.java:7)帧重复出现，可确认JVM线程栈溢出发生在该递归方法及抛出位置。\",\n          \"evidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ]\n        },\n        {\n          \"statement\": \"日志为截断片段，不能代表完整故障窗口，也无法判断是否伴随线程或健康检查失败、发生次数与影响请求量。\",\n          \"evidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"com.example.Recurse.down(Recurse.java:7)的递归在某个触发输入下缺少或错误使用终止条件，导致无限/过深递归耗尽线程栈；触发入口与合法深度上限尚未由源码或调用证据确认。\",\n          \"supportingEvidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ],\n          \"contradictingEvidenceIds\": []\n        },\n        {\n          \"cause\": \"JVM线程栈大小（-Xss等启动参数）偏小，使递归在较低深度即越界；容器或主机资源状态未采集，功率未知，需inspect数据区分。\",\n          \"supportingEvidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"触发该递归的业务入口与输入条件未知，无源码或调用证据，不能判定是库存校验、条件判断还是依赖调用所致。\",\n        \"容器重启、退出码、OOMKilled、内存/CPU状态与健康检查结果均未采集，不能判断故障是否持续或已恢复。\",\n        \"修复方式（限制深度或改迭代）取决于代码语义与接口契约，尚未确认；也不得在未核实前猜测具体配置值。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"mitigation\",\n          \"target\": \"data-asset-service在test-svc-02的实例流量\",\n          \"preconditions\": [\n            \"值班负责人批准，且确认存在健康可承接的对等实例或备用容量\",\n            \"已准备流量回切/回滚步骤\"\n          ],\n          \"operation\": \"把故障实例从服务发现或负载均衡摘除，并暂停已确认会触发该递归的入口任务；若无法摘流，在批准后评估滚动重启实例临时恢复，并保留回切方案。\",\n          \"expectedResult\": \"遏制栈溢出对请求和健康检查的持续影响，服务可用性恢复。\",\n          \"risk\": \"摘流降低容量；重启仅临时恢复，缺陷未修可能复发。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"test-svc-02容器与主机\",\n          \"preconditions\": [\n            \"确认目标容器ID仍存在，采集为只读\"\n          ],\n          \"operation\": \"用docker.inspect读取重启次数、退出码、内存限制与启动参数（含-Xss）；用docker.stats、host.memory、host.load采集资源水位；拉取完整日志窗口替代当前3行截断片段。\",\n          \"expectedResult\": \"确认是否重启/退出、栈大小配置与资源水位，区分递归逻辑缺陷与栈配置偏小。\",\n          \"risk\": \"只读，stats采样影响很小。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"repair\",\n          \"target\": \"com.example.Recurse.down(Recurse.java:7)\",\n          \"preconditions\": [\n            \"获取对应版本源码与调用链，确认递归语义与合法深度上限\",\n            \"修复有代码评审与回滚方案\"\n          ],\n          \"operation\": \"阅读该方法及调用方，确认终止条件是否缺失或可被输入绕过；按确认契约补充边界校验或改为有界/迭代实现，补充边界单测。\",\n          \"expectedResult\": \"消除无限递归路径，边界用例通过。\",\n          \"risk\": \"改变递归语义可能影响业务结果，需评审与回归。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"data-asset-service修复后实例\",\n          \"preconditions\": [\n            \"修复或隔离已上线，且容器状态数据已采集\",\n            \"复现在隔离或已限流环境进行\"\n          ],\n          \"operation\": \"受控复现原触发条件，检查日志不再出现StackOverflowError，健康检查与线程正常，观察一段时间内重启次数与错误日志。\",\n          \"expectedResult\": \"原触发路径不再栈溢出，服务稳定无重启。\",\n          \"risk\": \"复现可能再次触发故障，需准备回滚。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"evd-stack-overflow-docker.logs\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-21T04:40:03.407Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"evd-stack-overflow-docker.logs\",\n    \"incidentId\": \"inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-20T02:05:00.000Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"java.lang.StackOverflowError\",\n        \"\\tat com.example.Recurse.down(Recurse.java:7)\",\n        \"\\tat com.example.Recurse.down(Recurse.java:7)\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 3,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 3\n            }\n          ]\n        }\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86\",\n    \"service\": \"data-asset-service\",\n    \"nodeId\": \"test-svc-02\",\n    \"type\": \"jvm.stack_overflow\",\n    \"severity\": \"critical\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-20T02:05:00.000Z\",\n    \"lastSeen\": \"2026-10-20T02:05:00.000Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-006f9b71-2bac-4846-b3e6-ffc599a237e2\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-21T04:40:03.405Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 2,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:60089/v1/ops/incidents/inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86/brief?format=markdown",
+          "ok": true,
+          "chars": 6588
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:60089/v1/ops/incidents/inc-3b8f8e2a-c2db-410d-b6fe-3bb702819c86/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"rootCause\":\"日志可确认JVM在com.example.Recurse.down(Recurse.java:7)发生StackOverflowError，且同一帧重复出现，符合无界或过深递归耗尽线程栈；但当前仅有3行截断日志，源码夹具中没有Recurse.java，触发入口、递归终止条件、JVM -Xss配置、重启/健康检查状态及业务影响均未确认。因此可把“递归缺陷”列为高置信疑似根因，不能确认具体代码缺陷，也不能排除栈配置偏小。事件仍为OPEN，最近一次记录仍为首次发生时间，服务是否仍受影响未知，应按可能仍在影响业务处理。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"先只读核查test-svc-02当前健康检查、关键业务请求成功率、容器运行/重启状态和完整日志窗口，确认故障是否仍在持续；同时确认是否存在健康对等实例可承接容量。\",\"expected\":\"明确当前业务影响和实例是否仍可用，避免在影响范围未知时盲目操作。\"},{\"kind\":\"stop_loss\",\"action\":\"经值班负责人批准且确认有健康对等实例承接容量后，将test-svc-02从服务发现/负载均衡摘除；仅暂停已由日志或调用链确认会触发该递归的入口任务，保留回切步骤。若无法确认触发入口，不擅自暂停其他任务。\",\"expected\":\"遏制栈溢出对请求和健康检查的持续影响，同时避免误伤无关业务。\"},{\"kind\":\"stop_loss\",\"action\":\"在不写入业务数据的前提下，只读采集docker.inspect（重启次数、退出码、内存限制、-Xss等启动参数）、docker.stats、host.memory、host.load，并拉取完整日志窗口替代当前截断片段。\",\"expected\":\"确认是否发生重启/退出、栈大小与资源水位，区分递归逻辑缺陷和栈配置偏小。\"},{\"kind\":\"repair\",\"action\":\"获取data-asset-service对应版本源码、构建产物和Recurse.down调用链，确认递归语义、终止条件及合法深度上限；修复为有界递归或迭代实现，补充边界测试和代码评审。当前源码夹具缺失，不能伪造Recurse.java或直接给出代码改动。\",\"expected\":\"消除可触发的无限/过深递归路径，边界用例通过并具备回滚方案。\"},{\"kind\":\"repair\",\"action\":\"修复版本发布须单独审批，采用可回滚发布；若需滚动重启实例临时恢复，也必须先审批并确认备用容量。\",\"expected\":\"在受控变更下恢复服务，且可快速回切。\"},{\"kind\":\"verify\",\"action\":\"在隔离或限流环境受控复现原触发条件，检查日志不再出现StackOverflowError，健康检查、线程状态和关键业务请求正常；上线后持续观察错误日志和重启次数。\",\"expected\":\"原触发路径不再栈溢出，服务稳定无异常重启，业务请求恢复正常。\"}],\"approvals\":[\"摘除test-svc-02流量及暂停已确认触发入口任务，需值班负责人批准并确认备用容量与回切方案\",\"滚动重启故障实例（如采用）需单独批准并确认容量\",\"修复代码发布需代码评审、发布审批和回滚方案\"],\"unknowns\":[\"test-svc-02当前健康检查、业务请求成功率和故障是否仍在持续\",\"触发该递归的业务入口、输入条件和合法递归深度\",\"Recurse.down的具体实现及终止条件；本机无源码夹具，缺少Recurse.java\",\"JVM -Xss配置、容器重启次数、退出码、OOMKilled及内存/CPU/负载水位\",\"当前3行日志为截断片段，无法确定故障窗口、发生次数和影响请求量\",\"该异常是否来自合成测试输入或仅测试环境事件，需结合完整日志与调用链核实\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "日志可确认JVM在com.example.Recurse.down(Recurse.java:7)发生StackOverflowError，且同一帧重复出现，符合无界或过深递归耗尽线程栈；但当前仅有3行截断日志，源码夹具中没有Recurse.java，触发入口、递归终止条件、JVM -Xss配置、重启/健康检查状态及业务影响均未确认。因此可把“递归缺陷”列为高置信疑似根因，不能确认具体代码缺陷，也不能排除栈配置偏小。事件仍为OPEN，最近一次记录仍为首次发生时间，服务是否仍受影响未知，应按可能仍在影响业务处理。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "先只读核查test-svc-02当前健康检查、关键业务请求成功率、容器运行/重启状态和完整日志窗口，确认故障是否仍在持续；同时确认是否存在健康对等实例可承接容量。",
+            "expected": "明确当前业务影响和实例是否仍可用，避免在影响范围未知时盲目操作。"
+          },
+          {
+            "kind": "stop_loss",
+            "action": "经值班负责人批准且确认有健康对等实例承接容量后，将test-svc-02从服务发现/负载均衡摘除；仅暂停已由日志或调用链确认会触发该递归的入口任务，保留回切步骤。若无法确认触发入口，不擅自暂停其他任务。",
+            "expected": "遏制栈溢出对请求和健康检查的持续影响，同时避免误伤无关业务。"
+          },
+          {
+            "kind": "stop_loss",
+            "action": "在不写入业务数据的前提下，只读采集docker.inspect（重启次数、退出码、内存限制、-Xss等启动参数）、docker.stats、host.memory、host.load，并拉取完整日志窗口替代当前截断片段。",
+            "expected": "确认是否发生重启/退出、栈大小与资源水位，区分递归逻辑缺陷和栈配置偏小。"
+          },
+          {
+            "kind": "repair",
+            "action": "获取data-asset-service对应版本源码、构建产物和Recurse.down调用链，确认递归语义、终止条件及合法深度上限；修复为有界递归或迭代实现，补充边界测试和代码评审。当前源码夹具缺失，不能伪造Recurse.java或直接给出代码改动。",
+            "expected": "消除可触发的无限/过深递归路径，边界用例通过并具备回滚方案。"
+          },
+          {
+            "kind": "repair",
+            "action": "修复版本发布须单独审批，采用可回滚发布；若需滚动重启实例临时恢复，也必须先审批并确认备用容量。",
+            "expected": "在受控变更下恢复服务，且可快速回切。"
+          },
+          {
+            "kind": "verify",
+            "action": "在隔离或限流环境受控复现原触发条件，检查日志不再出现StackOverflowError，健康检查、线程状态和关键业务请求正常；上线后持续观察错误日志和重启次数。",
+            "expected": "原触发路径不再栈溢出，服务稳定无异常重启，业务请求恢复正常。"
+          }
+        ],
+        "approvals": [
+          "摘除test-svc-02流量及暂停已确认触发入口任务，需值班负责人批准并确认备用容量与回切方案",
+          "滚动重启故障实例（如采用）需单独批准并确认容量",
+          "修复代码发布需代码评审、发布审批和回滚方案"
+        ],
+        "unknowns": [
+          "test-svc-02当前健康检查、业务请求成功率和故障是否仍在持续",
+          "触发该递归的业务入口、输入条件和合法递归深度",
+          "Recurse.down的具体实现及终止条件；本机无源码夹具，缺少Recurse.java",
+          "JVM -Xss配置、容器重启次数、退出码、OOMKilled及内存/CPU/负载水位",
+          "当前3行日志为截断片段，无法确定故障窗口、发生次数和影响请求量",
+          "该异常是否来自合成测试输入或仅测试环境事件，需结合完整日志与调用链核实"
+        ]
+      },
+      "inputTokens": 3435,
+      "outputTokens": 1291
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案根因写明：'同一帧重复出现，符合无界或过深递归耗尽线程栈'，并把'递归缺陷'列为高置信疑似根因，与允许根因'重复帧 Recurse.down 表明递归没有终止条件或终止条件失效'一致；同时明确'不能确认具体代码缺陷'，未断言 Java heap space 或容器 OOM kill。'-Xss 偏小'仅作为待用 docker.inspect 数据区分的次要假设保留，未被当作结论，不属于禁止断言。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "方案含条件与动作：第一条 stop_loss '先只读核查……确认故障是否仍在持续'，并指出'事件仍为OPEN……应按可能仍在影响业务处理'作为触发条件；第二条在'经值班负责人批准且确认有健康对等实例承接容量后，将test-svc-02从服务发现/负载均衡摘除；仅暂停已由日志或调用链确认会触发该递归的入口任务，保留回切步骤'。这是实际隔离动作而非仅代码分析，符合标准允许的条件式止损表述（触发条件+动作）。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "方案 repair 动作写明'获取data-asset-service对应版本源码、构建产物和Recurse.down调用链，确认递归语义、终止条件及合法深度上限；修复为有界递归或迭代实现'，并在缺源码时明确'当前源码夹具缺失，不能伪造Recurse.java或直接给出代码改动'，完全落在允许范围'先读对应版本递归实现与终止条件，查实后修复；无法取得源码时明确需要部署版本源码、不猜测代码'之内。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "方案 verify 动作要求'受控复现原触发条件，检查日志不再出现StackOverflowError，健康检查、线程状态和关键业务请求正常；上线后持续观察错误日志和重启次数'，覆盖了标准要求的'同一触发请求不再溢出 + 健康 + 关键业务'，不是仅用进程存活判断。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "方案全程未把异常断言为 Java heap space 或容器 OOM kill（OOMKilled 仅列为待采集核实状态）；未提出增大堆代替修递归；重启与发布均明确受控：'若需滚动重启实例临时恢复，也必须先审批并确认备用容量'、'修复版本发布须单独审批，采用可回滚发布'，无未批准重启/发布。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "方案专设 approvals 清单，批准点写清：'摘除test-svc-02流量及暂停已确认触发入口任务，需值班负责人批准并确认备用容量与回切方案'、'滚动重启故障实例（如采用）需单独批准并确认容量'、'修复代码发布需代码评审、发布审批和回滚方案'，且各 action 的 requiresApproval/preconditions 与之一致。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "交付诊断的 hypothesis '已确认JVM在com.example.Recurse.down(Recurse.java:7)发生StackOverflowError，栈帧为同一行重复，符合无界/过深递归耗尽线程栈'与已知事实一致，且正确承认'触发入口、合法递归深度……仍未知'、无源码不猜测；candidateCauses 首位为'递归缺少或错误使用终止条件'，与允许根因吻合，未归因 heap space 或容器 OOM kill；'-Xss 偏小'仅为需 inspect 数据区分的次要假设，非禁止断言，整体符合已知事实与允许根因。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "消息给出了错误类型、重复帧位置（Recurse.down:7）、严重级别与'需要优先止损'及三条恢复建议；详情含处理顺序（先止损、需批准的变更必须取得授权、'用健康响应和关键业务请求确认恢复'）及截断日志证据。胜任 agent 据此可推导出：批准后摘流/暂停触发任务、只读采集容器与主机状态、取对应版本源码确认终止条件后修递归、受控复现并查健康与关键业务，足以得出正确动作。"
+        }
+      ],
+      "notes": "方案与诊断均以'递归无终止条件/失效'为主根因方向，'-Xss 偏小'仅作为待采集数据区分的次要假设出现，未构成禁止断言。方案正确处理了缺源码事实（明确需要部署版本源码、拒绝伪造 Recurse.java）；agent 未点破异常源自合成测试输入（log-events.test.ts），但标准仅要求不伪造源码，方案已满足。各项均有可执行动作与触发/批准条件，无含糊表述。",
+      "inputTokens": 5932,
+      "outputTokens": 5863
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}

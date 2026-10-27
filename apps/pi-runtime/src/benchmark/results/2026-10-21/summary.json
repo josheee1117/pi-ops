@@ -1,0 +1,1794 @@
+{
+  "configPath": "/Users/hejiayuan/code_me/pi-ops/artifacts/real-dataasset-lab/central/runtime-secrets.env",
+  "catalogPath": "/Users/hejiayuan/code_me/pi-ops/artifacts/real-dataasset-lab/central/pi-agent/models.json",
+  "provider": "ark",
+  "model": "deepseek-v4.1-flash",
+  "thinking": "off",
+  "modelLimits": {
+    "id": "deepseek-v4.1-flash",
+    "maxTokens": 8192,
+    "reasoning": true
+  },
+  "codeHashes": {
+    "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+    "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+    "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+    "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+    "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+    "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+  },
+  "estimatedTokens": 700000,
+  "observedTokens": 123166,
+  "results": [
+    {
+      "provenance": "artifacts/real-dataasset-lab/model-phase-notify/snapshots/final-agent.json sha256=0af69498b8a186da5b8b7c9254d4ecfb1d543338b8eb869b707efba40e062bb0",
+      "oracle": {
+        "expectedFacts": [
+          "原始日志 197 行，第 133 行有故障头",
+          "IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault"
+        ],
+        "allowedRepairs": [
+          "核实演练入口和源码后停止或隔离注入；验证同一接口及关键业务",
+          "没有源码时明确不能给出准确代码改法"
+        ],
+        "forbiddenAttributions": [
+          "把 RocketMQ 初始化栈当成本次请求根因",
+          "断言数据库、库存或外部依赖故障"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|确定|根因是|由于)RocketMQ(?:故障|异常|不可用)",
+          "(?:确认|根因是)库存不足"
+        ]
+      },
+      "caseId": "dataasset-197",
+      "description": "原始日志 197 行，第 133 行有故障头；IllegalStateException，LabFaultController.java:25，GET /auth/lab/server-fault",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "failed",
+      "error": "all specialists failed",
+      "latencyMs": 55175,
+      "tokenUsage": {
+        "input": 3239,
+        "output": 8192,
+        "total": 11431
+      },
+      "selectedSpecialists": [
+        "application_business"
+      ],
+      "specialistStatus": {
+        "application_business": "failed"
+      },
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "chars": 4846,
+          "inputChars": 9904,
+          "inputTokens": 3239,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\n  \"role\": \"application_business\",\n  \"hypotheses\": [\n    \"当前异常直接由 GET /auth/lab/server-fault 命中实验室故障注入端点并主动抛出 IllegalStateException 引起，异常文本和栈顶均指向 LabFaultController.serverFault 第25行；真实业务分配路径或外部依赖故障尚未被证据确认。\",\n    \"该故障注入端点可能被测试、探测或非预期流量访问，甚至在当前环境暴露或未隔离；调用方身份、访问控制与端点启用开关未知。\",\n    \"本次事件可能仅限该实验端点，其他真实业务接口是否受影响未知；事件计数为2，但当前证据仅见一个观测时间点，重复或重试关系未知。\"\n  ],\n  \"supportingEvidenceIds\": [\n    \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n    \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n  ],\n  \"contradictingEvidenceIds\": [],\n  \"missingEvidence\": [\n    \"docker.logs\",\n    \"docker.stats\",\n    \"host.memory\",\n    \"host.load\"\n  ],\n  \"confidence\": 0.83,\n  \"summary\": \"当前可确认的是应用在处理 GET /auth/lab/server-fault 时由 LabFaultController.serverFault 第25行抛出 IllegalStateException，容器日志同时出现“Real DataAsset lab fault injection”，表明这是实验室故障注入，而非已证实的库存校验、条件判断、结果映射或外部依赖故障。容器处于运行状态，不支持容器 OOM kill，但不能排除 JVM 堆 OutOfMemoryError，且缺少故障时资源指标与完整日志窗口。建议先确认该实验端点是否应暴露并限制非预期访问，再读取源码与打包配置确认启用条件，并在受控环境人工复现同请求；不能用健康检查探针替代业务请求。\",\n  \"status\": \"completed\",\n  \"hypothesis\": \"现有证据更支持实验室故障注入端点主动抛错，而不是已证实的业务数据或外部依赖故障；调用来源、端点暴露范围和其他业务接口影响仍未知。\",\n  \"recommendation\": \"优先人工确认 /auth/lab/server-fault 是否为测试端点及其在当前环境暴露的必要性；若确认无需暴露，在变更窗口内通过网关、安全策略或应用配置限制访问并保留回滚。随后读取 LabFaultController 第25行与打包配置，确认 lab-fault-fixture.jar 是否误入生产镜像，并在隔离环境受控复现同请求以验证异常一致性。同步补采完整容器日志与容器/主机资源指标，以判断是否存在并发资源压力；业务请求只能人工受控复现，不能用健康检查探针替代。所有限制访问、发布或重启操作需人工审批。\",\n  \"diagnosis\": {\n    \"observations\": [\n      {\n        \"statement\": \"请求 GET /auth/lab/server-fault 在 2026-10-14T03:40:12.880Z 触发 java.lang.IllegalStateException，事件消息为“Unhandled request exception”，栈顶位于 LabFaultController.serverFault 第25行。\",\n        \"evidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"\n        ]\n      },\n      {\n        \"statement\": \"容器日志在同一时刻记录 GlobalExceptionHandler 拦截该请求，异常文本为“Real DataAsset lab fault injection”，请求地址和异常类与 JFR 观测一致；日志投影为截断视图，仅保留部分行，不能视为完整故障窗口。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ]\n      },\n      {\n        \"statement\": \"容器处于 running 状态，启动时间为 2026-10-14T03:39:59.893Z，RestartCount 为0，OOMKilled 为 false；该信息仅不支持容器 OOM kill，不能排除 JVM 堆 OutOfMemoryError，也不能证明资源健康。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"\n        ]\n      },\n      {\n        \"statement\": \"容器配置显示 Memory 约1.5GiB、NanoCpus 为2e9，CpuQuota/CpuPeriod 为0、CpusetCpus 为空；缺少统计区间，不能据此判断 CPU 配额或故障期压力。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect\"\n        ]\n      },\n      {\n        \"statement\": \"当前 JFR 证据仅包含一个事件观测时间点，未提供调用方、来源地址或前后请求上下文。\",\n        \"evidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\"\n        ]\n      },\n      {\n        \"statement\": \"日志投影 originalLineCount 为197，retainedRanges 仅覆盖第36行及第133至151行；可见片段不足以确认故障前后是否有其他异常或调用方信息。\",\n        \"evidenceIds\": [\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ]\n      }\n    ],\n    \"candidateCauses\": [\n      {\n        \"cause\": \"实验室故障注入端点被调用并主动抛出 IllegalStateException，是当前异常的直接原因。\",\n        \"supportingEvidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"该实验端点被测试、探测或非预期流量访问，且可能在当前环境暴露或未隔离；具体调用方与访问控制状态未知。\",\n        \"supportingEvidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6\",\n          \"job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs\"\n        ],\n        \"contradictingEvidenceIds\": []\n      }\n    ],\n    \"uncertainties\": [\n      \"调用方身份、来源地址、是否为测试或探测流量未知。\",\n      \"该实验端点是否应在当前环境启用、是否存在鉴权或网关限制未知。\",\n      \"LabFaultController 第25行源码和 lab-fault-fixture.jar 的打包及启用配置未取得，无法确认触发条件或是否误入生产镜像。\",\n      \"其他业务接口是否正常、是否存在同一根因的其他错误未知。\",\n      \"完整日志窗口和访问日志缺失，无法确认事件前后是否有其他异常或重试。\",\n      \"缺少容器统计与主机内存/负载数据，无法评估故障时资源压力；现有证据也不能保证 JVM 堆健康。\",\n      \"事件计数为2，但当前证据仅见一个观测时间点，两次事件是否同源或重复未知。\",\n      \"无调用链或依赖调用证据，不能把库存校验、条件判断、结果映射或外部依赖故障列为较可能原因。\"\n    ],\n    \"actions\": [\n      {\n        \"purpose\": \"mitigation\",\n        \"target\": \"当前服务实例的 /auth/lab/server-fault 访问控制与暴露范围\",\n        \"preconditions\": [\n          \"已确认该端点属于测试或故障注入用途，或已获得安全负责人同意先隔离观察\",\n          \"具备网关、安全策略或应用配置变更窗口及回滚方案\",\n          \"明确变更不影响健康检查和其他业务接口\"\n        ],\n        \"operation\": \"人工评估后在网关、安全组或应用配置中限制 /auth/lab/server-fault 的外部访问，优先仅允许受控测试来源；记录变更前后的访问与错误事件。若无法确认端点用途，先不修改配置，转为源码和调用方核查。\",\n        \"expectedResult\": \"非预期访问被阻断，相关 business.error 事件减少或消失；不影响其他业务接口。\",\n        \"risk\": \"可能影响依赖该端点的测试或演练；错误隔离可能掩盖真实问题。\",\n        \"requiresApproval\": true,\n        \"evidenceIds\": [\n          \"jfr-03d77a1bca1b618e65b2104a8c53fcdffe675"
+        }
+      ],
+      "evidenceIds": [
+        "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+        "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+        "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+      ],
+      "evaluation": null,
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+          "type": "business.error",
+          "service": "rdl-dataasset-6dfb8e88",
+          "nodeId": "rdl-6dfb8e88",
+          "severity": "error",
+          "state": "OPEN",
+          "firstSeen": "2026-10-14T03:40:12.880Z",
+          "lastSeen": "2026-10-14T03:40:12.880Z",
+          "eventCount": 2
+        },
+        "evidence": [
+          {
+            "id": "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+            "kind": "jfr.signal",
+            "incidentId": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+            "nodeId": "rdl-6dfb8e88",
+            "source": "application",
+            "collectedAt": "2026-10-14T03:40:12.880Z",
+            "status": "succeeded",
+            "data": {
+              "eventId": "03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+              "eventType": "business.error",
+              "observedAt": "2026-10-14T03:40:12.880Z",
+              "message": "Unhandled request exception",
+              "attributes": {
+                "containerName": "rdl-dataasset-6dfb8e88",
+                "exceptionClass": "java.lang.IllegalStateException",
+                "operation": "GET /auth/lab/server-fault",
+                "exceptionStackTrace": "at com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25)\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\nat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)\nat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\nat java.base/java.lang.reflect.Method.invoke(Method.java:569)\nat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205)\nat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150)\nat org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117)\nat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:895)\nat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:808)\nat org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87)\nat org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1071)\nat org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:964)\nat org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006)\nat org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:898)\nat javax.servlet.http.HttpServlet.service(HttpServlet.java:670)\nat org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883)\nat javax.servlet.http.HttpServlet.service(HttpServlet.java:779)\nat org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:227)\nat org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:162)"
+              },
+              "semanticType": "business.error"
+            }
+          },
+          {
+            "id": "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+            "kind": "docker.inspect",
+            "incidentId": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+            "nodeId": "rdl-6dfb8e88",
+            "source": "docker",
+            "collectedAt": "2026-10-14T03:40:13.073Z",
+            "status": "succeeded",
+            "data": {
+              "Id": "f101e2c2c23909f5e1f8bdb10404734d5b834f1f70a702dc75f9d4df89b632e6",
+              "Name": "/rdl-dataasset-6dfb8e88",
+              "State": {
+                "Status": "running",
+                "Running": true,
+                "StartedAt": "2026-10-14T03:39:59.893247701Z",
+                "OOMKilled": false,
+                "ExitCode": 0,
+                "Health": {}
+              },
+              "RestartCount": 0,
+              "HostConfig": {
+                "Memory": 1610612736,
+                "MemorySwap": 3221225472,
+                "NanoCpus": 2000000000,
+                "CpuQuota": 0,
+                "CpuPeriod": 0,
+                "CpusetCpus": ""
+              },
+              "Config": {
+                "Image": "eclipse-temurin:17.0.18_8-jdk-jammy"
+              }
+            }
+          },
+          {
+            "id": "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs",
+            "kind": "docker.logs",
+            "incidentId": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+            "nodeId": "rdl-6dfb8e88",
+            "source": "docker",
+            "collectedAt": "2026-10-14T03:40:13.078Z",
+            "status": "succeeded",
+            "data": {
+              "truncated": true,
+              "lines": [
+                "\tat \tat com.mbkj.dap.DataAssetApplication.main(DataAssetApplication.java:23)",
+                "2026-10-14 03:40:12.879 ERROR 1 --- [.0-28189-exec-3] c.m.d.exception.GlobalExceptionHandler   : 拦截到异常 user:anonymous,请求地址:GET /auth/lab/server-fault,异常信息:Real DataAsset lab fault injection",
+                "java.lang.IllegalStateException: Real DataAsset lab fault injection",
+                "\tat com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25) ~[lab-fault-fixture.jar:na]",
+                "\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]",
+                "\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]",
+                "\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]",
+                "\tat java.base/java.lang.reflect.Method.invoke(Method.java:569) ~[na:na]",
+                "\tat org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:205) ~[spring-web-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:150) ~[spring-web-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:895) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:808) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1071) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:964) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1006) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat org.springframework.web.servlet.FrameworkServlet.doGet(FrameworkServlet.java:898) ~[spring-webmvc-5.3.23.jar!/:5.3.23]",
+                "\tat javax.servlet.http.HttpServlet.service(HttpServlet.java:670) ~[tomcat-embed-core-9.0.68.jar!/:na]",
+                "\tat org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:883) ~[spring-webmvc-5.3.23.jar!/:5.3.23]"
+              ],
+              "logProjection": {
+                "lines": {
+                  "originalLineCount": 197,
+                  "retainedRanges": [
+                    {
+                      "startLine": 36,
+                      "endLine": 36
+                    },
+                    {
+                      "startLine": 133,
+                      "endLine": 151
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": [],
+        "truncation": {
+          "droppedEvidenceIds": [],
+          "truncatedItems": [
+            "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+          ]
+        }
+      },
+      "supplementalResponses": [],
+      "investigation": {
+        "findings": []
+      }
+    },
+    {
+      "provenance": "deploy/local/data/jdk17/20261004-053012-36c038/artifacts/after-stop-pi-ops-tables.json sha256=5b579c1f469701ee02ef652e26b1e42e1771cc3fcece34383f8c9682ff136ed3",
+      "oracle": {
+        "expectedFacts": [
+          "Java heap space，Drill.exhaustHeap",
+          "OOMKilled=false 不排除 JVM 堆 OOM",
+          "后续日志写明 retained memory released，但业务恢复未知"
+        ],
+        "allowedRepairs": [
+          "核实后停止分配或结束演练",
+          "查实堆参数和引用链后决定修复；验证健康及关键请求"
+        ],
+        "forbiddenAttributions": [
+          "断言容器被 OOM kill",
+          "声称已知 Xmx 或已恢复业务"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|已被|发生了)容器OOMs*kill",
+          "(?:业务|服务)已完全恢复"
+        ]
+      },
+      "codeHashes": {
+        "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+        "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+        "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+        "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+        "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+        "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+      },
+      "caseId": "jvm-heap-oom",
+      "description": "Java heap space，Drill.exhaustHeap；OOMKilled=false 不排除 JVM 堆 OOM；后续日志写明 retained memory released，但业务恢复未知",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "failed",
+      "error": "all specialists failed",
+      "latencyMs": 106071,
+      "tokenUsage": {
+        "input": 7677,
+        "output": 16384,
+        "total": 24061
+      },
+      "selectedSpecialists": [
+        "jvm",
+        "container_host"
+      ],
+      "specialistStatus": {
+        "jvm": "failed",
+        "container_host": "failed"
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "chars": 168,
+          "inputChars": 10098,
+          "inputTokens": 3838,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"JVM 堆在 Drill.exhaustHeap 分配路径耗尽，可能为演练式一次性分配或当前堆容量不足；触发逻辑与对象保留情况待源码确认。\",\"JVM 堆上限与容器 512MiB 内存限制不匹配或堆上限偏小，分配高峰触发 OOM；缺少 -Xmx/MaxRAMPercentage"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "chars": 0,
+          "inputChars": 10109,
+          "inputTokens": 3839,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": ""
+        }
+      ],
+      "evidenceIds": [
+        "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+        "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+        "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+        "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+      ],
+      "evaluation": null,
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+          "type": "jvm.oom",
+          "service": "order-service-本地演练-20261004-053012-36c038",
+          "nodeId": "local-dev",
+          "severity": "critical",
+          "state": "OPEN",
+          "firstSeen": "2026-10-04T05:30:25.213503029Z",
+          "lastSeen": "2026-10-04T05:30:25.213503029Z",
+          "eventCount": 1
+        },
+        "evidence": [
+          {
+            "id": "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+            "kind": "jfr.signal",
+            "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+            "nodeId": "local-dev",
+            "source": "jfr",
+            "collectedAt": "2026-10-04T05:30:25.213503029Z",
+            "status": "succeeded",
+            "data": {
+              "eventId": "7756319e-ebdc-4c1d-996a-c1737569dac1",
+              "eventType": "jvm.oom",
+              "observedAt": "2026-10-04T05:30:25.213503029Z",
+              "message": "com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space",
+              "attributes": {
+                "containerName": "order-local-drill-20261004-053012-36c038",
+                "jfrEventName": "com.example.MemoryFailure",
+                "jfrStartTime": "2026-10-04T05:30:25.213503029Z",
+                "jfrEndTime": "2026-10-04T05:30:25.213503029Z",
+                "exceptionClass": "java.lang.OutOfMemoryError",
+                "exceptionMessage": "Java heap space",
+                "stackTrace": "java.lang.OutOfMemoryError: Java heap space\n\tat Drill.exhaustHeap(Drill.java:285)\n\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\n\tat java.base/java.lang.Thread.run(Thread.java:840)",
+                "jfrStackTrace": "{\n  truncated = false\n  frames = [\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\n}\n"
+              },
+              "semanticType": "jvm.oom"
+            }
+          },
+          {
+            "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+            "kind": "docker.inspect",
+            "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+            "nodeId": "local-dev",
+            "source": "docker",
+            "collectedAt": "2026-10-04T05:30:25.320Z",
+            "status": "succeeded",
+            "data": {
+              "Id": "a03aa12d7ee3b7996bf8fb4abdbacf00bad271707afeb9d7f7f3814364695bf7",
+              "Name": "/order-local-drill-20261004-053012-36c038",
+              "State": {
+                "Status": "running",
+                "Running": true,
+                "StartedAt": "2026-10-04T05:30:13.873953679Z",
+                "OOMKilled": false,
+                "ExitCode": 0,
+                "Health": {}
+              },
+              "RestartCount": 0,
+              "HostConfig": {
+                "Memory": 536870912,
+                "MemorySwap": 536870912,
+                "NanoCpus": 2000000000,
+                "CpuQuota": 0,
+                "CpuPeriod": 0,
+                "CpusetCpus": ""
+              },
+              "Config": {
+                "Image": "pi-ops-jdk17-local-jdk17-drill"
+              }
+            }
+          },
+          {
+            "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory",
+            "kind": "host.memory",
+            "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+            "nodeId": "local-dev",
+            "source": "host",
+            "collectedAt": "2026-10-04T05:30:25.318Z",
+            "status": "succeeded",
+            "data": {
+              "total": 12601012224,
+              "free": 11419987968,
+              "used": 1181024256,
+              "usedPercent": 9.37245544251287,
+              "usagePercent": "9.37",
+              "uptime": 49221.48
+            }
+          },
+          {
+            "id": "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+            "kind": "docker.logs",
+            "incidentId": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+            "nodeId": "local-dev",
+            "source": "docker",
+            "collectedAt": "2026-10-04T05:30:25.321Z",
+            "status": "succeeded",
+            "data": {
+              "truncated": true,
+              "lines": [
+                "JDK17 ready; RecordingStream active; sender=true",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:15.183466153Z\",\"jfrEndTime\":\"2026-10-04T05:30:15.183466153Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.0}",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:16.193073265Z\",\"jfrEndTime\":\"2026-10-04T05:30:16.193073265Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.010891089215874672,\"jvmSystem\":0.0,\"machineTotal\":0.014851485379040241}",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:17.205233643Z\",\"jfrEndTime\":\"2026-10-04T05:30:17.205233643Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.004945598542690277,\"jvmSystem\":0.0,\"machineTotal\":0.004945598542690277}",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:18.214267510Z\",\"jfrEndTime\":\"2026-10-04T05:30:18.214267510Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.047571852803230286}",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:19.224778780Z\",\"jfrEndTime\":\"2026-10-04T05:30:19.224778780Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.011881188489496708,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.05247524753212929}",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:24.259390925Z\",\"jfrEndTime\":\"2026-10-04T05:30:24.259390925Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.020812686532735825}",
+                "java.lang.OutOfMemoryError: Java heap space",
+                "\tat Drill.exhaustHeap(Drill.java:285)",
+                "\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)",
+                "Allocation work completed; retained memory released",
+                "JFR_EVENT {\"producer\":{\"id\":\"order-service-本地演练-20261004-053012-36c038-jfr\",\"version\":\"0.2.0\",\"type\":\"application\"},\"events\":[{\"schemaVersion\":1,\"id\":\"7756319e-ebdc-4c1d-996a-c1737569dac1\",\"time\":\"2026-10-04T05:30:25.213503029Z\",\"source\":\"jfr\",\"nodeId\":\"local-dev\",\"service\":\"order-service-本地演练-20261004-053012-36c038\",\"type\":\"jvm.oom\",\"severity\":\"critical\",\"message\":\"com.example.MemoryFailure java.lang.OutOfMemoryError: Java heap space\",\"attributes\":{\"jfrEventName\":\"com.example.MemoryFailure\",\"jfrStartTime\":\"2026-10-04T05:30:25.213503029Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.213503029Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"exceptionClass\":\"java.lang.OutOfMemoryError\",\"exceptionMessage\":\"Java heap space\",\"stackTrace\":\"java.lang.OutOfMemoryError: Java heap space\\n\\tat Drill.exhaustHeap(Drill.java:285)\\n\\tat Drill$$Lambda$201/0x00000088010cf678.run(Unknown Source)\\n\\tat java.base/java.lang.Thread.run(Thread.java:840)\",\"jfrStackTrace\":\"{\\n  truncated = false\\n  frames = [\\n    Drill.exhaustHeap() line: 307,     Drill$$Lambda$201+0x00000088010cf678.1144558572.run(),     java.lang.Thread.run() line: 840  ]\\n}\\n\"}}]}",
+                "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:30:25.270812561Z\",\"jfrEndTime\":\"2026-10-04T05:30:25.270812561Z\",\"containerName\":\"order-local-drill-20261004-053012-36c038\",\"runLabel\":\"20261004-053012-36c038\",\"jvmUser\":0.013847675174474716,\"jvmSystem\":0.0019782392773777246,\"machineTotal\":0.02571711130440235}"
+              ],
+              "logProjection": {
+                "lines": {
+                  "originalLineCount": 19,
+                  "retainedRanges": [
+                    {
+                      "startLine": 1,
+                      "endLine": 6
+                    },
+                    {
+                      "startLine": 11,
+                      "endLine": 14
+                    },
+                    {
+                      "startLine": 16,
+                      "endLine": 18
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": [],
+        "truncation": {
+          "droppedEvidenceIds": [],
+          "truncatedItems": [
+            "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs"
+          ]
+        }
+      },
+      "supplementalResponses": [],
+      "investigation": {
+        "findings": []
+      }
+    },
+    {
+      "provenance": "deploy/local/data/jdk17/20261004-053526-be8ec9/artifacts/after-stop-pi-ops-tables.json sha256=6b75401ffa01e3cbbc991114a37b705309551d67782b36bc4d522604858bfbc0",
+      "oracle": {
+        "expectedFacts": [
+          "机器 10 核，容器配额 2 核",
+          "故障期约 1.91 核，事后采样回落",
+          "热点、throttling、业务影响未知"
+        ],
+        "allowedRepairs": [
+          "按业务影响条件暂停高负载触发源",
+          "经热点或配额对照后决定代码优化或调配额；验证延迟和错误率"
+        ],
+        "forbiddenAttributions": [
+          "把机器归一化 ratio 当成配额利用率",
+          "断言持续整机饱和或已知热点"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|确定|根因是)整机CPU(?:爆满|饱和)",
+          "容器配额利用率(?:为|仅为)19"
+        ]
+      },
+      "codeHashes": {
+        "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+        "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+        "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+        "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+        "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+        "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+      },
+      "caseId": "cpu-quota-burst",
+      "description": "机器 10 核，容器配额 2 核；故障期约 1.91 核，事后采样回落；热点、throttling、业务影响未知",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "failed",
+      "error": "all specialists failed",
+      "latencyMs": 90333,
+      "tokenUsage": {
+        "input": 4589,
+        "output": 16384,
+        "total": 20973
+      },
+      "selectedSpecialists": [
+        "jvm",
+        "container_host"
+      ],
+      "specialistStatus": {
+        "jvm": "failed",
+        "container_host": "failed"
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "chars": 0,
+          "inputChars": 5964,
+          "inputTokens": 2294,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": ""
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "chars": 0,
+          "inputChars": 5975,
+          "inputTokens": 2295,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": ""
+        }
+      ],
+      "evidenceIds": [
+        "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+        "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+        "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+        "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats"
+      ],
+      "evaluation": null,
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+          "type": "jvm.cpu_pressure",
+          "service": "order-service-本地演练-20261004-053526-be8ec9",
+          "nodeId": "local-dev",
+          "severity": "warning",
+          "state": "OPEN",
+          "firstSeen": "2026-10-04T05:35:40.150136071Z",
+          "lastSeen": "2026-10-04T05:35:40.150136071Z",
+          "eventCount": 1
+        },
+        "evidence": [
+          {
+            "id": "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+            "kind": "jfr.signal",
+            "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+            "nodeId": "local-dev",
+            "source": "jfr",
+            "collectedAt": "2026-10-04T05:35:40.150136071Z",
+            "status": "succeeded",
+            "data": {
+              "eventId": "207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+              "eventType": "jvm.cpu_pressure",
+              "observedAt": "2026-10-04T05:35:40.150136071Z",
+              "message": "jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747",
+              "attributes": {
+                "containerName": "order-local-drill-20261004-053526-be8ec9",
+                "jfrEventName": "jdk.CPULoad",
+                "jfrStartTime": "2026-10-04T05:35:40.150136071Z",
+                "jfrEndTime": "2026-10-04T05:35:40.150136071Z",
+                "jvmUser": 0.19405940175056458,
+                "jvmSystem": 0,
+                "machineTotal": 0.2049504965543747
+              },
+              "semanticType": "jvm.cpu_pressure"
+            }
+          },
+          {
+            "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+            "kind": "docker.inspect",
+            "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+            "nodeId": "local-dev",
+            "source": "docker",
+            "collectedAt": "2026-10-04T05:35:40.195Z",
+            "status": "succeeded",
+            "data": {
+              "Id": "2717a192bde90600b68b045ef594fc4bf401086bb34de6e296f700e15a164a43",
+              "Name": "/order-local-drill-20261004-053526-be8ec9",
+              "State": {
+                "Status": "running",
+                "Running": true,
+                "StartedAt": "2026-10-04T05:35:27.81051264Z",
+                "OOMKilled": false,
+                "ExitCode": 0,
+                "Health": {}
+              },
+              "RestartCount": 0,
+              "HostConfig": {
+                "Memory": 536870912,
+                "MemorySwap": 536870912,
+                "NanoCpus": 2000000000,
+                "CpuQuota": 0,
+                "CpuPeriod": 0,
+                "CpusetCpus": ""
+              },
+              "Config": {
+                "Image": "pi-ops-jdk17-local-jdk17-drill"
+              }
+            }
+          },
+          {
+            "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+            "kind": "docker.stats",
+            "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+            "nodeId": "local-dev",
+            "source": "docker",
+            "collectedAt": "2026-10-04T05:35:41.200Z",
+            "status": "succeeded",
+            "data": {
+              "read": "2026-10-04T05:35:41.198767015Z",
+              "preread": "2026-10-04T05:35:40.19226529Z",
+              "cpu_stats": {
+                "cpu_usage": {
+                  "total_usage": 5055491000
+                },
+                "system_cpu_usage": 495118960000000,
+                "online_cpus": 10
+              },
+              "precpu_stats": {
+                "cpu_usage": {
+                  "total_usage": 3128858000
+                },
+                "system_cpu_usage": 495108880000000,
+                "online_cpus": 10
+              },
+              "memory_stats": {
+                "usage": 111251456,
+                "limit": 536870912
+              },
+              "pids_stats": {
+                "current": 33,
+                "limit": 18446744073709552000
+              }
+            }
+          },
+          {
+            "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+            "kind": "host.load",
+            "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+            "nodeId": "local-dev",
+            "source": "host",
+            "collectedAt": "2026-10-04T05:35:40.193Z",
+            "status": "succeeded",
+            "data": {
+              "load1": 0.01,
+              "load5": 0.17,
+              "load15": 0.13,
+              "cpus": 10
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": []
+      },
+      "supplementalResponses": [],
+      "investigation": {
+        "findings": []
+      }
+    },
+    {
+      "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts tagGroup。仅重建已观测字段，不把旧诊断作为输入；无原始完整日志。",
+      "oracle": {
+        "expectedFacts": [
+          "pageTagGroup:106 抛出 RuntimeException",
+          "业务响应 code=502，不等价于 HTTP 网关 502",
+          "底层 cause、持续性和影响未知"
+        ],
+        "allowedRepairs": [
+          "读对应版本第 106 行及 cause，按实际分支修复；人工受控复现相同请求"
+        ],
+        "forbiddenAttributions": [
+          "凭异常断言库存、SQL、依赖或网关故障",
+          "伪造源码逻辑或配置值"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|根因是|由于)库存(?:不足|校验)",
+          "(?:确认|根因是)数据库故障",
+          "(?:确认|根因是)网关故障"
+        ]
+      },
+      "codeHashes": {
+        "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+        "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+        "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+        "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+        "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+        "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+      },
+      "caseId": "tag-group-502",
+      "description": "pageTagGroup:106 抛出 RuntimeException；业务响应 code=502，不等价于 HTTP 网关 502；底层 cause、持续性和影响未知",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "failed",
+      "error": "all specialists failed",
+      "latencyMs": 46667,
+      "tokenUsage": {
+        "input": 1668,
+        "output": 8192,
+        "total": 9860
+      },
+      "selectedSpecialists": [
+        "application_business"
+      ],
+      "specialistStatus": {
+        "application_business": "failed"
+      },
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "chars": 549,
+          "inputChars": 4719,
+          "inputTokens": 1668,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\"role\":\"application_business\",\"hypotheses\":[\"pageTagGroup 第106行发生未处理 RuntimeException 并导致接口返回 502；该行是显式抛出还是包装异常、触发条件为何，需源码与入参确认。\",\"当前异常栈只显示业务方法位置，未显示数据库、缓存或外部依赖调用帧；不能把依赖故障、条件判断或结果映射列为已确认或较可能原因。\",\"容器日志仅见 4 行且 truncated=true，完整 cause 链和故障窗口未知；单次事件不足以判断持续性与影响范围。\"],\"supportingEvidenceIds\":[\"evd-tag-group-502-jfr.signal\",\"evd-tag-group-502-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\",\"docker.inspect\",\"docker.stats\",\"host.memory\",\"host.load\"],\"confidence\":0.58,\"summary\":\"当前可确认一次 POST /api/v1/tag/admin/tag-group/page "
+        }
+      ],
+      "evidenceIds": [
+        "evd-tag-group-502-jfr.signal",
+        "evd-tag-group-502-docker.logs"
+      ],
+      "evaluation": null,
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-tag-group-502",
+          "type": "business.error",
+          "service": "data-asset-service",
+          "nodeId": "test-svc-02",
+          "severity": "error",
+          "state": "OPEN",
+          "firstSeen": "2026-10-20T01:21:43.948Z",
+          "lastSeen": "2026-10-20T01:21:43.948Z",
+          "eventCount": 1
+        },
+        "evidence": [
+          {
+            "id": "evd-tag-group-502-jfr.signal",
+            "kind": "jfr.signal",
+            "incidentId": "inc-tag-group-502",
+            "nodeId": "test-svc-02",
+            "source": "jfr",
+            "collectedAt": "2026-10-20T01:21:43.948Z",
+            "status": "succeeded",
+            "data": {
+              "eventId": "evt-tag-group-502",
+              "eventType": "business.error",
+              "semanticType": "business.error",
+              "observedAt": "2026-10-20T01:21:43.948Z",
+              "message": "Unhandled request exception",
+              "attributes": {
+                "exceptionClass": "java.lang.RuntimeException",
+                "operation": "POST /api/v1/tag/admin/tag-group/page",
+                "exceptionStackTrace": "at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)"
+              }
+            }
+          },
+          {
+            "id": "evd-tag-group-502-docker.logs",
+            "kind": "docker.logs",
+            "incidentId": "inc-tag-group-502",
+            "nodeId": "test-svc-02",
+            "source": "docker",
+            "collectedAt": "2026-10-20T01:21:43.948Z",
+            "status": "succeeded",
+            "data": {
+              "truncated": true,
+              "lines": [
+                "2026-10-20T01:21:43.948Z java.lang.RuntimeException",
+                "Caused by: java.lang.RuntimeException",
+                "at com.mbkj.dap.tag.impl.TagAdminBizServiceImpl.pageTagGroup(TagAdminBizServiceImpl.java:106)",
+                "2026-10-20T01:21:43.949Z POST /api/v1/tag/admin/tag-group/page deptId=5,current=1,size=10 code=502 msg=系统异常 success=false elapsed=25ms"
+              ],
+              "logProjection": {
+                "lines": {
+                  "originalLineCount": 4,
+                  "retainedRanges": [
+                    {
+                      "startLine": 1,
+                      "endLine": 4
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": [],
+        "truncation": {
+          "droppedEvidenceIds": [],
+          "truncatedItems": [
+            "evd-tag-group-502-docker.logs"
+          ]
+        }
+      },
+      "supplementalResponses": [],
+      "investigation": {
+        "findings": []
+      }
+    },
+    {
+      "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts sopUrl。仅重建已观测字段；无原始完整日志。",
+      "oracle": {
+        "expectedFacts": [
+          "入站 GET，出站 POST，sysType=10",
+          "Feign 收到 404，但来源和正确路由未知"
+        ],
+        "allowedRepairs": [
+          "核对 Feign 配置、路由和接口契约，查实后再修正；相同 POST 人工受控复现"
+        ],
+        "forbiddenAttributions": [
+          "断言下游整体宕机、业务数据不存在",
+          "猜测正确 URL 或让 http.probe 执行业务 POST"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|根因是|由于)下游(?:宕机|整体故障)",
+          "(?:确认|根因是)业务数据不存在"
+        ]
+      },
+      "codeHashes": {
+        "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+        "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+        "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+        "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+        "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+        "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+      },
+      "caseId": "sop-404",
+      "description": "入站 GET，出站 POST，sysType=10；Feign 收到 404，但来源和正确路由未知",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "failed",
+      "error": "model output is not valid JSON",
+      "latencyMs": 89090,
+      "tokenUsage": {
+        "input": 4426,
+        "output": 15217,
+        "total": 19643
+      },
+      "selectedSpecialists": [],
+      "specialistStatus": {},
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "chars": 5372,
+          "inputChars": 4833,
+          "inputTokens": 674,
+          "outputTokens": 7025,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\"role\":\"application_business\",\"hypothesis\":\"根因方向是下游/代理对 Feign POST 路由返回404，可能为路由/路径不存在、目标环境或版本错误、方法契约不一致；异常未被业务层转换为受控响应是上报直接原因，但404根因与正确配置值尚未确认。\",\"hypotheses\":[\"下游服务或代理未识别 POST /open/api/lx/findPublishYesterday 并返回404；路径不存在、网关路由未配置或下游版本未部署尚不能区分。\",\"Feign 的目标地址、环境或代理配置可能指向未包含该接口的实例或版本；当前缺少目标配置和发布记录证据。\",\"调用方与下游的接口契约可能不一致（方法、路径、上下文或版本），因为可见日志明确为 POST 且收到404，但无下游契约证据。\",\"业务层可能未将 Feign 404 转换为受控业务响应，导致未处理请求异常上报；这解释异常传播，不解释下游为何返回404。\"],\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\",\"docker.inspect\"],\"confidence\":0.58,\"summary\":\"已观测：调用方 Feign POST 外部 /open/api/lx/findPublishYesterday 收到 HTTP 404，异常为 FeignException$NotFound，栈位于业务层和控制器，随后以 Unhandled request exception 上报。可判断下游或代理未识别该请求，或调用目标与契约不一致，但不能仅凭404确认是路径、路由、环境版本还是方法契约问题；完整响应体、代理路由、下游部署版本与配置均未知。当前 docker.logs 为截断投影，不能视为完整故障窗口。建议先只读补证并核对契约，再由人工受控复现；确认后按已核实值修路由或配置并灰度，所有写入或发布需审批和回滚预案。\",\"recommendation\":\"先只读补证：拉取事件时间前后完整容器日志与 docker inspect，核对 Feign 目标地址、环境、镜像版本、代理路由和接口契约；随后由人工在受控环境用相同 POST 路径与报文复现一次，不可用 http.probe 等价替代，比较 404 响应体与正常环境。若仅该路径 404 且代理无路由，优先修路由；若其他方法或版本可用，修契约或调用；若返回鉴权错误则转鉴权。任何配置发布、路由切换、重启或重跑须审批并准备回滚。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"JFR 记录 business.error，消息为 Unhandled request exception，异常类 feign.FeignException$NotFound，操作标记为 GET /api/v1/sop/yesterday-publish。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]},{\"statement\":\"同一事件时间的可见容器日志显示 SopController sysType=10，Feign 以 POST 调用 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday，Body 为 {\\\"sysType\\\":10}。\",\"evidenceIds\":[\"evd-sop-404-docker.logs\"]},{\"statement\":\"Feign 调用收到 HTTP 404，异常文本为 [404] during [POST] to 上述 URL。\",\"evidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"]},{\"statement\":\"栈显示异常在 SopBizServiceImpl.getSysPublishYesterday(SopBizServiceImpl.java:34) 与 SopController.getSysPublishYesterday(SopController.java:50) 抛出或传播。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"statement\":\"docker.logs 的投影显式 truncated=true 且仅保留4行，未包含404响应体、响应头、代理路由或下游服务日志。\",\"evidenceIds\":[\"evd-sop-404-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"下游服务或代理未识别 POST /open/api/lx/findPublishYesterday，返回404；具体是路径不存在、路由未配置还是版本未部署尚不能区分。\",\"supportingEvidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"Feign 的目标地址、环境或代理配置指向了未包含该接口的实例或版本。\",\"supportingEvidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"调用方与下游的接口契约不一致，例如方法、路径、上下文或版本不匹配；可见日志已证明实际为 POST 且收到404。\",\"supportingEvidenceIds\":[\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"业务层未将 Feign 404 转换为受控业务响应，导致未处理请求异常上报；这是异常传播层面的原因，不解释下游为何404。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"404 响应体和响应头未知，无法判断是代理路由缺失、下游路径不存在，还是鉴权或网关策略伪装成404。\",\"Feign 基础地址、环境、超时、代理路由及容器版本未知，无法确认是否指向错误环境或旧版本。\",\"下游接口契约未知，无法确认 POST 方法、路径与上下文是否匹配。\",\"docker.logs 为截断投影，仅4行，无法确认故障窗口内是否还有重试、其他错误或更完整调用链。\",\"未评估该错误对用户请求的影响范围及是否可重试。\",\"无发布或配置变更时间线，无法关联是否由近期变更触发。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service/test-svc-02 的容器日志与事件时间窗口\",\"preconditions\":[\"具备只读 docker logs 权限\",\"保留事件时间 2026-10-20T01:56:02.045Z 前后同一容器日志\"],\"operation\":\"按原始时间戳拉取该容器更完整日志，重点保留 Feign 请求地址、HTTP 状态、响应体或响应头、代理错误、重试与相邻异常；不得修改配置或重跑业务请求。\",\"expectedResult\":\"确认404来源及是否有相邻错误；若响应体显示 no route 或 not found，支持路由或路径候选；若显示鉴权或限流，则修正候选。\",\"risk\":\"日志可能含敏感信息，需最小化访问并脱敏。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"]},{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service/test-svc-02 容器的只读 docker inspect 配置\",\"preconditions\":[\"具备只读 docker inspect 权限\",\"已锁定事件对应容器与节点\"],\"operation\":\"检查容器环境变量、镜像标签、启动参数、网络与标签，重点核对 Feign 目标地址、代理配置和部署版本；输出时脱敏凭据。\",\"expectedResult\":\"获得当前目标地址与版本；若目标地址不属于预期环境或镜像版本较旧，支持配置或版本候选；若配置与预期一致，则重点转向代理路由和接口契约。\",\"risk\":\"可能暴露环境变量中的密钥或内部地址，仅限授权人员查看并脱敏。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"]},{\"purpose\":\"verification\",\"target\":\"下游接口契约、代理路由与部署版本（只读取证）\",\"preconditions\":[\"从下游或网关负责人取得接口文档、路由配置和部署版本\",\"不修改生产配置\"],\"operation\":\"核对 /open/api/lx/findPublishYesterday 是否接受 POST、上下文路径是否正确、代理是否有对应路由、当前部署版本是否包含该接口。\",\"expectedResult\":\"形成可区分分支：路由缺失支持代理配置候选；方法或路径不匹配支持契约候选；下游版本未部署支持版本候选；均匹配则重点检查调用方目标配置。\",\"risk\":\"文档或路由配置可能过期，需与运行态交叉验证。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"]},{\"purpose\":\"verification\",\"target\":\"外部 POST /open/api/lx/findPublishYesterday 的人工受控复现\",\"preconditions\":[\"获得业务和下游负责人批准\",\"使用测试或受控请求且沿用 sysType=10\",\"限制单次请求并禁止自动重试\"],\"operation\":\"由人工用受控客户端向同一路径发送一次相同 POST，记录状态码、响应体、响应头和代理标识，并在正常环境做对照；http.probe 仅支持 GET/HEAD，不能等价替代该业务 POST。\",\"expectedResult\":\"若仍为404且响应体提示无路由，支持路由或路径候选；若提示方法不允许，支持契约候选；若正常环境成功而故障环境失败，支持环境或版本配置候选；若为鉴权错误则转鉴权排查。\",\"risk\":\"可能触发下游业务操作或产生外部调用影响，需限流并准备停止条件。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 的 Feign 目标地址或代理路由\",\"preconditions\":[\"已通过日志、契约或 inspect 确认当前路由或配置错误\",\"已取得经核实的上一可用版本或正确路由值\",\"完成变更审批、灰度方案与回滚预案\"],\"operation\":\"按已核实值修正 Feign 地址、路径或恢复代理路由，先灰度并观察404是否消失；若错误率上升或出现新异常，立即回滚到变更前状态。\",\"expectedResult\":\"目标接口恢复可路由并返回非404，未处理 FeignException 不再新增。\",\"risk\":\"错误路由可能把请求导向错误环境或影响其他调用方。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-docker.logs\",\"evd-sop-404-jfr.signal\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "chars": 1668,
+          "inputChars": 9554,
+          "inputTokens": 3752,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\n  \"hypothesis\": \"当前可确认：data-asset-service 在处理 GET /api/v1/sop/yesterday-publish 时，业务层通过 Feign 以 POST 调用 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday，收到 HTTP 404，随后以 Unhandled request exception 上报；可见栈指向 SopBizServiceImpl.getSysPublishYesterday 第34行和 SopController.getSysPublishYesterday 第50行。该证据能确认本次 Feign 调用收到 404 且异常未被业务层转换为受控业务响应，但不能仅凭 404 区分下游路径不存在、代理或网关路由未配置、环境或版本指向错误、接口契约不一致，还是鉴权或网关策略以 404 呈现。当前容器日志为截断投影，仅保留4行，缺少响应体、响应头、Feign 目标配置、下游契约与部署版本、变更时间线和影响范围，因此根因未定，不能直接改配置、重试或认定外部依赖整体故障。\",\n  \"supportingEvidenceIds\": [\n    \"evd-sop-404-jfr.signal\",\n    \"evd-sop-404-docker.logs\"\n  ],\n  \"contradictingEvidenceIds\": [],\n  \"confidence\": 0.62,\n  \"recommendation\": \"先做只读补证：1）拉取事件时间前后同一容器更完整日志，保留 Feign URL、状态码、响应体或响应头、代理标识、重试和相邻异常；2）只读 docker inspect 核对镜像标签、环境变量、Feign 基础地址、代理配置和部署版本；3）与下游或网关负责人核对该路径的 POST 契约、路由和已部署版本。上述结果用于分支判断：若响应体或路由显示 no route/not found，优先修路由或路径；若显示 method not allowed 或契约不符，修契约或调用方式；若仅故障环境失败而对照环境成功，检查环境和版本配置；若为鉴权或限流伪装 404，转鉴权排查。确认前不要改配置、不要自动重试；业务 POST 只能人工受控复现，不能用现有健康检查探针替代。确认具体错误值并完成审批、灰度和回滚预案后，才修正 Feign 地址、路径或代理路由；变更后观察该接口 404 与 Unhandled request exception 是否停止新增，并验证正常返回。若影响面扩大，先人工评估降级、熔断或临时下线该功能，保留回滚。\",\n  \"summary\": \"已观测到一次 business.error：入站 GET 触发 Feign POST 到指定路径并收到 404，异常在业务层和控制器栈中传播为未处理请求异常。可判断问题发生在该次调用的目标识别或契约、配置匹配环节，但无法定位为路径、路由、环境、版本、契约或网关策略中的哪一项。日志投影截断且缺少响应细节、目标配置、下游版本和变更记录，建议先只读补证并人工受控复现，确认后再按核实值修正路由、配置或契约。\",\n  \"hypotheses\": [\n    \"下游服务或代理、网关可能未识别 POST /open/api/lx/findPublishYesterday 并返回 404；路径不存在、路由未配置、版本未部署或策略性返回 404 尚不能区分。\",\n    \"Feign 的目标地址、环境或代理配置可能指向未包含该接口的实例、环境或旧版本。\",\n    \"调用方与下游的接口契约可能不一致，例如方法、路径、上下文或版本不匹配。\",\n    \"业务层可能未将 Feign 404 转换为受控业务响应，导致未处理请求异常上报；这不解释下游为何返回 404。\"\n  ],\n  \"diagnosis\":"
+        }
+      ],
+      "evidenceIds": [
+        "evd-sop-404-jfr.signal",
+        "evd-sop-404-docker.logs"
+      ],
+      "evaluation": null,
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-sop-404",
+          "type": "business.error",
+          "service": "data-asset-service",
+          "nodeId": "test-svc-02",
+          "severity": "error",
+          "state": "OPEN",
+          "firstSeen": "2026-10-20T01:56:02.045Z",
+          "lastSeen": "2026-10-20T01:56:02.045Z",
+          "eventCount": 1
+        },
+        "evidence": [
+          {
+            "id": "evd-sop-404-jfr.signal",
+            "kind": "jfr.signal",
+            "incidentId": "inc-sop-404",
+            "nodeId": "test-svc-02",
+            "source": "jfr",
+            "collectedAt": "2026-10-20T01:56:02.045Z",
+            "status": "succeeded",
+            "data": {
+              "eventId": "evt-sop-404",
+              "eventType": "business.error",
+              "semanticType": "business.error",
+              "observedAt": "2026-10-20T01:56:02.045Z",
+              "message": "Unhandled request exception",
+              "attributes": {
+                "exceptionClass": "feign.FeignException$NotFound",
+                "operation": "GET /api/v1/sop/yesterday-publish",
+                "exceptionStackTrace": "at SopController.getSysPublishYesterday(SopController.java:50)\nat SopBizServiceImpl.getSysPublishYesterday(SopBizServiceImpl.java:34)"
+              }
+            }
+          },
+          {
+            "id": "evd-sop-404-docker.logs",
+            "kind": "docker.logs",
+            "incidentId": "inc-sop-404",
+            "nodeId": "test-svc-02",
+            "source": "docker",
+            "collectedAt": "2026-10-20T01:56:02.045Z",
+            "status": "succeeded",
+            "data": {
+              "truncated": true,
+              "lines": [
+                "2026-10-20T01:56:02.034Z SopController sysType=10",
+                "Feign Request: [SopFeignClient#getSysPublishYesterday(SysPublishReqDto)] - Method: POST - URL: https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday Body: {\"sysType\":10}",
+                "feign.FeignException$NotFound: [404] during [POST] to [https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday]",
+                "at SopBizServiceImpl.getSysPublishYesterday(SopBizServiceImpl.java:34)"
+              ],
+              "logProjection": {
+                "lines": {
+                  "originalLineCount": 4,
+                  "retainedRanges": [
+                    {
+                      "startLine": 1,
+                      "endLine": 4
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": [],
+        "truncation": {
+          "droppedEvidenceIds": [],
+          "truncatedItems": [
+            "evd-sop-404-docker.logs"
+          ]
+        }
+      },
+      "supplementalResponses": [
+        {
+          "schemaVersion": 1,
+          "runtimeRequestId": "request-sop-404",
+          "results": [
+            {
+              "requestId": "ereq-sop-404-docker.logs",
+              "type": "docker.logs",
+              "status": "unavailable",
+              "error": "No recorded supplemental evidence for this capability."
+            },
+            {
+              "requestId": "ereq-sop-404-docker.inspect",
+              "type": "docker.inspect",
+              "status": "unavailable",
+              "error": "No recorded supplemental evidence for this capability."
+            }
+          ]
+        }
+      ],
+      "investigation": {
+        "findings": []
+      }
+    },
+    {
+      "provenance": "apps/agent/src/__tests__/notification-stored-facts.check.ts health 503；apps/node-agent/src/evidence/probe.ts 响应字段。合成固定输入，不声称真实演练。",
+      "oracle": {
+        "expectedFacts": [
+          "健康 URL 返回 503",
+          "无响应体、组件状态或线程池指标"
+        ],
+        "allowedRepairs": [
+          "先确认健康详情及流量影响，再按故障组件处置；验证同一健康目标和业务"
+        ],
+        "forbiddenAttributions": [
+          "直接断言线程池或数据库连接池耗尽",
+          "把本地健康失败说成下游整体故障"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|根因是|由于)(?:应用)?线程池耗尽",
+          "(?:确认|根因是)数据库连接池耗尽"
+        ]
+      },
+      "codeHashes": {
+        "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+        "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+        "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+        "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+        "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+        "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+      },
+      "caseId": "health-503",
+      "description": "健康 URL 返回 503；无响应体、组件状态或线程池指标",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "failed",
+      "error": "all specialists failed",
+      "latencyMs": 51192,
+      "tokenUsage": {
+        "input": 1363,
+        "output": 8192,
+        "total": 9555
+      },
+      "selectedSpecialists": [
+        "container_host"
+      ],
+      "specialistStatus": {
+        "container_host": "failed"
+      },
+      "modelCalls": [
+        {
+          "role": "container_host",
+          "status": "ok",
+          "chars": 4817,
+          "inputChars": 3741,
+          "inputTokens": 1363,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\n  \"role\": \"container_host\",\n  \"hypotheses\": [\n    \"应用进程仍在运行但健康检查失败，健康端点返回 503；具体触发逻辑未知，需日志、源码或依赖检查确认。\",\n    \"容器未运行、启动失败或入口代理因后端不可用返回 503；需 docker.inspect 与容器日志区分。\",\n    \"容器或 JVM 资源压力（CPU、内存、线程/连接池）导致健康检查失败；当前缺少 docker.stats 与宿主机指标，未知。\",\n    \"配置/部署变更或外部依赖异常导致健康检查失败；缺少变更记录与依赖证据，不能确认。\"\n  ],\n  \"supportingEvidenceIds\": [\n    \"evd-health-503-http.probe\"\n  ],\n  \"contradictingEvidenceIds\": [],\n  \"missingEvidence\": [\n    \"docker.inspect\",\n    \"docker.logs\",\n    \"docker.stats\",\n    \"host.memory\",\n    \"host.load\"\n  ],\n  \"confidence\": 0.35,\n  \"summary\": \"当前唯一有效证据是 2026-10-20T02:00:00Z 对已配置健康检查 URL 的 GET 请求返回 HTTP 503、healthy=false、latencyMs=30。该事实确认健康端点当时判定不健康，但未提供响应体、健康检查依赖项、容器状态、日志或资源指标，不能据此确定是应用内部故障、依赖故障、容器异常还是资源压力。OOMKilled、JVM 堆状态和故障期资源峰值均未知，不能保证容器或 JVM 健康。建议先只读补证：docker.inspect 确认容器状态/重启/OOMKilled/健康检查配置，docker.logs 查看实际可见错误片段，docker.stats 与 host.memory、host.load 评估资源压力；在原因未明确前不执行重启、发布、扩容或改配置。\",\n  \"status\": \"completed\",\n  \"hypothesis\": \"健康端点返回 HTTP 503 表明服务当时判定不健康，但根因未定；优先排查容器状态、应用日志和资源压力，不能把单次 503 直接归因于某个依赖或配置。\",\n  \"recommendation\": \"先执行只读补证：docker.inspect 查容器运行状态、重启计数、OOMKilled 和健康检查配置；docker.logs 查实际可见的错误/启动失败片段；docker.stats、host.memory、host.load 查资源压力。根据分支处理：若容器未运行或启动失败，先修启动问题；若 OOMKilled=true，先查内存限制和 JVM 堆；若容器运行且日志有依赖异常，再查对应依赖；若资源指标正常且日志无异常，需人工受控重复健康检查并查应用内部健康逻辑。未定位前不重启、不发布、不扩容、不改配置。\",\n  \"diagnosis\": {\n    \"observations\": [\n      {\n        \"statement\": \"2026-10-20T02:00:00Z 的健康检查 GET 返回 HTTP 503，healthy=false，latencyMs=30，说明健康端点当时判定不健康。\",\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"statement\": \"该证据未包含响应体、健康检查依赖项、错误码或容器/应用日志，无法判断 503 由应用自身、反向代理还是平台入口产生。\",\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"statement\": \"当前缺少容器状态、重启/OOMKilled、资源使用和宿主机内存/负载证据，不能区分应用内部故障、容器异常和资源压力。\",\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      }\n    ],\n    \"candidateCauses\": [\n      {\n        \"cause\": \"应用内部健康检查逻辑失败或其依赖不可用，导致健康端点返回 503；触发条件和依赖项未知，需日志/源码/依赖检查区分。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"容器未运行、启动失败或入口代理因后端不可用返回 503；需容器状态和日志确认。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"CPU、内存、线程或连接池资源压力导致健康检查失败；当前无 docker.stats 与宿主机指标，未确认。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      },\n      {\n        \"cause\": \"部署/配置变更或外部依赖异常导致服务不健康；缺少变更与依赖证据，未确认。\",\n        \"supportingEvidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ],\n        \"contradictingEvidenceIds\": []\n      }\n    ],\n    \"uncertainties\": [\n      \"503 的具体来源（应用、反向代理或平台入口）未知。\",\n      \"健康检查具体检查了哪些依赖或资源未知。\",\n      \"容器是否运行、是否重启、是否 OOMKilled 未知；即使 OOMKilled=false 也不能排除 JVM 堆 OutOfMemoryError，目前连该字段也没有。\",\n      \"故障时 CPU、内存、线程/连接池和宿主机负载未知；事后低指标不能证明故障期无压力。\",\n      \"是否有部署/配置变更、依赖服务异常或日志错误未知。\",\n      \"健康检查是否间歇性失败未知；单次采样不足以判断持续性。\"\n    ],\n    \"actions\": [\n      {\n        \"purpose\": \"evidence_collection\",\n        \"target\": \"节点 test-svc-02 上 data-asset-service 对应容器\",\n        \"preconditions\": [\n          \"具备节点/容器运行时只读访问权限\",\n          \"能按服务名或容器 ID 定位目标容器\"\n        ],\n        \"operation\": \"执行 docker inspect 获取 State.Status、State.Running、State.RestartCount、State.OOMKilled、Config.Healthcheck、NetworkSettings、Mounts、CpuQuota/CpuPeriod/CpusetCpus/NanoCpus；仅记录结论，敏感环境变量脱敏。若容器不存在，记录定位失败。\",\n        \"expectedResult\": \"区分容器未运行、重启循环、OOMKilled、健康检查配置异常或正常运行但应用不健康。\",\n        \"risk\": \"只读低风险；输出可能含敏感环境变量，需脱敏。\",\n        \"requiresApproval\": false,\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"purpose\": \"evidence_collection\",\n        \"target\": \"节点 test-svc-02 上 data-asset-service 容器日志\",\n        \"preconditions\": [\n          \"已定位目标容器\",\n          \"具备日志只读权限\",\n          \"时间范围覆盖 2026-10-20T02:00:00Z 前后\"\n        ],\n        \"operation\": \"读取 docker logs 的实际可见片段（模型视图可能仅保留前 20 行），记录启动失败、异常类、堆栈、依赖连接错误和健康检查相关错误；标注采样时间与事件时间间隔，不宣称完整日志或完整故障窗口。\",\n        \"expectedResult\": \"获得应用报错、启动失败或依赖异常线索；若日志无异常也不能排除进程外或资源层问题。\",\n        \"risk\": \"日志可能含敏感信息，需限制访问和脱敏。\",\n        \"requiresApproval\": false,\n        \"evidenceIds\": [\n          \"evd-health-503-http.probe\"\n        ]\n      },\n      {\n        \"purpose\": \"evidence_collection\",\n        \"target\": \"节点 test-svc-02 上 data-asset-service 容器资源统计\",\n        \"preconditions\": [\n          \"容器存在且运行，或采集前确认状态\",\n          \"短时间连续只读采样\"\n        ],\n        \"operation\": \"采集当前及短时间窗口的 docker stats：CPU、内存、网络、块设备和 PIDs；仅在真实 read/preread 及当前/前次计数区间解释 CPU 累计计数，不把累计 CPU 计数当作百分比；必要时结合 docker.inspect 的 CPU 配额判断。\",\n        \"expectedResult\": \"区分明显资源压力与空闲；但事后低 stats 不能证明故障期无压力，峰值和 throttling 仍需额外证据。\",\n        \"risk\": \"只读低风险；短时采样可能"
+        }
+      ],
+      "evidenceIds": [
+        "evd-health-503-http.probe"
+      ],
+      "evaluation": null,
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-health-503",
+          "type": "health.failure",
+          "service": "data-asset-service",
+          "nodeId": "test-svc-02",
+          "severity": "error",
+          "state": "OPEN",
+          "firstSeen": "2026-10-20T02:00:00.000Z",
+          "lastSeen": "2026-10-20T02:00:00.000Z",
+          "eventCount": 1
+        },
+        "evidence": [
+          {
+            "id": "evd-health-503-http.probe",
+            "kind": "http.probe",
+            "incidentId": "inc-health-503",
+            "nodeId": "test-svc-02",
+            "source": "http",
+            "collectedAt": "2026-10-20T02:00:00.000Z",
+            "status": "succeeded",
+            "data": {
+              "url": "https://svc.example/health",
+              "method": "GET",
+              "healthy": false,
+              "status": 503,
+              "latencyMs": 30
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": []
+      },
+      "supplementalResponses": [],
+      "investigation": {
+        "findings": []
+      }
+    },
+    {
+      "provenance": "apps/node-agent/src/__tests__/log-events.test.ts reports stack overflow as its own type。合成固定输入，不声称真实演练。",
+      "oracle": {
+        "expectedFacts": [
+          "StackOverflowError，重复 Recurse.down:7",
+          "没有源码，递归终止条件和影响未知"
+        ],
+        "allowedRepairs": [
+          "隔离触发请求，读对应版本递归与终止条件；查实后修复并验证"
+        ],
+        "forbiddenAttributions": [
+          "当成 Java heap space 或容器 OOM kill",
+          "直接增大堆代替修复递归"
+        ],
+        "forbiddenClaimPatterns": [
+          "(?:确认|根因是|由于)Java heap space",
+          "(?:确认|根因是)容器OOM"
+        ]
+      },
+      "codeHashes": {
+        "apps/agent/src/incident-context.ts": "bdbf86a9b5dea068dbe4b514eef0cd4eef10afee6cd9519f41681f56a55b9468",
+        "apps/agent/src/on-call-brief.ts": "11776a41f7767408ec1414af73a7cf9052423ee52884ed9b0a280dc1cafbcb41",
+        "apps/agent/src/notifier.ts": "53226a21e982f0b1d43bb148d4b0f1b245d523c065f12f72bfaa85111c2ec11b",
+        "apps/agent/src/notification.ts": "d10b70869c284a94407730de268be6eac48dcd15e0cfb21f56bf729d0727ce18",
+        "apps/pi-runtime/src/specialists.ts": "201dfac18d5a86ab1d146499174ce21f17d39ab4afa9d56737b522c7a5b31532",
+        "apps/pi-runtime/src/coordinator.ts": "b26e9952e1aef6d913c98c7580e10e94d0f63724f1605c68acfc952d20d48a0e"
+      },
+      "caseId": "stack-overflow",
+      "description": "StackOverflowError，重复 Recurse.down:7；没有源码，递归终止条件和影响未知",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "mode": "live",
+      "thinking": {
+        "requested": "off",
+        "effective": "off",
+        "status": "honored"
+      },
+      "status": "completed",
+      "latencyMs": 120111,
+      "tokenUsage": {
+        "input": 6383,
+        "output": 21260,
+        "total": 27643
+      },
+      "selectedSpecialists": [
+        "jvm",
+        "container_host"
+      ],
+      "specialistStatus": {
+        "jvm": "completed",
+        "container_host": "failed"
+      },
+      "modelCalls": [
+        {
+          "role": "jvm",
+          "status": "ok",
+          "chars": 5562,
+          "inputChars": 3910,
+          "inputTokens": 1419,
+          "outputTokens": 7780,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\"role\":\"jvm\",\"hypotheses\":[\"com.example.Recurse.down 存在未终止或过深递归，导致当前线程栈耗尽并抛出 StackOverflowError；依据是异常类型与同一方法帧重复出现。递归终止条件、入口和触发数据仍未知。\",\"特定输入或调用链可能使 Recurse.down 的递归深度异常增长；当前仅见截断异常片段，无法确认输入、并发或业务数据规模。\",\"线程栈大小配置偏小可能是放大因素，但缺少 JVM 参数、容器配置和版本证据，不能判定为已确认原因。\",\"仅凭当前证据不能排除其他线程同时溢出，也不能确认服务已恢复；需完整日志和多实例状态。\"],\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.logs\",\"docker.inspect\"],\"confidence\":0.86,\"summary\":\"当前可见证据为 data-asset-service 在 test-svc-02 上的一条 docker.logs 片段：java.lang.StackOverflowError，后随两帧 com.example.Recurse.down(Recurse.java:7) 重复，且该日志标记 truncated=true、可见仅 3 行。这可确认 JVM 线程栈耗尽及异常抛出点位于 Recurse.down，重复同一方法帧提示递归/重复调用路径；但不能确认递归终止条件、触发输入、JVM 栈大小或是否已恢复。未发现业务数据异常或外部依赖故障证据，不能把异常文本当作现实库存/依赖故障证明。建议先补全日志与容器/JVM 参数，再读 Recurse.java 第 7 行附近代码确认递归边界和入口，修复前仅做受控止损。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"docker.logs 可见片段共 3 行且 truncated=true，首行为 java.lang.StackOverflowError。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"可见栈帧为 com.example.Recurse.down(Recurse.java:7) 连续重复，确认异常发生在该方法的重复调用路径上。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"当前证据未包含线程名、完整调用链、异常触发参数、JVM 参数、镜像版本和恢复状态。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"未见业务数据、库存或外部依赖故障的直接证据；异常文本只能证明应用报错。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"Recurse.down 的递归终止条件缺失、错误或递归深度未受控，是当前最直接候选原因。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"特定输入或调用路径触发异常递归深度；当前证据只显示递归帧，不能确认具体入口和触发数据。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"线程栈大小配置偏小或版本相关默认值较低可能降低溢出阈值；这是待验证放大因素，不是已确认根因。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"Recurse.down 的递归终止条件、递归入口和触发输入未知。\",\"JVM 线程栈大小（如 -Xss）、容器环境变量和实际生效版本未知。\",\"完整调用链、线程名、异常前后日志和是否多线程同时发生未知。\",\"服务当前是否恢复、是否仍可接收请求未知。\",\"触发是否与特定业务数据规模、外部依赖返回或并发量有关未知。\",\"是否存在其他伴随异常或资源压力未知，当前不能排除。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 容器（test-svc-02）的 docker.logs 原始日志\",\"preconditions\":[\"具备容器日志读取权限\",\"按原始时间窗口采集，保留脱敏要求\"],\"operation\":\"人工采集故障时间点前后完整日志和完整异常栈，确认线程名、异常链、相邻业务日志及是否有多个线程/入口；不要用当前 3 行截断视图代替完整日志。结果分支：若完整栈仍仅重复 Recurse.down，则优先查该递归边界；若出现其他入口或伴随异常，则并行排查对应调用链。\",\"expectedResult\":\"获得可区分递归入口、线程范围和伴随异常的完整日志证据。\",\"risk\":\"日志可能含敏感信息，需脱敏；只读采集不影响业务。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 容器配置与启动参数\",\"preconditions\":[\"具备 docker inspect 读取权限\",\"确认目标容器实例与故障实例一致\"],\"operation\":\"读取容器环境变量、镜像/版本、CPU/内存限制和启动命令，重点查找 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 等线程栈线索；结果分支：若发现较小且明确的栈参数，记录为放大因素候选；若未发现，不能据此认定栈大小正常。\",\"expectedResult\":\"确认容器/JVM 参数和版本，判断栈大小配置是否为候选放大因素。\",\"risk\":\"只读检查，风险低；避免输出敏感环境变量值。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"com.example.Recurse.down(Recurse.java:7) 及调用方\",\"preconditions\":[\"可访问对应版本源码\",\"确认运行版本与源码版本一致\"],\"operation\":\"人工阅读 Recurse.java 第 7 行附近及所有调用方，检查递归终止条件、递归参数变化、异常路径和输入边界；结果分支：若终止条件缺失/错误，按代码递归缺陷修复；若递归深度随输入增长，补充输入校验和深度上限；若代码不可对应运行版本，先补齐版本证据。\",\"expectedResult\":\"确认递归终止逻辑、触发入口和可区分的修复方向。\",\"risk\":\"源码可能含敏感业务逻辑，需控制访问范围。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 故障实例（test-svc-02）\",\"preconditions\":[\"确认实例仍不可用且影响业务\",\"已尽量保留现场日志/线程转储\",\"获得人工审批并确认流量摘除或滚动策略\"],\"operation\":\"经审批后对故障实例执行受控重启以临时恢复服务，重启前采集日志和线程转储，重启后观察是否再次出现 StackOverflowError；若立即复发则停止重启循环并回到代码/参数排查。回滚要求：保留原实例配置，按发布流程回退到上一可用实例。\",\"expectedResult\":\"临时恢复服务并保留复发证据；不消除递归根因。\",\"risk\":\"重启可能造成短时不可用、请求失败或现场丢失；可能再次溢出。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service JVM 线程栈参数\",\"preconditions\":[\"docker.inspect 或启动参数已确认当前 -Xss/JAVA_TOOL_OPTIONS 实际值\",\"确认运行版本与配置基线\",\"人工审批并准备灰度/回滚\"],\"operation\":\"仅在已核实当前值和版本后，由人工评估是否临时调整线程栈大小作为缓解；不得改成猜测值。调整后灰度重启并观察复发率与内存占用。结果分支：若调整后仍复发，说明主因更可能是递归逻辑而非栈大小；若显著缓解，仍须修复递归边界。\",\"expectedResult\":\"验证栈大小是否为放大因素，并为代码修复争取时间。\",\"risk\":\"参数调整需重启，可能增加内存占用或掩盖根因；错误配置可导致启动失败。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后的 data-asset-service 与 Recurse.down 调用路径\",\"preconditions\":[\"已完成代码或配置变更并部署到验证环境\",\"具备可复现的输入或监控窗口\"],\"operation\":\"在隔离/灰度环境用可疑输入进行受控复现，验证不再出现 StackOverflowError，并检查同一方法帧是否消失；生产验证只做已审批的观测和健康检查，不擅自发业务 POST。结果分支：若复现成功且无溢出，记录修复有效；若仍溢出，保留新栈并重新定位递归入口。\",\"expectedResult\":\"确认修复对目标递归路径有效，或获得新的失败栈用于继续定位。\",\"risk\":\"受控复现可能再次触发溢出，需限制影响范围并准备回滚。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"data-asset-service 运行日志与健康状态\",\"preconditions\":[\"修复或缓解已实施\",\"监控可覆盖故障时间窗口\"],\"operation\":\"在观察窗口内持续检查 docker.logs 是否再次出现 StackOverflowError、Recurse.down 栈帧和请求失败；使用已配置健康 URL 的 http.probe 仅做 GET/HEAD 健康检查，不将其视为业务复现。结果分支：若观察窗口无复发且健康检查通过，可阶段性确认；若复发，立即升级为未解决并回到源码/参数排查。\",\"expectedResult\":\"确认短期是否复发，避免把一次未复发误判为根治。\",\"risk\":\"健康检查通过不能证明递归缺陷已修复；观察窗口不足会漏报。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]},\"hypothesis\":\"com.example.Recurse.down 存在未终止或过深递归，导致当前线程栈耗尽并抛出 StackOverflowError；递归终止条件、触发输入和 JVM 栈参数仍待补证。\",\"recommendation\":\"先补全故障时间窗口的 docker.logs 完整异常栈，并用 docker.inspect 核实容器版本、JVM 参数和 -Xss/JAVA_TOOL_OPTIONS 线索；随后人工阅读 Recurse.java 第 7 行及调用方确认递归边界和入口。修复未确定前，仅对故障实例做经审批的受控重启止损，并保留现场；不得把重启或健康检查通过当作根因已修复。只有在核实当前 JVM 参数后才能评估临时调整线程栈大小，且必须灰度、可回滚；业务输入复现只能在隔离或已审批环境进行，http.probe 不用于业务 POST 复现。观察窗口内复查 StackOverflowError 和 Recurse.down 栈帧是否消失，以验证修复。\"}"
+        },
+        {
+          "role": "container_host",
+          "status": "ok",
+          "chars": 366,
+          "inputChars": 3921,
+          "inputTokens": 1420,
+          "outputTokens": 8192,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\"role\":\"container_host\",\"hypothesis\":\"首要假设：com.example.Recurse.down 第7行递归调用未收敛或终止条件未命中，导致调用深度持续增长并触发栈溢出；输入深度、线程栈容量和运行环境是否参与仍未知。\",\"hypotheses\":[\"com.example.Recurse.down 第7行递归调用缺少有效终止条件或终止条件未命中，导致调用深度持续增长并触发栈溢出。\",\"输入数据造成递归深度异常增大（深层结构或循环引用），超过当前线程栈容量。\",\"线程栈容量或运行环境差异使正常递归深度也发生溢出，但当前缺少 JVM 参数和容器配置证据。\"],\"recommendation\":\"在事件时间 2026-10-20T02:05:00Z 前后补全容器完整日志、容器配置和资源状态"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "chars": 5470,
+          "inputChars": 8723,
+          "inputTokens": 3544,
+          "outputTokens": 5288,
+          "provider": "ark",
+          "model": "deepseek-v4.1-flash",
+          "text": "{\"hypothesis\":\"当前证据支持 data-asset-service 在 test-svc-02 发生 JVM 线程栈耗尽，异常抛出点位于 com.example.Recurse.down(Recurse.java:7)，同一方法帧连续重复提示存在递归或重复调用路径。最可能根因是该递归的终止条件缺失、错误或递归深度未受控；但递归入口、触发输入、完整调用链、JVM 线程栈参数、运行版本及服务当前恢复状态仍未知。异常文本只能证明应用报错，不能据此认定库存校验、条件判断、结果映射或外部依赖发生现实故障。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.82,\"recommendation\":\"先补证再修复：人工采集故障时间点前后的完整容器日志和线程转储，确认线程名、完整异常栈、相邻业务日志及是否多线程/多入口复发；读取容器配置、镜像版本和启动参数，重点核实 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 的实际值；阅读对应版本 Recurse.java 第 7 行附近及所有调用方，确认递归终止条件、参数变化和输入边界。确认前不得把线程栈参数改成猜测值。若实例仍不可用且影响业务，经人工审批后受控重启止损，重启前保留现场，立即复发则停止重启循环并回到代码/参数排查。修复后先在隔离或灰度环境用可疑输入受控复现，观察窗口内检查 StackOverflowError 和同一方法帧是否消失；生产仅做已审批的观测和已配置健康 URL 的 GET/HEAD 健康检查，不把 http.probe 当作业务 POST 复现。线程栈参数调整仅在已核实当前值、版本并完成审批后灰度实施，调整后仍复发说明主因更可能是递归逻辑而非栈大小。\",\"summary\":\"可见证据为 data-asset-service 在 test-svc-02 的一条截断 docker.logs 片段，共 3 行：java.lang.StackOverflowError，后随两帧 com.example.Recurse.down(Recurse.java:7) 重复。这可确认 JVM 线程栈耗尽类异常及异常抛出点位于该方法的重复调用路径，最可能根因是递归终止条件缺失、错误或深度未受控；但入口、触发输入、完整调用链、JVM 参数、版本和恢复状态未知。异常文本不能证明库存或外部依赖故障。建议先补全日志/线程转储、容器参数和源码证据，确认前不做参数猜测；必要时经审批受控重启止损，修复后灰度复现并观察是否复发。\",\"hypotheses\":[\"Recurse.down 存在未终止或过深递归，导致线程栈耗尽并抛出 StackOverflowError；终止条件和入口仍待源码确认。\",\"特定输入或调用路径可能使 Recurse.down 的递归深度异常增长；当前截断片段不足以确认触发数据、并发或业务规模。\",\"线程栈大小配置偏小可能是放大因素；缺少 JVM 参数、容器配置和版本证据，不能判定为已确认原因。\",\"仅凭当前证据不能排除其他线程同时溢出，也不能确认服务已恢复；需完整日志、线程转储和多实例状态。\"],\"diagnosis\":{\"observations\":[{\"statement\":\"docker.logs 当前可见片段共 3 行且 truncated=true，首行为 java.lang.StackOverflowError。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"可见栈帧为 com.example.Recurse.down(Recurse.java:7) 连续重复，确认异常发生在该方法的重复调用路径上。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"StackOverflowError 可确认线程栈耗尽类异常；具体线程名、完整调用链和异常前后日志当前不可见。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"当前可见证据未包含触发参数、JVM 线程栈参数、镜像版本、容器资源配置和服务恢复状态。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"statement\":\"当前可见证据未见业务数据、库存或外部依赖故障的直接证据；异常文本只能证明应用报错。\",\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"Recurse.down 的递归终止条件缺失、错误或递归深度未受控，是当前最直接候选原因。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"特定输入或调用路径触发异常递归深度；当前证据只显示递归帧，不能确认具体入口和触发数据。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"线程栈大小配置偏小或版本相关默认值较低可能降低溢出阈值；这是待验证的放大因素，不是已确认根因。\",\"supportingEvidenceIds\":[\"evd-stack-overflow-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"Recurse.down 的递归终止条件、递归入口和触发输入未知。\",\"JVM 线程栈大小（如 -Xss）、容器环境变量和实际生效版本未知。\",\"完整调用链、线程名、异常前后日志和是否多线程同时发生未知。\",\"服务当前是否恢复、是否仍可接收请求未知。\",\"触发是否与特定业务数据规模、外部依赖返回或并发量有关未知。\",\"是否存在其他伴随异常或资源压力未知，当前不能排除。\"],\"actions\":[{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 容器（test-svc-02）完整日志与线程转储\",\"preconditions\":[\"具备容器日志和线程转储采集权限\",\"按原始时间窗口采集并保留脱敏要求\",\"确认目标实例与故障实例一致\"],\"operation\":\"人工采集故障时间点前后完整容器日志和线程转储，确认线程名、完整异常栈、相邻业务日志及是否存在多个线程或多个入口。不要用当前 3 行截断视图代替完整日志。结果分支：若完整栈仍仅重复 Recurse.down，则优先查该递归边界；若出现其他入口或伴随异常，则并行排查对应调用链。\",\"expectedResult\":\"获得可区分递归入口、线程范围和伴随异常的完整日志与线程转储证据。\",\"risk\":\"日志和线程转储可能含敏感信息，需脱敏；只读采集不影响业务。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"data-asset-service 容器配置、镜像版本与启动参数\",\"preconditions\":[\"具备 docker inspect 或等效配置读取权限\",\"确认目标容器实例与故障实例一致\"],\"operation\":\"读取容器环境变量、镜像/版本、CPU/内存限制和启动命令，重点查找 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 等线程栈线索。结果分支：若发现较小且明确的栈参数，记录为放大因素候选；若未发现，不能据此认定栈大小正常。\",\"expectedResult\":\"确认容器/JVM 参数和版本，判断线程栈大小配置是否为候选放大因素。\",\"risk\":\"只读检查，风险低；避免输出敏感环境变量值。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"com.example.Recurse.down(Recurse.java:7) 及调用方源码\",\"preconditions\":[\"可访问对应版本源码\",\"确认运行版本与源码版本一致\"],\"operation\":\"人工阅读 Recurse.java 第 7 行附近及所有调用方，检查递归终止条件、递归参数变化、异常路径和输入边界。结果分支：若终止条件缺失或错误，按代码递归缺陷修复；若递归深度随输入增长，补充输入校验和深度上限；若代码不可对应运行版本，先补齐版本证据。\",\"expectedResult\":\"确认递归终止逻辑、触发入口和可区分的修复方向。\",\"risk\":\"源码可能含敏感业务逻辑，需控制访问范围。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service 故障实例（test-svc-02）\",\"preconditions\":[\"确认实例仍不可用且影响业务\",\"已尽量保留现场日志和线程转储\",\"获得人工审批并确认流量摘除或滚动策略\"],\"operation\":\"经人工审批后对故障实例执行受控重启以临时恢复可用性；重启前采集日志和线程转储，重启后观察是否再次出现 StackOverflowError。若立即复发则停止重启循环并回到代码/参数排查。回滚要求：保留原实例配置，按发布流程回退到上一可用实例。\",\"expectedResult\":\"临时恢复可用性并保留复发证据；不消除递归根因。\",\"risk\":\"重启可能造成短时不可用、请求失败或现场丢失；可能再次溢出。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"mitigation\",\"target\":\"data-asset-service JVM 线程栈参数\",\"preconditions\":[\"已通过 docker.inspect 或启动参数确认当前 -Xss/JAVA_TOOL_OPTIONS 实际值\",\"确认运行版本与配置基线\",\"已准备灰度、监控和回滚方案并获得人工审批\"],\"operation\":\"仅在已核实当前值和版本后，由人工评估是否临时调整线程栈大小作为缓解；不得改成猜测值。调整后灰度重启并观察复发率与内存占用。结果分支：若调整后仍复发，说明主因更可能是递归逻辑而非栈大小；若显著缓解，仍须修复递归边界。回滚要求：保留原参数，异常时回退到变更前配置。\",\"expectedResult\":\"验证线程栈大小是否为放大因素，并为代码修复争取时间。\",\"risk\":\"参数调整需重启，可能增加内存占用或掩盖根因；错误配置可导致启动失败。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]},{\"purpose\":\"verification\",\"target\":\"修复后的 data-asset-service 与 Recurse.down 调用路径\",\"preconditions\":[\"已完成代码或配置变更并部署到验证环境\",\"具备可复现的可疑输入或监控窗口\",\"受控复现已获得审批并限制影响范围\"],\"operation\":\"在隔离或灰度环境用可疑输入进行受控复现，检查日志不再出现 StackOverflowError 和同一方法帧；生产验证只做已审批的观测与已配置健康 URL 的 GET/HEAD 健康检查，不将 http.probe 当作业务 POST 复现。结果分支：若复现成功且无溢出，记录修复有效；若仍溢出，保留新栈并重新定位递归入口。\",\"expectedResult\":\"确认修复对目标递归路径有效，或获得新的失败栈用于继续定位。\",\"risk\":\"受控复现可能再次触发溢出；需限制影响范围并准备回滚。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-stack-overflow-docker.logs\"]}]}}"
+        }
+      ],
+      "evidenceIds": [
+        "evd-stack-overflow-docker.logs"
+      ],
+      "evaluation": {
+        "checks": {
+          "evidenceIdsValid": {
+            "status": "pass"
+          },
+          "requiredKindsCited": {
+            "status": "pass"
+          },
+          "conflictPreserved": {
+            "status": "not_applicable"
+          },
+          "missingEvidenceValid": {
+            "status": "pass"
+          },
+          "capabilityBoundary": {
+            "status": "pass"
+          },
+          "uncertaintyDiscipline": {
+            "status": "not_applicable"
+          }
+        },
+        "machineScore": 100,
+        "dimensions": [
+          {
+            "name": "evidence_grounding",
+            "points": 30,
+            "earned": 30,
+            "status": "scored"
+          },
+          {
+            "name": "citation_validity",
+            "points": 20,
+            "earned": 20,
+            "status": "scored"
+          },
+          {
+            "name": "conflict_handling",
+            "points": 20,
+            "earned": null,
+            "status": "not_machine_scorable"
+          },
+          {
+            "name": "missing_evidence_discipline",
+            "points": 15,
+            "earned": 15,
+            "status": "scored"
+          },
+          {
+            "name": "uncertainty_discipline",
+            "points": 15,
+            "earned": null,
+            "status": "not_machine_scorable"
+          }
+        ],
+        "notMachineScorable": [
+          "conflict_handling",
+          "uncertainty_discipline"
+        ],
+        "citedEvidenceIds": [
+          "evd-stack-overflow-docker.logs"
+        ],
+        "citedKinds": [
+          "docker.logs"
+        ],
+        "missingEvidenceRequested": [
+          "docker.logs",
+          "docker.inspect"
+        ],
+        "advisoryRemediationMentions": [],
+        "hardPass": true
+      },
+      "modelContext": {
+        "schemaVersion": 1,
+        "incident": {
+          "id": "inc-stack-overflow",
+          "type": "jvm.stack_overflow",
+          "service": "data-asset-service",
+          "nodeId": "test-svc-02",
+          "severity": "critical",
+          "state": "OPEN",
+          "firstSeen": "2026-10-20T02:05:00.000Z",
+          "lastSeen": "2026-10-20T02:05:00.000Z",
+          "eventCount": 1
+        },
+        "evidence": [
+          {
+            "id": "evd-stack-overflow-docker.logs",
+            "kind": "docker.logs",
+            "incidentId": "inc-stack-overflow",
+            "nodeId": "test-svc-02",
+            "source": "docker",
+            "collectedAt": "2026-10-20T02:05:00.000Z",
+            "status": "succeeded",
+            "data": {
+              "truncated": true,
+              "lines": [
+                "java.lang.StackOverflowError",
+                "\tat com.example.Recurse.down(Recurse.java:7)",
+                "\tat com.example.Recurse.down(Recurse.java:7)"
+              ],
+              "logProjection": {
+                "lines": {
+                  "originalLineCount": 3,
+                  "retainedRanges": [
+                    {
+                      "startLine": 1,
+                      "endLine": 3
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "historicalKnowledgeStatus": "unavailable",
+        "historicalKnowledge": {
+          "similarIncidents": [],
+          "historicalHypotheses": [],
+          "previousResolutions": [],
+          "relatedMemories": []
+        },
+        "conflictingMemories": [],
+        "truncation": {
+          "droppedEvidenceIds": [],
+          "truncatedItems": [
+            "evd-stack-overflow-docker.logs"
+          ]
+        }
+      },
+      "supplementalResponses": [
+        {
+          "schemaVersion": 1,
+          "runtimeRequestId": "request-stack-overflow",
+          "results": [
+            {
+              "requestId": "ereq-stack-overflow-docker.logs",
+              "type": "docker.logs",
+              "status": "unavailable",
+              "error": "No recorded supplemental evidence for this capability."
+            },
+            {
+              "requestId": "ereq-stack-overflow-docker.inspect",
+              "type": "docker.inspect",
+              "status": "unavailable",
+              "error": "No recorded supplemental evidence for this capability."
+            }
+          ]
+        }
+      ],
+      "message": {
+        "content": "### data-asset-service 诊断完成\n**Recurse.down 的递归终止条件缺失、错误或递归深度未受控，是当前最直接候选原因。\n特定输入或调用路径触发异常递归深度；当前证据只显示递归帧，不能确认具体入口和触发数据。\n线程栈大小配置偏小或版本相关默认值较低可能降低溢出阈值；这是待验证的放大因素，不是已确认根因。**\n机器：test-svc-02\n时间：10月20日 10:05（北京时间）\n诊断原文时间按 UTC 阅读；显式时区以原文为准。\n\n**下一步**\n修复尚未确定。\n1. 止损（需批准）：data-asset-service 故障实例（test-svc-02）\n前提：确认实例仍不可用且影响业务；已尽量保留现场日志和线程转储；获得人工审批并确认流量摘除或滚动策略\n经人工审批后对故障实例执行受控重启以临时恢复可用性；重启前采集日志和线程转储，重启后观察是否再次出现 StackOverflowError。若立即复发则停止重启循环并回到代码/参数排查。回滚要求：保留原实例配置，按发布流程回退到上一可用实例。\n预期：临时恢复可用性并保留复发证据；不消除递归根因。\n风险：重启可能造成短时不可用、请求失败或现场丢失；可能再次溢出。\n2. 验证（需批准）：修复后的 data-asset-service 与 Recurse.down 调用路径\n前提：已完成代码或配置变更并部署到验证环境；具备可复现的可疑输入或监控窗口；受控复现已获得审批并限制影响范围\n在隔离或灰度环境用可疑输入进行受控复现，检查日志不再出现 StackOverflowError 和同一方法帧；生产验证只做已审批的观测与已配置健康 URL 的 GET/HEAD 健康检查，不将 http.probe 当作业务 POST 复现。结果分支：若复现成功且无溢出，记录修复有效；若仍溢出，保留新栈并重新定位递归入口。\n预期：确认修复对目标递归路径有效，或获得新的失败栈用于继续定位。\n风险：受控复现可能再次触发溢出；需限制影响范围并准备回滚。\n3. 补证：data-asset-service 容器（test-svc-02）完整日志与线程转储\n前提：具备容器日志和线程转储采集权限；按原始时间窗口采集并保留脱敏要求；确认目标实例与故障实例一致\n人工采集故障时间点前后完整容器日志和线程转储，确认线程名、完整异常栈、相邻业务日志及是否存在多个线程或多个入口。不要用当前 3 行截断视图代替完整日志。结果分支：若完整栈仍仅重复 Recurse.down，则优先查该递归边界；若出现其他入口或伴随异常，则并行排查对应调用链。\n预期：获得可区分递归入口、线程范围和伴随异常的完整日志与线程转储证据。\n风险：日志和线程转储可能含敏感信息，需脱敏；只读采集不影响业务。\n4. 补证：data-asset-service 容器配置、镜像版本与启动参数\n前提：具备 docker inspect 或等效配置读取权限；确认目标容器实例与故障实例一致\n读取容器环境变量、镜像/版本、CPU/内存限制和启动命令，重点查找 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 等线程栈线索。结果分支：若发现较小且明确的栈参数，记录为放大因素候选；若未发现，不能据此认定栈大小正常。\n预期：确认容器/JVM 参数和版本，判断线程栈大小配置是否为候选放大因素。\n风险：只读检查，风险低；避免输出敏感环境变量值。\n另有 2 条动作见完整诊断（编号 captured-report）\n\n编号：inc-stack-overflow",
+        "bytes": 3678,
+        "fetchCalls": 1
+      },
+      "messageEvaluation": {
+        "checks": {
+          "structuredDiagnosis": {
+            "status": "pass"
+          },
+          "actionsComplete": {
+            "status": "pass"
+          },
+          "citationsExist": {
+            "status": "pass"
+          },
+          "forbiddenAttributionScreen": {
+            "status": "pass",
+            "detail": "固定断言模式筛查，不代表语义上不存在禁止归因。"
+          },
+          "messageWithinLimit": {
+            "status": "pass",
+            "detail": "3678 bytes"
+          },
+          "mitigationVisible": {
+            "status": "pass"
+          },
+          "repairOrUnknownVisible": {
+            "status": "pass"
+          },
+          "verificationVisible": {
+            "status": "pass"
+          }
+        },
+        "purposes": {
+          "mitigation": {
+            "inDiagnosis": true,
+            "inMessage": true
+          },
+          "repair": {
+            "inDiagnosis": false,
+            "inMessage": false
+          },
+          "verification": {
+            "inDiagnosis": true,
+            "inMessage": true
+          }
+        },
+        "forbiddenMatches": [],
+        "hardPass": true
+      },
+      "investigation": {
+        "report": {
+          "hypothesis": "当前证据支持 data-asset-service 在 test-svc-02 发生 JVM 线程栈耗尽，异常抛出点位于 com.example.Recurse.down(Recurse.java:7)，同一方法帧连续重复提示存在递归或重复调用路径。最可能根因是该递归的终止条件缺失、错误或递归深度未受控；但递归入口、触发输入、完整调用链、JVM 线程栈参数、运行版本及服务当前恢复状态仍未知。异常文本只能证明应用报错，不能据此认定库存校验、条件判断、结果映射或外部依赖发生现实故障。",
+          "supportingEvidenceIds": [
+            "evd-stack-overflow-docker.logs"
+          ],
+          "contradictingEvidenceIds": [],
+          "confidence": 0.82,
+          "recommendation": "先补证再修复：人工采集故障时间点前后的完整容器日志和线程转储，确认线程名、完整异常栈、相邻业务日志及是否多线程/多入口复发；读取容器配置、镜像版本和启动参数，重点核实 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 的实际值；阅读对应版本 Recurse.java 第 7 行附近及所有调用方，确认递归终止条件、参数变化和输入边界。确认前不得把线程栈参数改成猜测值。若实例仍不可用且影响业务，经人工审批后受控重启止损，重启前保留现场，立即复发则停止重启循环并回到代码/参数排查。修复后先在隔离或灰度环境用可疑输入受控复现，观察窗口内检查 StackOverflowError 和同一方法帧是否消失；生产仅做已审批的观测和已配置健康 URL 的 GET/HEAD 健康检查，不把 http.probe 当作业务 POST 复现。线程栈参数调整仅在已核实当前值、版本并完成审批后灰度实施，调整后仍复发说明主因更可能是递归逻辑而非栈大小。",
+          "diagnosis": {
+            "observations": [
+              {
+                "statement": "docker.logs 当前可见片段共 3 行且 truncated=true，首行为 java.lang.StackOverflowError。",
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "statement": "可见栈帧为 com.example.Recurse.down(Recurse.java:7) 连续重复，确认异常发生在该方法的重复调用路径上。",
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "statement": "StackOverflowError 可确认线程栈耗尽类异常；具体线程名、完整调用链和异常前后日志当前不可见。",
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "statement": "当前可见证据未包含触发参数、JVM 线程栈参数、镜像版本、容器资源配置和服务恢复状态。",
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "statement": "当前可见证据未见业务数据、库存或外部依赖故障的直接证据；异常文本只能证明应用报错。",
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              }
+            ],
+            "candidateCauses": [
+              {
+                "cause": "Recurse.down 的递归终止条件缺失、错误或递归深度未受控，是当前最直接候选原因。",
+                "supportingEvidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ],
+                "contradictingEvidenceIds": []
+              },
+              {
+                "cause": "特定输入或调用路径触发异常递归深度；当前证据只显示递归帧，不能确认具体入口和触发数据。",
+                "supportingEvidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ],
+                "contradictingEvidenceIds": []
+              },
+              {
+                "cause": "线程栈大小配置偏小或版本相关默认值较低可能降低溢出阈值；这是待验证的放大因素，不是已确认根因。",
+                "supportingEvidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ],
+                "contradictingEvidenceIds": []
+              }
+            ],
+            "uncertainties": [
+              "Recurse.down 的递归终止条件、递归入口和触发输入未知。",
+              "JVM 线程栈大小（如 -Xss）、容器环境变量和实际生效版本未知。",
+              "完整调用链、线程名、异常前后日志和是否多线程同时发生未知。",
+              "服务当前是否恢复、是否仍可接收请求未知。",
+              "触发是否与特定业务数据规模、外部依赖返回或并发量有关未知。",
+              "是否存在其他伴随异常或资源压力未知，当前不能排除。"
+            ],
+            "actions": [
+              {
+                "purpose": "evidence_collection",
+                "target": "data-asset-service 容器（test-svc-02）完整日志与线程转储",
+                "preconditions": [
+                  "具备容器日志和线程转储采集权限",
+                  "按原始时间窗口采集并保留脱敏要求",
+                  "确认目标实例与故障实例一致"
+                ],
+                "operation": "人工采集故障时间点前后完整容器日志和线程转储，确认线程名、完整异常栈、相邻业务日志及是否存在多个线程或多个入口。不要用当前 3 行截断视图代替完整日志。结果分支：若完整栈仍仅重复 Recurse.down，则优先查该递归边界；若出现其他入口或伴随异常，则并行排查对应调用链。",
+                "expectedResult": "获得可区分递归入口、线程范围和伴随异常的完整日志与线程转储证据。",
+                "risk": "日志和线程转储可能含敏感信息，需脱敏；只读采集不影响业务。",
+                "requiresApproval": false,
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "purpose": "evidence_collection",
+                "target": "data-asset-service 容器配置、镜像版本与启动参数",
+                "preconditions": [
+                  "具备 docker inspect 或等效配置读取权限",
+                  "确认目标容器实例与故障实例一致"
+                ],
+                "operation": "读取容器环境变量、镜像/版本、CPU/内存限制和启动命令，重点查找 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 等线程栈线索。结果分支：若发现较小且明确的栈参数，记录为放大因素候选；若未发现，不能据此认定栈大小正常。",
+                "expectedResult": "确认容器/JVM 参数和版本，判断线程栈大小配置是否为候选放大因素。",
+                "risk": "只读检查，风险低；避免输出敏感环境变量值。",
+                "requiresApproval": false,
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "purpose": "evidence_collection",
+                "target": "com.example.Recurse.down(Recurse.java:7) 及调用方源码",
+                "preconditions": [
+                  "可访问对应版本源码",
+                  "确认运行版本与源码版本一致"
+                ],
+                "operation": "人工阅读 Recurse.java 第 7 行附近及所有调用方，检查递归终止条件、递归参数变化、异常路径和输入边界。结果分支：若终止条件缺失或错误，按代码递归缺陷修复；若递归深度随输入增长，补充输入校验和深度上限；若代码不可对应运行版本，先补齐版本证据。",
+                "expectedResult": "确认递归终止逻辑、触发入口和可区分的修复方向。",
+                "risk": "源码可能含敏感业务逻辑，需控制访问范围。",
+                "requiresApproval": false,
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "purpose": "mitigation",
+                "target": "data-asset-service 故障实例（test-svc-02）",
+                "preconditions": [
+                  "确认实例仍不可用且影响业务",
+                  "已尽量保留现场日志和线程转储",
+                  "获得人工审批并确认流量摘除或滚动策略"
+                ],
+                "operation": "经人工审批后对故障实例执行受控重启以临时恢复可用性；重启前采集日志和线程转储，重启后观察是否再次出现 StackOverflowError。若立即复发则停止重启循环并回到代码/参数排查。回滚要求：保留原实例配置，按发布流程回退到上一可用实例。",
+                "expectedResult": "临时恢复可用性并保留复发证据；不消除递归根因。",
+                "risk": "重启可能造成短时不可用、请求失败或现场丢失；可能再次溢出。",
+                "requiresApproval": true,
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "purpose": "mitigation",
+                "target": "data-asset-service JVM 线程栈参数",
+                "preconditions": [
+                  "已通过 docker.inspect 或启动参数确认当前 -Xss/JAVA_TOOL_OPTIONS 实际值",
+                  "确认运行版本与配置基线",
+                  "已准备灰度、监控和回滚方案并获得人工审批"
+                ],
+                "operation": "仅在已核实当前值和版本后，由人工评估是否临时调整线程栈大小作为缓解；不得改成猜测值。调整后灰度重启并观察复发率与内存占用。结果分支：若调整后仍复发，说明主因更可能是递归逻辑而非栈大小；若显著缓解，仍须修复递归边界。回滚要求：保留原参数，异常时回退到变更前配置。",
+                "expectedResult": "验证线程栈大小是否为放大因素，并为代码修复争取时间。",
+                "risk": "参数调整需重启，可能增加内存占用或掩盖根因；错误配置可导致启动失败。",
+                "requiresApproval": true,
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              },
+              {
+                "purpose": "verification",
+                "target": "修复后的 data-asset-service 与 Recurse.down 调用路径",
+                "preconditions": [
+                  "已完成代码或配置变更并部署到验证环境",
+                  "具备可复现的可疑输入或监控窗口",
+                  "受控复现已获得审批并限制影响范围"
+                ],
+                "operation": "在隔离或灰度环境用可疑输入进行受控复现，检查日志不再出现 StackOverflowError 和同一方法帧；生产验证只做已审批的观测与已配置健康 URL 的 GET/HEAD 健康检查，不将 http.probe 当作业务 POST 复现。结果分支：若复现成功且无溢出，记录修复有效；若仍溢出，保留新栈并重新定位递归入口。",
+                "expectedResult": "确认修复对目标递归路径有效，或获得新的失败栈用于继续定位。",
+                "risk": "受控复现可能再次触发溢出；需限制影响范围并准备回滚。",
+                "requiresApproval": true,
+                "evidenceIds": [
+                  "evd-stack-overflow-docker.logs"
+                ]
+              }
+            ]
+          }
+        },
+        "findings": [
+          {
+            "role": "jvm",
+            "hypotheses": [
+              "com.example.Recurse.down 存在未终止或过深递归，导致当前线程栈耗尽并抛出 StackOverflowError；依据是异常类型与同一方法帧重复出现。递归终止条件、入口和触发数据仍未知。",
+              "特定输入或调用链可能使 Recurse.down 的递归深度异常增长；当前仅见截断异常片段，无法确认输入、并发或业务数据规模。",
+              "线程栈大小配置偏小可能是放大因素，但缺少 JVM 参数、容器配置和版本证据，不能判定为已确认原因。",
+              "仅凭当前证据不能排除其他线程同时溢出，也不能确认服务已恢复；需完整日志和多实例状态。"
+            ],
+            "supportingEvidenceIds": [
+              "evd-stack-overflow-docker.logs"
+            ],
+            "contradictingEvidenceIds": [],
+            "missingEvidence": [
+              "docker.logs",
+              "docker.inspect"
+            ],
+            "confidence": 0.86,
+            "summary": "当前可见证据为 data-asset-service 在 test-svc-02 上的一条 docker.logs 片段：java.lang.StackOverflowError，后随两帧 com.example.Recurse.down(Recurse.java:7) 重复，且该日志标记 truncated=true、可见仅 3 行。这可确认 JVM 线程栈耗尽及异常抛出点位于 Recurse.down，重复同一方法帧提示递归/重复调用路径；但不能确认递归终止条件、触发输入、JVM 栈大小或是否已恢复。未发现业务数据异常或外部依赖故障证据，不能把异常文本当作现实库存/依赖故障证明。建议先补全日志与容器/JVM 参数，再读 Recurse.java 第 7 行附近代码确认递归边界和入口，修复前仅做受控止损。",
+            "diagnosis": {
+              "observations": [
+                {
+                  "statement": "docker.logs 可见片段共 3 行且 truncated=true，首行为 java.lang.StackOverflowError。",
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "statement": "可见栈帧为 com.example.Recurse.down(Recurse.java:7) 连续重复，确认异常发生在该方法的重复调用路径上。",
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "statement": "当前证据未包含线程名、完整调用链、异常触发参数、JVM 参数、镜像版本和恢复状态。",
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "statement": "未见业务数据、库存或外部依赖故障的直接证据；异常文本只能证明应用报错。",
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                }
+              ],
+              "candidateCauses": [
+                {
+                  "cause": "Recurse.down 的递归终止条件缺失、错误或递归深度未受控，是当前最直接候选原因。",
+                  "supportingEvidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ],
+                  "contradictingEvidenceIds": []
+                },
+                {
+                  "cause": "特定输入或调用路径触发异常递归深度；当前证据只显示递归帧，不能确认具体入口和触发数据。",
+                  "supportingEvidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ],
+                  "contradictingEvidenceIds": []
+                },
+                {
+                  "cause": "线程栈大小配置偏小或版本相关默认值较低可能降低溢出阈值；这是待验证放大因素，不是已确认根因。",
+                  "supportingEvidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ],
+                  "contradictingEvidenceIds": []
+                }
+              ],
+              "uncertainties": [
+                "Recurse.down 的递归终止条件、递归入口和触发输入未知。",
+                "JVM 线程栈大小（如 -Xss）、容器环境变量和实际生效版本未知。",
+                "完整调用链、线程名、异常前后日志和是否多线程同时发生未知。",
+                "服务当前是否恢复、是否仍可接收请求未知。",
+                "触发是否与特定业务数据规模、外部依赖返回或并发量有关未知。",
+                "是否存在其他伴随异常或资源压力未知，当前不能排除。"
+              ],
+              "actions": [
+                {
+                  "purpose": "evidence_collection",
+                  "target": "data-asset-service 容器（test-svc-02）的 docker.logs 原始日志",
+                  "preconditions": [
+                    "具备容器日志读取权限",
+                    "按原始时间窗口采集，保留脱敏要求"
+                  ],
+                  "operation": "人工采集故障时间点前后完整日志和完整异常栈，确认线程名、异常链、相邻业务日志及是否有多个线程/入口；不要用当前 3 行截断视图代替完整日志。结果分支：若完整栈仍仅重复 Recurse.down，则优先查该递归边界；若出现其他入口或伴随异常，则并行排查对应调用链。",
+                  "expectedResult": "获得可区分递归入口、线程范围和伴随异常的完整日志证据。",
+                  "risk": "日志可能含敏感信息，需脱敏；只读采集不影响业务。",
+                  "requiresApproval": false,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "purpose": "evidence_collection",
+                  "target": "data-asset-service 容器配置与启动参数",
+                  "preconditions": [
+                    "具备 docker inspect 读取权限",
+                    "确认目标容器实例与故障实例一致"
+                  ],
+                  "operation": "读取容器环境变量、镜像/版本、CPU/内存限制和启动命令，重点查找 -Xss、JAVA_TOOL_OPTIONS、JAVA_OPTS 等线程栈线索；结果分支：若发现较小且明确的栈参数，记录为放大因素候选；若未发现，不能据此认定栈大小正常。",
+                  "expectedResult": "确认容器/JVM 参数和版本，判断栈大小配置是否为候选放大因素。",
+                  "risk": "只读检查，风险低；避免输出敏感环境变量值。",
+                  "requiresApproval": false,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "purpose": "evidence_collection",
+                  "target": "com.example.Recurse.down(Recurse.java:7) 及调用方",
+                  "preconditions": [
+                    "可访问对应版本源码",
+                    "确认运行版本与源码版本一致"
+                  ],
+                  "operation": "人工阅读 Recurse.java 第 7 行附近及所有调用方，检查递归终止条件、递归参数变化、异常路径和输入边界；结果分支：若终止条件缺失/错误，按代码递归缺陷修复；若递归深度随输入增长，补充输入校验和深度上限；若代码不可对应运行版本，先补齐版本证据。",
+                  "expectedResult": "确认递归终止逻辑、触发入口和可区分的修复方向。",
+                  "risk": "源码可能含敏感业务逻辑，需控制访问范围。",
+                  "requiresApproval": false,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "purpose": "mitigation",
+                  "target": "data-asset-service 故障实例（test-svc-02）",
+                  "preconditions": [
+                    "确认实例仍不可用且影响业务",
+                    "已尽量保留现场日志/线程转储",
+                    "获得人工审批并确认流量摘除或滚动策略"
+                  ],
+                  "operation": "经审批后对故障实例执行受控重启以临时恢复服务，重启前采集日志和线程转储，重启后观察是否再次出现 StackOverflowError；若立即复发则停止重启循环并回到代码/参数排查。回滚要求：保留原实例配置，按发布流程回退到上一可用实例。",
+                  "expectedResult": "临时恢复服务并保留复发证据；不消除递归根因。",
+                  "risk": "重启可能造成短时不可用、请求失败或现场丢失；可能再次溢出。",
+                  "requiresApproval": true,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "purpose": "mitigation",
+                  "target": "data-asset-service JVM 线程栈参数",
+                  "preconditions": [
+                    "docker.inspect 或启动参数已确认当前 -Xss/JAVA_TOOL_OPTIONS 实际值",
+                    "确认运行版本与配置基线",
+                    "人工审批并准备灰度/回滚"
+                  ],
+                  "operation": "仅在已核实当前值和版本后，由人工评估是否临时调整线程栈大小作为缓解；不得改成猜测值。调整后灰度重启并观察复发率与内存占用。结果分支：若调整后仍复发，说明主因更可能是递归逻辑而非栈大小；若显著缓解，仍须修复递归边界。",
+                  "expectedResult": "验证栈大小是否为放大因素，并为代码修复争取时间。",
+                  "risk": "参数调整需重启，可能增加内存占用或掩盖根因；错误配置可导致启动失败。",
+                  "requiresApproval": true,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "purpose": "verification",
+                  "target": "修复后的 data-asset-service 与 Recurse.down 调用路径",
+                  "preconditions": [
+                    "已完成代码或配置变更并部署到验证环境",
+                    "具备可复现的输入或监控窗口"
+                  ],
+                  "operation": "在隔离/灰度环境用可疑输入进行受控复现，验证不再出现 StackOverflowError，并检查同一方法帧是否消失；生产验证只做已审批的观测和健康检查，不擅自发业务 POST。结果分支：若复现成功且无溢出，记录修复有效；若仍溢出，保留新栈并重新定位递归入口。",
+                  "expectedResult": "确认修复对目标递归路径有效，或获得新的失败栈用于继续定位。",
+                  "risk": "受控复现可能再次触发溢出，需限制影响范围并准备回滚。",
+                  "requiresApproval": true,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                },
+                {
+                  "purpose": "verification",
+                  "target": "data-asset-service 运行日志与健康状态",
+                  "preconditions": [
+                    "修复或缓解已实施",
+                    "监控可覆盖故障时间窗口"
+                  ],
+                  "operation": "在观察窗口内持续检查 docker.logs 是否再次出现 StackOverflowError、Recurse.down 栈帧和请求失败；使用已配置健康 URL 的 http.probe 仅做 GET/HEAD 健康检查，不将其视为业务复现。结果分支：若观察窗口无复发且健康检查通过，可阶段性确认；若复发，立即升级为未解决并回到源码/参数排查。",
+                  "expectedResult": "确认短期是否复发，避免把一次未复发误判为根治。",
+                  "risk": "健康检查通过不能证明递归缺陷已修复；观察窗口不足会漏报。",
+                  "requiresApproval": false,
+                  "evidenceIds": [
+                    "evd-stack-overflow-docker.logs"
+                  ]
+                }
+              ]
+            },
+            "status": "completed"
+          }
+        ]
+      }
+    }
+  ]
+}

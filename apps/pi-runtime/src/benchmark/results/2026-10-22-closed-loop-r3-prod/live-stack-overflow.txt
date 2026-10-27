@@ -1,0 +1,12 @@
+$ pnpm --filter @pi-ops/pi-runtime exec tsx src/benchmark/closed-loop-cli.ts --live --handler cpa/deepseek-flash-latest --judge cpa/glm-latest --case stack-overflow --budget 112484 --resume --out apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-prod
+{"mode":"live","configPath":"/Users/hejiayuan/code_me/pi-ops/artifacts/real-dataasset-lab/central/runtime-secrets.env","agentCatalog":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-21-output-budget/pi-agent","modelCatalog":"/Users/hejiayuan/.pi/agent","diagnosis":{"provider":"ark","model":"deepseek-v4.1-flash","thinking":"off"},"handler":{"provider":"cpa","model":"deepseek-flash-latest","thinking":"off"},"judge":{"provider":"cpa","model":"glm-latest","thinking":"off"},"cases":["stack-overflow"],"estimatedTokens":95000,"budget":112484,"out":"/Users/hejiayuan/code_me/pi-ops/apps/pi-runtime/src/benchmark/results/2026-10-22-closed-loop-r3-prod"}
+[agent] POST /v1/ops/investigations → 200 (2ms)
+[agent] POST /v1/investigation-results → 200 (2ms)
+[agent] GET /v1/ops/incidents/inc-daeca69b-092b-4a19-9964-8d4695853938/brief → 200 (0ms)
+[agent] GET /v1/ops/incidents/inc-daeca69b-092b-4a19-9964-8d4695853938/brief → 200 (2ms)
+{"case":"stack-overflow","verdict":"closed","gaps":[],"tokens":32666,"ms":129149,"messageBytes":786,"detailBytes":8126,"turns":2,"handler":"answered","judge":[]}
+
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.onlyBuiltDependencies". See https://pnpm.io/settings for the new home of each setting.
+
+exit_code=0
+wall_ms=130944

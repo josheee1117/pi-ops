@@ -6,7 +6,6 @@ import {
 import type { InvestigationContext } from './investigation-context.js';
 import type { InvestigationSession } from './investigation-session.js';
 import type { PiRuntimeClient, PiRuntimeSubmitAck } from './pi-runtime-client.js';
-import type { InvestigationPlan } from './reasoning-strategy.js';
 
 export function createHttpPiRuntimeClient(options: {
   baseUrl: string;
@@ -20,12 +19,6 @@ export function createHttpPiRuntimeClient(options: {
   const baseUrl = options.baseUrl.replace(/\/$/, '');
 
   return {
-    async submit(_plan: InvestigationPlan): Promise<PiRuntimeSubmitAck | void> {
-      return undefined;
-    },
-    async poll(_planId: string) {
-      return undefined;
-    },
     async submitInvestigation(
       session: InvestigationSession,
       context: InvestigationContext,

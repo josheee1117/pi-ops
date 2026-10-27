@@ -78,7 +78,6 @@ export const EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT: OperationalKnowledgeContext = 
   relatedMemories: [],
 };
 
-export const EMPTY_KNOWLEDGE_CONTEXT = EMPTY_OPERATIONAL_KNOWLEDGE_CONTEXT;
 
 export interface KnowledgeRetriever {
   retrieve(context: IncidentContext): OperationalKnowledgeContext;

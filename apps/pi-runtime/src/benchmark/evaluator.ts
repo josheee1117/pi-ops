@@ -1,9 +1,14 @@
 import {
+  DEFAULT_SUMMARY_SEVERITY,
   RUNTIME_ALLOWED_EVIDENCE_TYPES,
   RUNTIME_FORBIDDEN_CAPABILITIES,
   type SpecialistFinding,
+  diagnosisEvidenceIds,
+  investigationSummarySchema,
+  type RuntimeInvestigationReportInput,
 } from '@pi-ops/protocol';
 import type { BenchmarkCase, BenchmarkEvidence } from './fixtures.js';
+import type { MessageOracle } from './message-cases.js';
 
 /**
  * Deterministic hard evaluation for the JVM Diagnosis Benchmark.
@@ -12,7 +17,7 @@ import type { BenchmarkCase, BenchmarkEvidence } from './fixtures.js';
  * deliberately NOT keyword-matched — it is exported for manual/external review.
  */
 
-export type CheckStatus = 'pass' | 'fail' | 'not_applicable';
+export type CheckStatus = 'pass' | 'fail' | 'warn' | 'not_applicable';
 
 export interface HardCheck {
   status: CheckStatus;
@@ -34,7 +39,10 @@ export interface BenchmarkEvaluation {
     missingEvidenceValid: HardCheck;
     capabilityBoundary: HardCheck;
     uncertaintyDiscipline: HardCheck;
+    diagnosisComplete: HardCheck;
   };
+  /** The delivered report carries the production degradation marker. */
+  degraded: boolean;
   /** Machine-verifiable score, 0-100 over applicable dimensions only. */
   machineScore: number | null;
   dimensions: ScoreDimension[];
@@ -59,6 +67,7 @@ export interface BenchmarkRunOutput {
     contradictingEvidenceIds: string[];
     confidence: number;
     recommendation: string;
+    diagnosis?: RuntimeInvestigationReportInput['diagnosis'];
   };
   findings: SpecialistFinding[];
 }
@@ -75,6 +84,92 @@ const REMEDIATION_VOCABULARY = [
   'kill',
   'redeploy',
 ] as const;
+
+export interface MessageEvaluation {
+  checks: Record<string, HardCheck>;
+  purposes: Record<string, { inDiagnosis: boolean }>;
+  forbiddenMatches: string[];
+  degraded: boolean;
+  hardPass: boolean;
+}
+
+/**
+ * Production marks a degraded generation with these prefixes in
+ * structured-output.ts. The benchmark reads the marker, it does not create one.
+ */
+export function diagnosisIsDegraded(report: RuntimeInvestigationReportInput | undefined): boolean {
+  if (!report) return false;
+  return report.hypothesis.startsWith('诊断不完整') || report.recommendation.startsWith('诊断不完整');
+}
+
+function degradedCheck(report: RuntimeInvestigationReportInput | undefined): HardCheck {
+  if (!report) return { status: 'fail', detail: '没有生成结构化报告' };
+  return diagnosisIsDegraded(report)
+    ? { status: 'fail', detail: '诊断是降级产物：hypothesis 或 recommendation 带“诊断不完整”前缀' }
+    : { status: 'pass' };
+}
+
+export function evaluateMessage(
+  oracle: MessageOracle,
+  report: RuntimeInvestigationReportInput | undefined,
+  findings: SpecialistFinding[],
+  evidence: BenchmarkEvidence[],
+  message: string,
+): MessageEvaluation {
+  const actions = report?.diagnosis?.actions ?? [];
+  const ids = new Set(evidence.map((item) => item.id));
+  const cited = [...diagnosisEvidenceIds(report?.diagnosis), ...(report?.supportingEvidenceIds ?? []), ...(report?.contradictingEvidenceIds ?? []),
+    ...findings.flatMap((finding) => [...finding.supportingEvidenceIds, ...finding.contradictingEvidenceIds, ...diagnosisEvidenceIds(finding.diagnosis)])];
+  const foreign = cited.filter((id) => !ids.has(id));
+  const prose = [report?.hypothesis, report?.recommendation, JSON.stringify(report?.diagnosis), message,
+    ...findings.flatMap((finding) => [finding.summary, ...finding.hypotheses, JSON.stringify(finding.diagnosis)])].join('\n');
+  const forbiddenMatches = oracle.forbiddenClaimPatterns.flatMap((pattern) => prose.match(new RegExp(pattern, 'gi')) ?? []);
+  const purposes = Object.fromEntries(['mitigation', 'repair', 'verification'].map((purpose) => [purpose, {
+    inDiagnosis: actions.some((action) => action.purpose === purpose),
+  }]));
+  const repairUnknown = /修复(?:方案)?(?:尚未确定|未确定|未知|待确认|待核实)/.test([
+    message, report?.recommendation, ...(report?.diagnosis?.uncertainties ?? []),
+  ].join('\n'));
+  const recoveryText = /(?:^|\n)恢复建议：\n([\s\S]*?)\n编号：/.exec(message)?.[1] ?? '';
+  const recoveryLines = recoveryText.split('\n');
+  const recovery = recoveryLines.map((line, index) => line.startsWith(`${index + 1}. `) ? line.slice(3) : '');
+  const severity = report?.diagnosis?.summary?.severity.level;
+  const unavailable = evidence.some((item) => {
+    if (item.status !== 'succeeded' || !item.data || typeof item.data !== 'object') return false;
+    const data = item.data;
+    if (item.kind === 'http.probe' && 'healthy' in data && data.healthy === false) return true;
+    if (item.kind === 'docker.inspect' && 'State' in data && data.State && typeof data.State === 'object') {
+      const state = data.State;
+      return ('Running' in state && state.Running === false) || ('OOMKilled' in state && state.OOMKilled === true)
+        || ('Status' in state && ['exited', 'dead'].includes(String(state.Status)));
+    }
+    if (item.kind === 'jfr.signal') {
+      const types = ['eventType' in data ? data.eventType : undefined, 'semanticType' in data ? data.semanticType : undefined];
+      return types.some((type) => typeof type === 'string' && DEFAULT_SUMMARY_SEVERITY.unavailableTypes.includes(type));
+    }
+    return item.kind === 'docker.logs' && 'lines' in data && Array.isArray(data.lines)
+      && data.lines.some((line: unknown) => typeof line === 'string' && /(?:java\.lang\.)?(?:OutOfMemoryError|StackOverflowError)/.test(line));
+  });
+  const mitigationRequired = unavailable || severity === '严重' || severity === '高'
+    || /(?:^|\n)严重程度：(严重|高)(?:，|,|\s|$)/.test(message);
+  const checks = {
+    structuredDiagnosis: check(report?.diagnosis ? 'pass' : 'fail'),
+    actionsComplete: check(actions.length > 0 && actions.every((action) => [action.target, action.operation, action.expectedResult].every((value) => value.trim().length > 0)) ? 'pass' : 'fail'),
+    citationsExist: check(foreign.length === 0 ? 'pass' : 'fail', foreign.join(', ')),
+    forbiddenAttributionScreen: check(forbiddenMatches.length === 0 ? 'pass' : 'fail', '固定断言模式筛查，不代表语义上不存在禁止归因。'),
+    messageWithinLimit: check(Buffer.byteLength(message) <= 4000 ? 'pass' : 'fail', `${Buffer.byteLength(message)} bytes`),
+    mitigationInDiagnosis: check(purposes.mitigation?.inDiagnosis ? 'pass' : mitigationRequired ? 'fail' : 'warn',
+      mitigationRequired ? '服务可能不可用或严重程度为严重/高，详情 diagnosis.actions 必须包含止损动作，不能用消息建议代替。' : '未见服务可能不可用且严重程度非严重/高，缺少止损仅作提醒。'),
+    repairOrUnknown: check(purposes.repair?.inDiagnosis || repairUnknown ? 'pass' : 'fail', '详情须有修复动作，或消息及诊断明确说明修复尚未确定。'),
+    verificationInDiagnosis: check(purposes.verification?.inDiagnosis ? 'pass' : 'fail', '详情 diagnosis.actions 必须包含验证动作。'),
+    recoverySuggestions: check(investigationSummarySchema.shape.recovery.safeParse(recovery).success ? 'pass' : 'fail', '消息须有连续编号的 1 至 3 条恢复建议，每条不超过 100 字符。'),
+    plainSummary: check(investigationSummarySchema.safeParse(report?.diagnosis?.summary).success ? 'pass' : 'fail'),
+    detailAddress: check(/\/v1\/ops\/incidents\/[^\s]+\/brief\?format=markdown/.test(message) && message.includes('Bearer') ? 'pass' : 'fail'),
+    noDetailedSections: check(/\*\*(?:依据|未知|下一步)\*\*|模型自评|\n(?:前提|风险|依据|未知|下一步)：|\n#{1,6} (?:完整诊断|证据摘要|动作)|```/.test(message) ? 'fail' : 'pass'),
+    diagnosisComplete: degradedCheck(report),
+  };
+  return { checks, purposes, forbiddenMatches, degraded: diagnosisIsDegraded(report), hardPass: Object.values(checks).every((item) => item.status !== 'fail') };
+}
 
 function check(status: CheckStatus, detail?: string): HardCheck {
   return detail ? { status, detail } : { status };
@@ -98,7 +193,8 @@ export function evaluateCase(
   const citedEvidenceIds = uniq([
     ...(report?.supportingEvidenceIds ?? []),
     ...(report?.contradictingEvidenceIds ?? []),
-    ...findings.flatMap((item) => [...item.supportingEvidenceIds, ...item.contradictingEvidenceIds]),
+    ...diagnosisEvidenceIds(report?.diagnosis),
+    ...findings.flatMap((item) => [...item.supportingEvidenceIds, ...item.contradictingEvidenceIds, ...diagnosisEvidenceIds(item.diagnosis)]),
   ]);
   const missingEvidenceRequested = uniq(findings.flatMap((item) => item.missingEvidence));
   const validIds = citedEvidenceIds.filter((id) => evidenceById.has(id));
@@ -237,11 +333,13 @@ export function evaluateCase(
     missingEvidenceValid,
     capabilityBoundary,
     uncertaintyDiscipline,
+    diagnosisComplete: degradedCheck(report),
   };
   const hardPass = Object.values(checks).every((item) => item.status !== 'fail');
 
   return {
     checks,
+    degraded: diagnosisIsDegraded(report),
     machineScore,
     dimensions,
     notMachineScorable: dimensions.filter((item) => item.status === 'not_machine_scorable').map((item) => item.name),

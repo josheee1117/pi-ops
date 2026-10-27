@@ -35,10 +35,6 @@ function countingRuntime(): { runtime: PiRuntimeClient; submits: () => number } 
   return {
     submits: () => submits,
     runtime: {
-      async submit() {},
-      async poll() {
-        return undefined;
-      },
       async submitInvestigation(session) {
         submits += 1;
         return { runtimeTaskId: `rt-${session.runtimeRequestId}` };
@@ -168,10 +164,6 @@ describe('Pi Runtime production contract', () => {
     const beforeEvidence = structuredClone(store.listEvidence(incident.id));
     const loop = createInvestigationLoopService(store, {
       runtime: {
-        async submit() {},
-        async poll() {
-          return undefined;
-        },
         async submitInvestigation() {
           throw new Error('runtime unavailable');
         },

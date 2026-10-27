@@ -1,3 +1,5 @@
+import type { InvestigationDiagnosis, InvestigationSummary } from '@pi-ops/protocol';
+
 export const NOTIFICATION_SCHEMA_VERSION = 1 as const;
 
 export const NOTIFICATION_TYPES = [
@@ -35,6 +37,7 @@ export interface NotificationAnalysis {
   hypothesis: string;
   confidence: number;
   recommendation: string;
+  diagnosis?: InvestigationDiagnosis;
 }
 
 export interface NotificationPayload {
@@ -46,6 +49,9 @@ export interface NotificationPayload {
     eventCount: number;
     evidenceIds: string[];
   };
+  notice?: 'fault' | 'manual-confirmation' | 'diagnosis-update' | 'recovered-before-delivery';
+  impactSummary?: string;
+  summarySeverity?: InvestigationSummary['severity'];
   analysis?: NotificationAnalysis;
 }
 

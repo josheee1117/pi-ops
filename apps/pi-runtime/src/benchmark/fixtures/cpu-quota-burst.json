@@ -1,0 +1,252 @@
+{
+  "id": "cpu-quota-burst",
+  "source": "deploy/local/data/jdk17/20261004-053526-be8ec9/artifacts/after-stop-pi-ops-tables.json",
+  "sha256": "6b75401ffa01e3cbbc991114a37b705309551d67782b36bc4d522604858bfbc0",
+  "incident": {
+    "id": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+    "service": "order-service-本地演练-20261004-053526-be8ec9",
+    "node_id": "local-dev",
+    "type": "jvm.cpu_pressure",
+    "state": "OPEN",
+    "fingerprint": "[\"jfr\",\"local-dev\",\"order-service-本地演练-20261004-053526-be8ec9\",\"jvm.cpu_pressure\"]",
+    "first_seen": "2026-10-04T05:35:40.150136071Z",
+    "last_seen": "2026-10-04T05:35:40.150136071Z",
+    "event_count": 1,
+    "severity": "warning"
+  },
+  "initial": [
+    {
+      "id": "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+      "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "nodeId": "local-dev",
+      "source": "jfr",
+      "kind": "jfr.signal",
+      "collectedAt": "2026-10-04T05:35:40.150136071Z",
+      "status": "succeeded",
+      "data": {
+        "eventId": "207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+        "eventType": "jvm.cpu_pressure",
+        "observedAt": "2026-10-04T05:35:40.150136071Z",
+        "message": "jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747",
+        "attributes": {
+          "containerName": "order-local-drill-20261004-053526-be8ec9",
+          "jfrEventName": "jdk.CPULoad",
+          "jfrStartTime": "2026-10-04T05:35:40.150136071Z",
+          "jfrEndTime": "2026-10-04T05:35:40.150136071Z",
+          "jvmUser": 0.19405940175056458,
+          "jvmSystem": 0,
+          "machineTotal": 0.2049504965543747
+        },
+        "semanticType": "jvm.cpu_pressure"
+      }
+    },
+    {
+      "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+      "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.inspect",
+      "collectedAt": "2026-10-04T05:35:40.195Z",
+      "status": "succeeded",
+      "data": {
+        "Id": "2717a192bde90600b68b045ef594fc4bf401086bb34de6e296f700e15a164a43",
+        "Name": "/order-local-drill-20261004-053526-be8ec9",
+        "State": {
+          "Status": "running",
+          "Running": true,
+          "StartedAt": "2026-10-04T05:35:27.81051264Z",
+          "OOMKilled": false,
+          "ExitCode": 0,
+          "Health": {}
+        },
+        "RestartCount": 0,
+        "HostConfig": {
+          "Memory": 536870912,
+          "MemorySwap": 536870912,
+          "NanoCpus": 2000000000,
+          "CpuQuota": 0,
+          "CpuPeriod": 0,
+          "CpusetCpus": ""
+        },
+        "Config": {
+          "Image": "pi-ops-jdk17-local-jdk17-drill"
+        }
+      }
+    },
+    {
+      "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load",
+      "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "nodeId": "local-dev",
+      "source": "host",
+      "kind": "host.load",
+      "collectedAt": "2026-10-04T05:35:40.193Z",
+      "status": "succeeded",
+      "data": {
+        "load1": 0.01,
+        "load5": 0.17,
+        "load15": 0.13,
+        "cpus": 10
+      }
+    },
+    {
+      "id": "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+      "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.stats",
+      "collectedAt": "2026-10-04T05:35:41.200Z",
+      "status": "succeeded",
+      "data": {
+        "read": "2026-10-04T05:35:41.198767015Z",
+        "preread": "2026-10-04T05:35:40.19226529Z",
+        "cpu_stats": {
+          "cpu_usage": {
+            "total_usage": 5055491000
+          },
+          "system_cpu_usage": 495118960000000,
+          "online_cpus": 10
+        },
+        "precpu_stats": {
+          "cpu_usage": {
+            "total_usage": 3128858000
+          },
+          "system_cpu_usage": 495108880000000,
+          "online_cpus": 10
+        },
+        "memory_stats": {
+          "usage": 111251456,
+          "limit": 536870912
+        },
+        "pids_stats": {
+          "current": 33,
+          "limit": 18446744073709552000
+        }
+      }
+    }
+  ],
+  "supplemental": [
+    {
+      "id": "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats",
+      "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.stats",
+      "collectedAt": "2026-10-04T05:36:38.479Z",
+      "status": "succeeded",
+      "data": {
+        "read": "2026-10-04T05:36:38.476346068Z",
+        "preread": "2026-10-04T05:36:37.473472308Z",
+        "cpu_stats": {
+          "cpu_usage": {
+            "total_usage": 17598204000
+          },
+          "system_cpu_usage": 495691480000000,
+          "online_cpus": 10
+        },
+        "precpu_stats": {
+          "cpu_usage": {
+            "total_usage": 17589518000
+          },
+          "system_cpu_usage": 495681450000000,
+          "online_cpus": 10
+        },
+        "memory_stats": {
+          "usage": 102248448,
+          "limit": 536870912
+        },
+        "pids_stats": {
+          "current": 30,
+          "limit": 18446744073709552000
+        }
+      }
+    },
+    {
+      "id": "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs",
+      "incidentId": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+      "nodeId": "local-dev",
+      "source": "docker",
+      "kind": "docker.logs",
+      "collectedAt": "2026-10-04T05:36:38.489Z",
+      "status": "succeeded",
+      "data": {
+        "lines": [
+          "JDK17 ready; RecordingStream active; sender=true",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:29.096951045Z\",\"jfrEndTime\":\"2026-10-04T05:35:29.096951045Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.0}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:30.100540506Z\",\"jfrEndTime\":\"2026-10-04T05:35:30.100540506Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.011952191591262817,\"jvmSystem\":9.960159659385681E-4,\"machineTotal\":0.013944223523139954}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:31.104762586Z\",\"jfrEndTime\":\"2026-10-04T05:35:31.104762586Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0029880478978157043,\"jvmSystem\":0.0,\"machineTotal\":0.007968127727508545}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:32.114832194Z\",\"jfrEndTime\":\"2026-10-04T05:35:32.114832194Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.06138613820075989}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:33.116795754Z\",\"jfrEndTime\":\"2026-10-04T05:35:33.116795754Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019920319318771362,\"jvmSystem\":9.960159659385681E-4,\"machineTotal\":0.043824702501297}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:34.118114696Z\",\"jfrEndTime\":\"2026-10-04T05:35:34.118114696Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.017000000923871994}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:35.120508043Z\",\"jfrEndTime\":\"2026-10-04T05:35:35.120508043Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":0.0,\"machineTotal\":0.0019960079807788134}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:36.123933423Z\",\"jfrEndTime\":\"2026-10-04T05:35:36.123933423Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":9.970089886337519E-4,\"machineTotal\":0.0029910269659012556}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:37.133331037Z\",\"jfrEndTime\":\"2026-10-04T05:35:37.133331037Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":0.0,\"machineTotal\":0.011904762126505375}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:38.134613479Z\",\"jfrEndTime\":\"2026-10-04T05:35:38.134613479Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.02297702245414257}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:39.139749342Z\",\"jfrEndTime\":\"2026-10-04T05:35:39.139749342Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019920319318771362,\"jvmSystem\":0.0,\"machineTotal\":0.0029880478978157043}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:40.150136071Z\",\"jfrEndTime\":\"2026-10-04T05:35:40.150136071Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.19405940175056458,\"jvmSystem\":0.0,\"machineTotal\":0.2049504965543747}",
+          "JFR_EVENT {\"producer\":{\"version\":\"0.2.0\",\"id\":\"order-service-本地演练-20261004-053526-be8ec9-jfr\",\"type\":\"application\"},\"events\":[{\"schemaVersion\":1,\"id\":\"207e8fdb-0033-4d4a-84f4-1c326b4cc1ae\",\"time\":\"2026-10-04T05:35:40.150136071Z\",\"source\":\"jfr\",\"nodeId\":\"local-dev\",\"service\":\"order-service-本地演练-20261004-053526-be8ec9\",\"type\":\"jvm.cpu_pressure\",\"severity\":\"warning\",\"message\":\"jdk.CPULoad jvmUser=0.19405940175056458 jvmSystem=0.0 machineTotal=0.2049504965543747\",\"attributes\":{\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:40.150136071Z\",\"jfrEndTime\":\"2026-10-04T05:35:40.150136071Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.19405940175056458,\"jvmSystem\":0.0,\"machineTotal\":0.2049504965543747}}]}",
+          "EventBatch HTTP 200",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:41.152908082Z\",\"jfrEndTime\":\"2026-10-04T05:35:41.152908082Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.19463753700256348,\"jvmSystem\":9.930486558005214E-4,\"machineTotal\":0.21052631735801697}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:42.165380041Z\",\"jfrEndTime\":\"2026-10-04T05:35:42.165380041Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.19704432785511017,\"jvmSystem\":0.0,\"machineTotal\":0.21182265877723694}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:43.166834981Z\",\"jfrEndTime\":\"2026-10-04T05:35:43.166834981Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.1974077820777893,\"jvmSystem\":9.970089886337519E-4,\"machineTotal\":0.2073778659105301}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:44.168553044Z\",\"jfrEndTime\":\"2026-10-04T05:35:44.168553044Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.1970149278640747,\"jvmSystem\":0.0,\"machineTotal\":0.2019900530576706}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:45.177274998Z\",\"jfrEndTime\":\"2026-10-04T05:35:45.177274998Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.197029709815979,\"jvmSystem\":0.0,\"machineTotal\":0.2039603888988495}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:46.180846084Z\",\"jfrEndTime\":\"2026-10-04T05:35:46.180846084Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.19722497463226318,\"jvmSystem\":0.0,\"machineTotal\":0.20317146182060242}",
+          "CPU work completed",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:47.191282980Z\",\"jfrEndTime\":\"2026-10-04T05:35:47.191282980Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.18879055976867676,\"jvmSystem\":0.0,\"machineTotal\":0.19960668683052063}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:48.192386215Z\",\"jfrEndTime\":\"2026-10-04T05:35:48.192386215Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.012000000104308128}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:49.201550539Z\",\"jfrEndTime\":\"2026-10-04T05:35:49.201550539Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":0.0,\"machineTotal\":0.006937562022358179}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:50.211586564Z\",\"jfrEndTime\":\"2026-10-04T05:35:50.211586564Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":0.014866204001009464}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:51.220755180Z\",\"jfrEndTime\":\"2026-10-04T05:35:51.220755180Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019841270986944437,\"jvmSystem\":0.0,\"machineTotal\":0.0029761905316263437}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:52.231505989Z\",\"jfrEndTime\":\"2026-10-04T05:35:52.231505989Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.881423320621252E-4,\"jvmSystem\":9.881423320621252E-4,\"machineTotal\":0.012845849618315697}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:53.232577724Z\",\"jfrEndTime\":\"2026-10-04T05:35:53.232577724Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0010020040208473802,\"jvmSystem\":0.0,\"machineTotal\":0.02605210430920124}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:54.240893973Z\",\"jfrEndTime\":\"2026-10-04T05:35:54.240893973Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":0.0,\"machineTotal\":0.01785714365541935}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:55.246399625Z\",\"jfrEndTime\":\"2026-10-04T05:35:55.246399625Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":0.0,\"machineTotal\":0.011940298601984978}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:56.247915273Z\",\"jfrEndTime\":\"2026-10-04T05:35:56.247915273Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.006986028049141169}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:57.248830385Z\",\"jfrEndTime\":\"2026-10-04T05:35:57.248830385Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.010999999940395355}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:58.251227774Z\",\"jfrEndTime\":\"2026-10-04T05:35:58.251227774Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.012974051758646965}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:35:59.253880245Z\",\"jfrEndTime\":\"2026-10-04T05:35:59.253880245Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.005970149300992489,\"jvmSystem\":9.950249223038554E-4,\"machineTotal\":0.019920319318771362}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:00.261869122Z\",\"jfrEndTime\":\"2026-10-04T05:36:00.261869122Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.930486558005214E-4,\"jvmSystem\":0.0,\"machineTotal\":0.014895729720592499}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:01.264622508Z\",\"jfrEndTime\":\"2026-10-04T05:36:01.264622508Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0020000000949949026,\"jvmSystem\":0.0,\"machineTotal\":0.004000000189989805}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:02.266042657Z\",\"jfrEndTime\":\"2026-10-04T05:36:02.266042657Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":0.0,\"machineTotal\":0.01498501468449831}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:03.270340320Z\",\"jfrEndTime\":\"2026-10-04T05:36:03.270340320Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.960159659385681E-4,\"jvmSystem\":9.960159659385681E-4,\"machineTotal\":0.01095617562532425}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:04.278335489Z\",\"jfrEndTime\":\"2026-10-04T05:36:04.278335489Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.94035741314292E-4,\"jvmSystem\":0.0,\"machineTotal\":0.012922464869916439}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:05.281220624Z\",\"jfrEndTime\":\"2026-10-04T05:36:05.281220624Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0010000000474974513,\"jvmSystem\":0.0,\"machineTotal\":0.014000000432133675}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:06.287529809Z\",\"jfrEndTime\":\"2026-10-04T05:36:06.287529809Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.94035741314292E-4,\"jvmSystem\":0.0,\"machineTotal\":0.005964214913547039}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:07.298443241Z\",\"jfrEndTime\":\"2026-10-04T05:36:07.298443241Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":0.011881188489496708}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:08.308821387Z\",\"jfrEndTime\":\"2026-10-04T05:36:08.308821387Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":9.900990407913923E-4,\"machineTotal\":0.01287128683179617}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:09.322250171Z\",\"jfrEndTime\":\"2026-10-04T05:36:09.322250171Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.881423320621252E-4,\"jvmSystem\":0.0,\"machineTotal\":0.010869565419852734}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:10.323599154Z\",\"jfrEndTime\":\"2026-10-04T05:36:10.323599154Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.001998001942411065,\"jvmSystem\":0.0,\"machineTotal\":0.012987012974917889}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:11.334478295Z\",\"jfrEndTime\":\"2026-10-04T05:36:11.334478295Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":9.900990407913923E-4}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:12.345133105Z\",\"jfrEndTime\":\"2026-10-04T05:36:12.345133105Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.900990407913923E-4,\"jvmSystem\":0.0,\"machineTotal\":0.010891089215874672}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:13.349381185Z\",\"jfrEndTime\":\"2026-10-04T05:36:13.349381185Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.008973080664873123}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:14.353281060Z\",\"jfrEndTime\":\"2026-10-04T05:36:14.353281060Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019940179772675037,\"jvmSystem\":0.0,\"machineTotal\":0.011964107863605022}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:15.354953581Z\",\"jfrEndTime\":\"2026-10-04T05:36:15.354953581Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.011976048350334167}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:16.360068153Z\",\"jfrEndTime\":\"2026-10-04T05:36:16.360068153Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0029910269659012556,\"jvmSystem\":0.0039880359545350075,\"machineTotal\":0.014955134131014347}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:17.371173500Z\",\"jfrEndTime\":\"2026-10-04T05:36:17.371173500Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.014880952425301075}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:18.371856365Z\",\"jfrEndTime\":\"2026-10-04T05:36:18.371856365Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.990009712055326E-4,\"jvmSystem\":9.990009712055326E-4,\"machineTotal\":0.011988012120127678}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:19.386238472Z\",\"jfrEndTime\":\"2026-10-04T05:36:19.386238472Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019723866134881973,\"jvmSystem\":0.0,\"machineTotal\":0.012820512987673283}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:20.391101755Z\",\"jfrEndTime\":\"2026-10-04T05:36:20.391101755Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.013958125375211239}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:21.395309085Z\",\"jfrEndTime\":\"2026-10-04T05:36:21.395309085Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.0039880359545350075}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:22.399006254Z\",\"jfrEndTime\":\"2026-10-04T05:36:22.399006254Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019940179772675037,\"jvmSystem\":0.0,\"machineTotal\":0.013958125375211239}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:23.400504694Z\",\"jfrEndTime\":\"2026-10-04T05:36:23.400504694Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0,\"jvmSystem\":0.0,\"machineTotal\":0.011976048350334167}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:24.402339838Z\",\"jfrEndTime\":\"2026-10-04T05:36:24.402339838Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0020000000949949026,\"jvmSystem\":0.0,\"machineTotal\":0.014000000432133675}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:25.410257758Z\",\"jfrEndTime\":\"2026-10-04T05:36:25.410257758Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.930486558005214E-4,\"jvmSystem\":0.0,\"machineTotal\":0.015888778492808342}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:26.412438566Z\",\"jfrEndTime\":\"2026-10-04T05:36:26.412438566Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.001998001942411065,\"jvmSystem\":9.990009712055326E-4,\"machineTotal\":0.00799200776964426}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:27.415640990Z\",\"jfrEndTime\":\"2026-10-04T05:36:27.415640990Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.970089886337519E-4,\"jvmSystem\":0.0,\"machineTotal\":0.013944223523139954}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:28.425086353Z\",\"jfrEndTime\":\"2026-10-04T05:36:28.425086353Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.920635493472219E-4,\"jvmSystem\":0.0,\"machineTotal\":0.011916584335267544}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:29.432149031Z\",\"jfrEndTime\":\"2026-10-04T05:36:29.432149031Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0019860973116010427,\"jvmSystem\":0.0,\"machineTotal\":0.013902680948376656}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:30.443123880Z\",\"jfrEndTime\":\"2026-10-04T05:36:30.443123880Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.001982160611078143,\"jvmSystem\":9.910803055390716E-4,\"machineTotal\":0.014866204001009464}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:31.446046931Z\",\"jfrEndTime\":\"2026-10-04T05:36:31.446046931Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":0.0,\"machineTotal\":0.005988024175167084}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:32.453489647Z\",\"jfrEndTime\":\"2026-10-04T05:36:32.453489647Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.94035741314292E-4,\"jvmSystem\":0.0,\"machineTotal\":0.013916500844061375}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:33.458186639Z\",\"jfrEndTime\":\"2026-10-04T05:36:33.458186639Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.950249223038554E-4,\"jvmSystem\":0.0,\"machineTotal\":0.013930348679423332}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:34.468761075Z\",\"jfrEndTime\":\"2026-10-04T05:36:34.468761075Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.910803055390716E-4,\"jvmSystem\":0.0,\"machineTotal\":0.008919722400605679}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:35.473536941Z\",\"jfrEndTime\":\"2026-10-04T05:36:35.473536941Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":9.980039903894067E-4,\"machineTotal\":0.01796407252550125}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:36.475099506Z\",\"jfrEndTime\":\"2026-10-04T05:36:36.475099506Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.980039903894067E-4,\"jvmSystem\":0.0,\"machineTotal\":0.008982036262750626}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:37.479192087Z\",\"jfrEndTime\":\"2026-10-04T05:36:37.479192087Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":9.960159659385681E-4,\"jvmSystem\":0.0,\"machineTotal\":0.012948207557201385}",
+          "JFR {\"jfrEventName\":\"jdk.CPULoad\",\"jfrStartTime\":\"2026-10-04T05:36:38.479867910Z\",\"jfrEndTime\":\"2026-10-04T05:36:38.479867910Z\",\"containerName\":\"order-local-drill-20261004-053526-be8ec9\",\"runLabel\":\"20261004-053526-be8ec9\",\"jvmUser\":0.0010020040208473802,\"jvmSystem\":0.0,\"machineTotal\":0.011022044345736504}"
+        ],
+        "truncated": false
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { statfsSync } from 'node:fs';
 import type { OpsEvent } from '@pi-ops/protocol';
 import type { NodeAgentConfig } from '../config.js';
 import type { EventSender } from '../events/sender.js';
@@ -24,19 +24,13 @@ export function createDiskDetector(
     let availableKb = 0;
 
     try {
-      const output = execFileSync('df', ['-k', config.diskPressurePath], {
-        encoding: 'utf-8',
-        timeout: 5000,
-        maxBuffer: 1024 * 1024,
-      });
-      const lines = output.trim().split('\n');
-      const fields = lines[1]?.split(/\s+/) ?? [];
-      totalKb = parseInt(fields[1] ?? '0', 10);
-      usedKb = parseInt(fields[2] ?? '0', 10);
-      availableKb = parseInt(fields[3] ?? '0', 10);
+      const stats = statfsSync(config.diskPressurePath);
+      totalKb = stats.blocks * stats.bsize / 1024;
+      usedKb = (stats.blocks - stats.bfree) * stats.bsize / 1024;
+      availableKb = stats.bavail * stats.bsize / 1024;
       usage = totalKb > 0 ? usedKb / totalKb : 0;
     } catch {
-      // df failed — skip this poll
+      // Unavailable filesystem; skip this poll.
       return;
     }
 

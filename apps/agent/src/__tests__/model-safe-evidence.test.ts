@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import {
   buildIncidentContext,
   MODEL_SAFE_MAX_LOG_LINES,
@@ -11,36 +11,7 @@ import { createInvestigationLoopService } from '../investigation-loop.js';
 import { createEventStore, type EvidenceRecord, type IncidentRow } from '../store.js';
 import type { EvidenceOrchestrator } from '../evidence-orchestrator.js';
 
-const CONFIG: AgentConfig = {
-  port: 0,
-  ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
-  sqlitePath: ':memory:',
-  nodeId: 'test-node',
-  maxBodySize: 1024 * 1024,
-  aggregationWindowMs: 5 * 60 * 1000,
-  nodeAgents: new Map(),
-  evidenceTimeoutMs: 5000,
-  evidenceMaxResponseBytes: 1024 * 1024,
-  evidenceLogsMaxLines: 200,
-  evidenceJobPollIntervalMs: 1000,
-  evidenceJobMaxAttempts: 3,
-  evidenceJobBatchSize: 10,
-  eventReplayBatchSize: 100,
-  reasoningJobPollIntervalMs: 1000,
-  reasoningJobMaxAttempts: 3,
-  reasoningTimeoutMs: 5000,
-  reasoningJobBatchSize: 10,
-  reasonerType: 'fake',
-  reasoningMaxContextBytes: 32_768,
-  reasoningMaxEvidenceItems: 12,
-  reasoningMaxLogLines: 50,
-  piRuntimeToken: 'runtime-token',
-};
+const CONFIG = makeAgentConfig({ nodeId: 'test-node', evidenceTimeoutMs: 5000, piRuntimeToken: 'runtime-token' });
 
 const SECRET_DATA = {
   Config: {
@@ -67,6 +38,18 @@ function incidentRow(): Omit<IncidentRow, 'id'> {
     event_count: 1,
     severity: 'error',
   };
+}
+
+function trustedDockerIncident(store: ReturnType<typeof createEventStore>) {
+  // Durable triggering event, not a synthetic Incident alone, authorizes the service-name fallback.
+  const row = incidentRow();
+  const event = {
+    schemaVersion: 1 as const, id: 'evt-safe', source: 'docker' as const,
+    nodeId: row.node_id, service: row.service, time: row.last_seen,
+    type: 'container.die', severity: 'error' as const, message: 'process exited', attributes: {},
+  };
+  store.insertBatch({ producer: { id: 'node', type: 'node-agent', version: '1' }, events: [event] }, row.last_seen);
+  return store.createIncidentFromEvent(row, event, null);
 }
 
 async function preparedSession(store: ReturnType<typeof createEventStore>, incidentId: string) {
@@ -110,7 +93,7 @@ function collecting(store: ReturnType<typeof createEventStore>, data: unknown, k
 describe('model-safe evidence transport', () => {
   it('redacts docker.inspect secrets in runtime Evidence without mutating the store', async () => {
     const store = createEventStore(':memory:');
-    const incident = store.createIncident(incidentRow());
+    const incident = trustedDockerIncident(store);
     const session = await preparedSession(store, incident.id);
     const service = createInvestigationEvidenceService(store, CONFIG, collecting(store, SECRET_DATA));
     const response = await service.handle({
@@ -138,7 +121,7 @@ describe('model-safe evidence transport', () => {
 
   it('bounds and redacts dynamic docker.logs without rewriting stored rows', async () => {
     const store = createEventStore(':memory:');
-    const incident = store.createIncident({ ...incidentRow(), type: 'container.die' });
+    const incident = trustedDockerIncident(store);
     const session = await preparedSession(store, incident.id);
     const lines = Array.from({ length: 40 }, (_, index) => `log-line-${index}`);
     const service = createInvestigationEvidenceService(
@@ -166,6 +149,51 @@ describe('model-safe evidence transport', () => {
     assert.equal((raw?.data as { lines: string[] }).lines.length, 40);
     assert.equal((raw?.data as { password: string }).password, 'super-secret');
     store.close();
+  });
+
+  it('uses the same fault-focused byte-bounded projection for initial, fresh and reused dynamic logs', async () => {
+    const store = createEventStore(':memory:');
+    try {
+      const incident = trustedDockerIncident(store);
+      const session = await preparedSession(store, incident.id);
+      const lines = [
+        ...Array.from({ length: 35 }, (_, index) => `initialization ${index}`),
+        'java.lang.IllegalStateException: request failed',
+        '\tat com.example.Service.run(Service.java:20)',
+        ...Array.from({ length: 35 }, () => '\tat org.springframework.Framework.run(Framework.java:10)'),
+        'Caused by: java.io.IOException: connection reset',
+      ];
+      const raw = { lines, details: 'x'.repeat(12000), password: 'secret-value', truncated: false };
+      const service = createInvestigationEvidenceService(store, CONFIG, collecting(store, raw, 'docker.logs'));
+      const request = {
+        schemaVersion: 1 as const,
+        runtimeRequestId: session.runtimeRequestId,
+        runtimeTaskId: 'rtask-safe',
+        sessionId: session.id,
+        requests: [{ requestId: 'r-parity', type: 'docker.logs' as const, requestingRoles: ['container_host' as const] }],
+      };
+      const fresh = await service.handle(request);
+      const reused = await service.handle({ ...request, requests: [{ ...request.requests[0]!, requestId: 'r-reused' }] });
+      const record = store.getEvidence(`inv-${session.id}-evidence-docker.logs`);
+      assert.ok(record);
+      const initial = buildIncidentContext(incident, [record], {
+        maxEvidenceItems: 8, maxContextBytes: 8192, maxLogLines: MODEL_SAFE_MAX_LOG_LINES,
+      }).evidence[0];
+      for (const result of [fresh.results[0], reused.results[0]]) {
+        assert.equal(result?.status, 'collected');
+        if (result?.status !== 'collected') assert.fail('expected collected evidence');
+        assert.deepEqual(result.evidence, initial);
+        const data = result.evidence.data as { lines: string[]; truncated: boolean };
+        assert.ok(data.lines.includes('java.lang.IllegalStateException: request failed'));
+        assert.ok(data.lines.includes('Caused by: java.io.IOException: connection reset'));
+        assert.equal(data.truncated, true);
+        assert.ok(Buffer.byteLength(JSON.stringify(data)) <= 4096);
+        assert.equal(JSON.stringify(data).includes('secret-value'), false);
+      }
+      assert.deepEqual(record.data, raw);
+    } finally {
+      store.close();
+    }
   });
 
   it('keeps host.memory usedPercent visible to the runtime', async () => {

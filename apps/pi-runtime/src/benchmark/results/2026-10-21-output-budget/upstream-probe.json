@@ -1,0 +1,61 @@
+[
+  {
+    "request": {
+      "model": "deepseek-v4.1-flash",
+      "messages": [
+        {
+          "role": "user",
+          "content": "只回复 OK。"
+        }
+      ],
+      "max_completion_tokens": 128,
+      "stream": false
+    },
+    "model": "deepseek-v4-1-flash",
+    "finishReason": "stop",
+    "textChars": 2,
+    "thinkingChars": 36,
+    "usage": {
+      "completion_tokens": 11,
+      "prompt_tokens": 34,
+      "total_tokens": 45,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 9
+      }
+    }
+  },
+  {
+    "request": {
+      "model": "deepseek-v4.1-flash",
+      "messages": [
+        {
+          "role": "user",
+          "content": "只回复 OK。"
+        }
+      ],
+      "max_completion_tokens": 128,
+      "stream": false,
+      "thinking": {
+        "type": "disabled"
+      }
+    },
+    "model": "deepseek-v4-1-flash",
+    "finishReason": "stop",
+    "textChars": 2,
+    "thinkingChars": 0,
+    "usage": {
+      "completion_tokens": 1,
+      "prompt_tokens": 8,
+      "total_tokens": 9,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      }
+    }
+  }
+]

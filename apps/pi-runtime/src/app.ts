@@ -59,6 +59,7 @@ export function createPiRuntimeApp(
     modelMode: model.provider === 'fake' ? 'FAKE' : 'REAL',
     provider: model.provider,
     model: model.model,
+    executionTimeoutMs: config.executionTimeoutMs,
   }));
   app.get('/ready', (c) => c.json({ status: 'ready' }));
 

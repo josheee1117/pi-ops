@@ -40,6 +40,10 @@ export async function defaultProbe(
   }
 }
 
+function healthTargetKey(target: HealthTarget): string {
+  return JSON.stringify([target.name, target.url, target.method ?? 'GET', target.container]);
+}
+
 export function createHealthDetector(
   config: NodeAgentConfig,
   sender: EventSender,
@@ -49,24 +53,40 @@ export function createHealthDetector(
   const timers: ReturnType<typeof setInterval>[] = [];
 
   for (const target of config.healthTargets) {
-    states.set(target.name, createHysteresisState(config.healthFailureDuration));
+    states.set(healthTargetKey(target), createHysteresisState(config.healthFailureDuration));
   }
 
   async function probeTarget(target: HealthTarget): Promise<void> {
     const method = target.method ?? 'GET';
     const timeout = config.probeMaxTimeoutMs;
     const result = await probe(target.url, method, timeout);
-    const hysteresis = states.get(target.name);
+    const hysteresis = states.get(healthTargetKey(target));
     if (!hysteresis) return;
 
     // isAboveThreshold = unhealthy (failed probe)
     const transition = hysteresis.sample(!result.ok);
+    if (!transition) return;
+
+    const transitionTime = new Date().toISOString();
+    const attributes = {
+      detector: 'http.health',
+      target: target.name,
+      url: target.url,
+      method,
+      containerName: target.container,
+      status: result.status,
+      ...(target.ruleId !== undefined ? { ruleId: target.ruleId } : {}),
+      ...(target.ruleVersion !== undefined ? { ruleVersion: target.ruleVersion } : {}),
+      failureSamples: config.healthFailureDuration,
+      intervalMs: target.intervalMs ?? config.detectorPollIntervalMs,
+      transitionTime,
+    };
 
     if (transition === 'pressure') {
       const event: OpsEvent = {
         schemaVersion: 1,
         id: crypto.randomUUID(),
-        time: new Date().toISOString(),
+        time: transitionTime,
         source: 'health',
         nodeId: config.nodeId,
         service: target.name,
@@ -74,15 +94,7 @@ export function createHealthDetector(
         severity: 'error',
         message: `Health check failed for ${target.name}` +
           (result.status !== undefined ? ` (HTTP ${result.status})` : result.error ? ` (${result.error})` : ''),
-        attributes: {
-          detector: 'http.health',
-          target: target.name,
-          url: target.url,
-          method,
-          containerName: target.container,
-          status: result.status,
-          error: result.error,
-        },
+        attributes: { ...attributes, error: result.error },
       };
       sender.enqueue(event);
       console.log(`[node-agent] health failure: ${target.name}`);
@@ -90,7 +102,7 @@ export function createHealthDetector(
       const event: OpsEvent = {
         schemaVersion: 1,
         id: crypto.randomUUID(),
-        time: new Date().toISOString(),
+        time: transitionTime,
         source: 'health',
         nodeId: config.nodeId,
         service: target.name,
@@ -98,14 +110,7 @@ export function createHealthDetector(
         severity: 'info',
         message: `Health check recovered for ${target.name}` +
           (result.status !== undefined ? ` (HTTP ${result.status})` : ''),
-        attributes: {
-          detector: 'http.health',
-          target: target.name,
-          url: target.url,
-          method,
-          containerName: target.container,
-          status: result.status,
-        },
+        attributes,
       };
       sender.enqueue(event);
       console.log(`[node-agent] health recovered: ${target.name}`);

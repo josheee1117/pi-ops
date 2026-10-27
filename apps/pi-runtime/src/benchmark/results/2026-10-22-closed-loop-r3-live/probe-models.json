@@ -1,0 +1,52 @@
+{
+  "probedAt": "2026-10-22T03:07:13.597Z",
+  "catalog": "/Users/hejiayuan/.pi/agent",
+  "note": "minimal completeSimple; no runtime api key override; ark key not used",
+  "results": [
+    {
+      "spec": "cpa/deepseek-v4.1-flash",
+      "ok": true,
+      "stopReason": "stop",
+      "errorMessage": null,
+      "usage": {
+        "input": 37,
+        "output": 12,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "reasoning": 10,
+        "totalTokens": 49,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "[thinking]OK",
+      "latencyMs": 1439
+    },
+    {
+      "spec": "cpa/glm-latest",
+      "ok": false,
+      "stopReason": "error",
+      "errorMessage": "429: {\"code\":\"AccountQuotaExceeded\",\"message\":\"You have exceeded the 5-hour usage quota. It will reset at 2026-10-22 13:57:43 +0800 CST. We recommend upgrading your plan for more quota, or waiting for the reset. Request id: 021792638433544b9f489096afc36acf45c00ec3935d23a2d74a7\",\"param\":\"\",\"type\":\"TooManyRequests\"}",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "text": "",
+      "latencyMs": 397
+    }
+  ]
+}

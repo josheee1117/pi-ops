@@ -1,0 +1,110 @@
+{
+  "oom": {
+    "source": "deploy/local/data/jdk17/20261004-053012-36c038/artifacts/after-stop-pi-ops-tables.json",
+    "payload": {
+      "schemaVersion": 1,
+      "notificationId": "njob-completed-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477",
+      "type": "INVESTIGATION_COMPLETED",
+      "incident": {
+        "id": "inc-5de24141-0b2e-4414-9152-4020455d05ff",
+        "service": "order-service-本地演练-20261004-053012-36c038",
+        "nodeId": "local-dev",
+        "type": "jvm.oom",
+        "severity": "critical",
+        "state": "OPEN",
+        "firstSeen": "2026-10-04T05:30:25.213503029Z",
+        "lastSeen": "2026-10-04T05:30:25.213503029Z"
+      },
+      "facts": {
+        "eventCount": 1,
+        "evidenceIds": [
+          "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.logs",
+          "inv-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477-evidence-docker.stats",
+          "jfr-7756319e-ebdc-4c1d-996a-c1737569dac1",
+          "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.inspect",
+          "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-docker.logs",
+          "job-inc-5de24141-0b2e-4414-9152-4020455d05ff-evidence-host.memory"
+        ]
+      },
+      "analysis": {
+        "investigationSessionId": "isess-8ed4711b-6289-429e-b81e-6da7a9bdf477",
+        "reasoningResultId": "reason-isess-8ed4711b-6289-429e-b81e-6da7a9bdf477",
+        "hypothesis": "已观测：05:30:25 JVM抛出“java.lang.OutOfMemoryError: Java heap space”，调用栈指向Drill.exhaustHeap；日志随后记录保留内存已释放，符合本地演练主动耗尽堆的行为。com.example.MemoryFailure仅是JFR观测名。容器限制为512 MiB，采集时仍运行、OOMKilled=false、RestartCount=0；宿主机内存使用约9.37%，不支持容器OOM kill或宿主机内存耗尽。事后约一分钟容器内存约197 MiB，仅代表采样时状态。\n可能原因：高概率为Drill.exhaustHeap主动保留对象导致JVM堆空间耗尽；容器内存限制可能压缩堆可用余量，但尚不能确认是直接诱因。\n未知：JVM的-Xmx及完整启动参数、故障瞬间堆与容器内存峰值、GC行为、是否发生内存节流、服务当前功能状态。事发附近JFR CPU比率及事后stats不能排除未知瞬时CPU峰值或节流。",
+        "confidence": 0.98,
+        "recommendation": "Evidence describes the current incident. Historical knowledge is advisory. Memory/history cannot override current Evidence. Conflicting historical knowledge must be surfaced, not silently merged. Absence of evidence is not evidence of absence. 1. 立即获取JVM完整启动命令及-XX参数，核对-Xms/-Xmx、MaxRAMPercentage与512 MiB容器限制的余量。\n2. 检查故障窗口的GC/JFR堆使用、Old Gen占用、分配速率和Full GC结果；若有heap dump，按保留大小定位主要对象及引用链。\n3. 补采覆盖05:30:25前后的连续docker.stats或cgroup memory.current、memory.events，确认故障瞬间峰值及是否发生限流。\n4. 对服务执行HTTP健康与关键下单链路探测；容器运行状态不能替代JVM和业务可用性验证。\n5. 确认Drill.exhaustHeap是否为预期演练任务；若是，结束演练并隔离告警；若不是，立即停止该分配路径并排查触发来源。\n6. 保留完整容器日志；现有首次日志采集已截断，避免据此判断故障前后的完整行为。"
+      }
+    }
+  },
+  "cpu": {
+    "source": "deploy/local/data/jdk17/20261004-053526-be8ec9/artifacts/after-stop-pi-ops-tables.json",
+    "payload": {
+      "schemaVersion": 1,
+      "notificationId": "njob-completed-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4",
+      "type": "INVESTIGATION_COMPLETED",
+      "incident": {
+        "id": "inc-e1812212-8894-4d23-87c8-9fc82977044c",
+        "service": "order-service-本地演练-20261004-053526-be8ec9",
+        "nodeId": "local-dev",
+        "type": "jvm.cpu_pressure",
+        "severity": "warning",
+        "state": "OPEN",
+        "firstSeen": "2026-10-04T05:35:40.150136071Z",
+        "lastSeen": "2026-10-04T05:35:40.150136071Z"
+      },
+      "facts": {
+        "eventCount": 1,
+        "evidenceIds": [
+          "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.logs",
+          "inv-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4-evidence-docker.stats",
+          "jfr-207e8fdb-0033-4d4a-84f4-1c326b4cc1ae",
+          "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.inspect",
+          "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-docker.stats",
+          "job-inc-e1812212-8894-4d23-87c8-9fc82977044c-evidence-host.load"
+        ]
+      },
+      "analysis": {
+        "investigationSessionId": "isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4",
+        "reasoningResultId": "reason-isess-4698bdfd-f31e-4c2c-a70a-1bcb25c5b3a4",
+        "hypothesis": "已观测事实：05:35:40至05:35:45，JFR持续记录JVM用户态CPU约0.194至0.197；该值按10个机器CPU归一化，约对应1.94至1.97核。容器NanoCpus=2000000000，即2核限制；05:35:40.192至05:35:41.199的有效Docker采样区间平均约使用1.91核，接近上限。05:36:37.473至05:36:38.476区间已回落至约0.009核。主机load1=0.01不支持主机整体持续饱和，但单点负载不能否定此前短时压力。容器当时运行、未重启且OOMKilled=false，仅不支持容器OOM kill。\n可能原因：容器内JVM出现约数秒的短时CPU突发并接近2核限制，而非持续性主机CPU饱和。\n未知：热点线程、方法、触发业务操作、峰值完整持续时间、CFS throttling情况及是否造成请求延迟或错误均未确定。",
+        "confidence": 0.94,
+        "recommendation": "Evidence describes the current incident. Historical knowledge is advisory. Memory/history cannot override current Evidence. Conflicting historical knowledge must be surfaced, not silently merged. Absence of evidence is not evidence of absence. 1. 连续采集docker.stats及cgroup cpu.stat，重点检查nr_throttled、throttled_usec和压力持续时间。\n2. 获取告警窗口内的JFR执行采样、线程栈及GC事件，定位热点线程和方法。\n3. 对齐05:35:40至05:35:45的业务日志、请求追踪和演练操作，确认触发路径。\n4. 补做HTTP探测并检查延迟、超时和错误率，确认用户影响。\n5. 若相同负载可复现，比较2核限制下与提高CPU配额后的吞吐、延迟和throttling，再决定优化代码或调整配额。"
+      }
+    }
+  },
+  "dataasset": {
+    "source": "artifacts/real-dataasset-lab/model-phase-notify/snapshots/final-agent.json",
+    "payload": {
+      "schemaVersion": 1,
+      "notificationId": "njob-completed-isess-5629db13-4056-4063-85a2-fab9c93e0384",
+      "type": "INVESTIGATION_COMPLETED",
+      "incident": {
+        "id": "inc-9de4676b-84e7-4f9e-8160-b10c44f182b9",
+        "service": "rdl-dataasset-6dfb8e88",
+        "nodeId": "rdl-6dfb8e88",
+        "type": "business.error",
+        "severity": "error",
+        "state": "OPEN",
+        "firstSeen": "2026-10-14T03:40:12.880Z",
+        "lastSeen": "2026-10-14T03:40:12.880Z"
+      },
+      "facts": {
+        "eventCount": 2,
+        "evidenceIds": [
+          "inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.logs",
+          "inv-isess-5629db13-4056-4063-85a2-fab9c93e0384-evidence-docker.stats",
+          "jfr-03d77a1bca1b618e65b2104a8c53fcdffe6754834d552d9ff013f547546fe2a6",
+          "jfr-31454adda0813ddbbd14e029f9458d96cf242a7eaf0af46c94e165a2d45f9afb",
+          "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.inspect",
+          "job-inc-9de4676b-84e7-4f9e-8160-b10c44f182b9-evidence-docker.logs"
+        ]
+      },
+      "analysis": {
+        "investigationSessionId": "isess-5629db13-4056-4063-85a2-fab9c93e0384",
+        "reasoningResultId": "reason-isess-5629db13-4056-4063-85a2-fab9c93e0384",
+        "hypothesis": "已观测事实：jfr 信号显示 03:40:12.880Z 发生一次 business.error，operation 为 GET /auth/lab/server-fault，异常类 java.lang.IllegalStateException，栈顶为 com.mbkj.dap.lab.LabFaultController.serverFault(LabFaultController.java:25)，可确认应用在该位置抛出异常（异常类/文本/栈仅证明异常及抛出位置）。docker.inspect 显示容器 running、StartedAt 03:39:59.893Z（早于事件约13秒）、OOMKilled=false、ExitCode=0、RestartCount=0，仅排除容器被 OOM kill/退出，不能排除 JVM 堆 OutOfMemoryError，也不代表 JVM 健康。docker.stats 单次采样（read 03:40:36.419Z、preread 03:40:35.410Z）该区间 CPU 增量约 7.2ms/1.01s，相对机器 online_cpus=10 极低；内存 689377280/1610612736（约657MiB/1.5GiB），pids=104；仅为事后瞬间单点，不能证明事件窗口无压力。两段 docker.logs 可见片段均为 RocketMQ shaded slf4j LoggerFactory 与 Spring bean 初始化栈，无异常头、无日志级别、无时间戳，且模型视图可能仅保留前20行，不能视为完整日志或完整故障窗口。较可能原因：该请求命中 lab 端点后由该控制器自身抛出未捕获异常，属应用层报错路径（基于 operation 与栈顶帧）；该路径疑似故障演练端点，事件可能由人为/测试触发，但此点未经证据确认。未知：LabFaultController.java:25 的触发逻辑（开关/参数/条件/依赖调用）未知，未读源码不得推断具体业务分支；真实调用来源与调用方未知；启动阶段 RocketMQ/Spring 初始化栈与本 business.error 是否同源未知（无异常头、无线程与时间对应）；异常后应用是否继续对外服务、JVM 堆健康状况、宿主机内存与负载、是否可复现均未知，无 host.memory/host.load 与 jdk.CPULoad 证据，NanoCpus=2000000000 而 CpuQuota/CpuPeriod=0，容器实际配额与 CPU throttling 情况未知。",
+        "confidence": 0.45,
+        "recommendation": "Evidence describes the current incident. Historical knowledge is advisory. Memory/history cannot override current Evidence. Conflicting historical knowledge must be surfaced, not silently merged. Absence of evidence is not evidence of absence. 1) 阅读 LabFaultController.java 第25行及所属类，确认该端点抛出 IllegalStateException 的触发条件（开关、参数、条件分支、是否有依赖调用），据此判断是否属演练端点。\n2) 追踪 GET /auth/lab/server-fault 的调用来源（网关/前端/测试脚本/调度），确认是否人为触发及是否有其他调用方受影响。\n3) 通过 docker.logs 拉取 03:39:5x–03:40:4x 时间窗完整日志（含异常头、日志级别、时间戳与线程名），核对启动阶段 RocketMQ/Spring 初始化栈与本次 business.error 是否同源。\n4) 用 docker.stats 在事件窗口内多次采样，并补充 host.memory、host.load 与 JVM 堆/GC 指标，确认是否存在内存压力或 CPU throttling；当前单点低值不能代表故障期状态。\n5) 如确需复现业务 GET 端点，由人工在受控环境执行并对照时间戳；http.probe 仅支持已配置健康 URL 的 GET/HEAD，不能等价复现该业务请求。\n6) 确认本次异常后应用是否继续正常响应其他请求（事件计数仅为1次、state=OPEN），决定是否需要进一步升级。"
+      }
+    }
+  }
+}

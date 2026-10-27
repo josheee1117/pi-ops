@@ -1,5 +1,7 @@
 /** Configuration loaded from environment variables. Secrets are never defaulted in code. */
 
+import { loadSourceRoots, type SourceRoots } from './source-roots.js';
+
 export interface NodeAgentEndpoint {
   nodeId: string;
   url: string;
@@ -8,6 +10,8 @@ export interface NodeAgentEndpoint {
 
 export interface AgentConfig {
   port: number;
+  notificationPolicyPath?: string;
+  incidentDetailsBaseUrl?: string;
   ingestToken: string;
   operatorToken: string;
   sqlitePath: string;
@@ -35,8 +39,6 @@ export interface AgentConfig {
   eventReplayBatchSize: number;
   /** Poll interval for durable reasoning jobs. */
   reasoningJobPollIntervalMs: number;
-  /** Maximum unexpected reasoning attempts recorded on a job. */
-  reasoningJobMaxAttempts: number;
   /** Timeout for one Reasoner invocation. */
   reasoningTimeoutMs: number;
   /** Maximum reasoning jobs processed in one drain. */
@@ -71,6 +73,16 @@ export interface AgentConfig {
   investigationRetryBackoffMs: number;
   /** SUBMITTED/RUNNING sessions older than this fail and may retry. */
   investigationStaleTimeoutMs: number;
+  /** Read-only source root per service, keyed by Incident service. */
+  sourceRoots: SourceRoots;
+}
+
+function parseDetailsBaseUrl(value: string): string {
+  const url = new URL(value);
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || value.length > 500) {
+    throw new Error('PI_OPS_INCIDENT_DETAILS_BASE_URL must be an HTTP(S) base URL without credentials, query or fragment, at most 500 characters');
+  }
+  return url.toString().replace(/\/$/, '');
 }
 
 function requireEnv(key: string): string {
@@ -188,6 +200,8 @@ export function loadConfig(): AgentConfig {
       max: 30 * 24 * 60 * 60 * 1000,
     }),
     nodeAgents: parseNodeAgents(),
+    ...(process.env['PI_OPS_INCIDENT_DETAILS_BASE_URL'] ? { incidentDetailsBaseUrl: parseDetailsBaseUrl(process.env['PI_OPS_INCIDENT_DETAILS_BASE_URL']) } : {}),
+    ...(process.env['PI_OPS_NOTIFICATION_POLICY_PATH'] ? { notificationPolicyPath: process.env['PI_OPS_NOTIFICATION_POLICY_PATH'] } : {}),
     evidenceTimeoutMs: integerEnv('PI_OPS_EVIDENCE_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,
     }),
@@ -213,9 +227,6 @@ export function loadConfig(): AgentConfig {
     }),
     reasoningJobPollIntervalMs: integerEnv('PI_OPS_REASONING_JOB_POLL_INTERVAL_MS', 2000, {
       max: 60 * 60 * 1000,
-    }),
-    reasoningJobMaxAttempts: integerEnv('PI_OPS_REASONING_JOB_MAX_ATTEMPTS', 3, {
-      max: 100,
     }),
     reasoningTimeoutMs: integerEnv('PI_OPS_REASONING_TIMEOUT_MS', 5000, {
       max: 10 * 60 * 1000,
@@ -277,6 +288,7 @@ export function loadConfig(): AgentConfig {
     investigationStaleTimeoutMs: integerEnv('PI_OPS_INVESTIGATION_STALE_TIMEOUT_MS', 15 * 60 * 1000, {
       max: 7 * 24 * 60 * 60 * 1000,
     }),
+    sourceRoots: loadSourceRoots(),
   };
 }
 

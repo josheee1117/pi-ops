@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { EvidenceQueryRequest, OpsEvent } from '@pi-ops/protocol';
 import { createApp } from '../app.js';
 import type { AgentConfig } from '../config.js';
+import { makeAgentConfig } from './test-config.js';
 import { createEvidenceOrchestrator, type FetchLike } from '../evidence-orchestrator.js';
 import { createHttpPiRuntimeClient } from '../http-pi-runtime-client.js';
 import { createIncidentEngine } from '../incident.js';
@@ -50,38 +51,13 @@ const RUNTIME_HOST = 'pi-runtime';
 const CALLBACK_URL = `http://${AGENT_HOST}/v1/investigation-results`;
 
 function agentConfig(sqlitePath: string): AgentConfig {
-  return {
-    port: 0,
-    ingestToken: 'ingest-token',
-    operatorToken: 'operator-token',
-    investigationRetryMaxAttempts: 3,
-    investigationRetryBackoffMs: 0,
-    investigationStaleTimeoutMs: 60_000,
-    externalRuntimeEnabled: false,
+  return makeAgentConfig({
     sqlitePath,
-    nodeId: 'central',
-    maxBodySize: 1024 * 1024,
-    aggregationWindowMs: 5 * 60 * 1000,
     nodeAgents: new Map([
       ['test-svc-02', { nodeId: 'test-svc-02', url: 'http://node-agent.test', token: 'node-token' }],
     ]),
-    evidenceTimeoutMs: 1000,
-    evidenceMaxResponseBytes: 1024 * 1024,
-    evidenceLogsMaxLines: 200,
-    evidenceJobPollIntervalMs: 1000,
-    evidenceJobMaxAttempts: 3,
-    evidenceJobBatchSize: 10,
-    eventReplayBatchSize: 100,
-    reasoningJobPollIntervalMs: 1000,
-    reasoningJobMaxAttempts: 3,
-    reasoningTimeoutMs: 5000,
-    reasoningJobBatchSize: 10,
-    reasonerType: 'fake',
-    reasoningMaxContextBytes: 32_768,
-    reasoningMaxEvidenceItems: 12,
-    reasoningMaxLogLines: 50,
     piRuntimeToken: 'runtime-token',
-  };
+  });
 }
 
 function runtimeConfig(sqlitePath: string) {
@@ -394,9 +370,8 @@ describe('deterministic investigation E2E', () => {
     await harness.notifications.runOnce();
     const openId = notificationJobId('INCIDENT_OPEN', incident.id);
     const completedId = notificationJobId('INVESTIGATION_COMPLETED', session.id);
-    assert.equal(harness.store.getNotificationJob(openId)?.status, 'DELIVERED');
-    assert.equal(harness.store.getNotificationJob(completedId)?.status, 'DELIVERED');
-    assert.equal(harness.store.getNotificationJob(completedId)?.payload.analysis?.reasoningResultId, result.id);
+    assert.equal(harness.store.getNotificationJob(openId), undefined);
+    assert.equal(harness.store.getNotificationJob(completedId), undefined);
 
     const replayed = harness.loop.handleRuntimeResult({
       schemaVersion: 1,
@@ -415,7 +390,7 @@ describe('deterministic investigation E2E', () => {
     assert.equal(replayed.id, report.id);
     assert.equal(
       harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INVESTIGATION_COMPLETED').length,
-      1,
+      0,
     );
 
     const recovery = {
@@ -438,7 +413,7 @@ describe('deterministic investigation E2E', () => {
     assert.equal(harness.store.getIncident(incident.id)?.state, 'RECOVERED');
     await harness.notifications.runOnce();
     const recoveredId = notificationJobId('INCIDENT_RECOVERED', incident.id);
-    assert.equal(harness.store.getNotificationJob(recoveredId)?.status, 'DELIVERED');
+    assert.equal(harness.store.getNotificationJob(recoveredId), undefined);
 
     const replayEvent = await harness.agentApp.request('/v1/events', {
       method: 'POST',
@@ -449,9 +424,7 @@ describe('deterministic investigation E2E', () => {
       }),
     });
     assert.equal(replayEvent.status, 200);
-    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INCIDENT_OPEN').length, 1);
-    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INCIDENT_RECOVERED').length, 1);
-    assert.equal(harness.store.listNotificationJobs(incident.id).filter((item) => item.type === 'INVESTIGATION_COMPLETED').length, 1);
+    assert.equal(harness.store.listNotificationJobs(incident.id).length, 0);
 
     const delivered = harness.notifier.sent.length;
     harness.notifications.start();

@@ -1,0 +1,326 @@
+{
+  "criteria": {
+    "caseId": "sop-404",
+    "knownFacts": [
+      "入站 GET，出站 POST，sysType=10",
+      "Feign 收到 404，但来源和正确路由未知"
+    ],
+    "allowedRootCauses": [
+      "入站 GET 通过 Feign 发出 POST，目标路由返回 404；路由、契约或环境配置不匹配",
+      "收到 404 的来源与正确路由未知，需要核对 Feign 配置与接口契约"
+    ],
+    "allowedRepairs": [
+      "核对 Feign 配置、路由前缀与接口契约，查实后再修正",
+      "人工受控复现同一 POST 以确认目标与环境"
+    ],
+    "stopLoss": "若功能仍失败且影响发布流程，经批准暂停该调用或降级；影响未确认时先补证。完全没有任何止损或条件处理不算通过。",
+    "verification": "同一功能正常返回，并检查关键业务请求。",
+    "forbidden": [
+      "断言下游宕机或业务数据不存在",
+      "猜测正确 URL 后直接修改配置",
+      "让探针执行业务 POST 或未经批准重放写请求",
+      "没有证据就断言“业务未受影响 / 无影响”，或断言这次事件是演练 / 测试 / 预期行为，判失败。把本次事件归为演练 / 测试 / 预期行为时，即使写成“更像 / 倾向于 / 可能是”，也算断言。证据只能是消息、详情或源码夹具里明确写出的本次事件事实；只有环境或服务名带“演练”、代码里有压测或注入能力、日志出现相关字样，都不足以证明本次事件是预期演练。DataAsset 源码写明故障注入，属于有证据。"
+    ],
+    "approvals": "改 Feign 配置、发布、重放写请求需要负责人批准。",
+    "criticalItems": [
+      "root_cause",
+      "no_forbidden"
+    ],
+    "sources": [],
+    "missingSources": "SOP 服务源码与 Feign 配置不在本仓库，没有可读的 SopController/SopBizServiceImpl；只能提出核对配置与契约。"
+  },
+  "codeHashes": {
+    "apps/agent/src/notifier.ts": "c94c926faf7f1bbb032d54237c3ecf64bd03516e589c4602e0404f9571d686ad",
+    "apps/agent/src/on-call-brief.ts": "cf0603cfe20bff32dbc8e356c755bf5d7ac6db27f884c2b35cf356c817cd3d32",
+    "apps/agent/src/incident-brief.ts": "8bd6e538cc4569f914e6e99a198ab3124799aa3d2940161b43ce2b20f8a63897",
+    "apps/agent/src/notification.ts": "d80df34b2b42397d56ffa3ab20d2815e310fda76f6f744887587e0ef2b8db4f1",
+    "apps/pi-runtime/src/specialists.ts": "420fa3a851c004a3d9ee49cea031e0ae856d48da7941655e37c15455c1a05ad5",
+    "apps/pi-runtime/src/coordinator.ts": "94a0a8a801d885dc1c955c27785183ad3826173baeab8e3846c98e0b13f77ee1"
+  },
+  "result": {
+    "caseId": "sop-404",
+    "description": "入站 GET，出站 POST，sysType=10；Feign 收到 404，但来源和正确路由未知",
+    "provenance": "apps/agent/src/__tests__/on-call-brief.test.ts sopUrl。仅重建已观测字段；无原始完整日志。",
+    "mode": "live",
+    "provider": "ark",
+    "model": "deepseek-v4.1-flash",
+    "sources": [],
+    "tokens": 28370,
+    "latencyMs": 107038,
+    "diagnosis": {
+      "status": "completed",
+      "provider": "ark",
+      "model": "deepseek-v4.1-flash",
+      "latencyMs": 18151,
+      "tokens": 11091,
+      "reportHardPass": true,
+      "messageHardPass": false,
+      "degraded": false,
+      "report": {
+        "hypothesis": "SopController.getSysPublishYesterday 调用链中，Feign 向 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 发 POST 收到 [404]，异常在 SopBizServiceImpl.java:34 抛出并冒泡为未处理请求异常。404 指向下游资源或路由不存在，但下游契约与应用配置尚未核实；请求量、错误率、用户报障均未知，业务影响未确认。",
+        "supportingEvidenceIds": [
+          "evd-sop-404-jfr.signal",
+          "evd-sop-404-docker.logs"
+        ],
+        "contradictingEvidenceIds": [],
+        "confidence": 0.55,
+        "recommendation": "先补证再修复：1) 核对故障窗口内该接口请求量、失败率及用户报障，明确影响；2) 经批准后采集 docker.inspect 核对容器状态与 Feign 目标地址，并对下游接口做只读受控请求，区分下游缺失与应用路径配置错误；3) 读代码确认调用契约后再决定修正地址或增加 404 捕获降级，发布需审批并保留回滚。",
+        "diagnosis": {
+          "summary": {
+            "scene": "data-asset-service，SopController 昨日发布查询接口",
+            "whatHappened": "调用下游 findPublishYesterday 返回 404，Feign NotFound 冒泡为未处理请求异常，事件计数 1",
+            "severity": {
+              "level": "一般",
+              "reason": "尚无服务不可用或关键业务受影响的确认事实。"
+            },
+            "recovery": [
+              "核对故障窗口请求量、错误率与用户报障，确认影响范围",
+              "经批准采集容器状态与下游可达性，区分下游缺失与应用配置错误",
+              "读代码确认契约后修复并验证异常不再冒泡"
+            ]
+          },
+          "observations": [
+            {
+              "statement": "Feign 调用 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 [404]，feign.FeignException$NotFound 在 SopBizServiceImpl.java:34 抛出。",
+              "evidenceIds": [
+                "evd-sop-404-jfr.signal",
+                "evd-sop-404-docker.logs"
+              ]
+            },
+            {
+              "statement": "异常冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为 Unhandled request exception。",
+              "evidenceIds": [
+                "evd-sop-404-jfr.signal"
+              ]
+            },
+            {
+              "statement": "docker.logs 为截断视图（originalLineCount=4），仅见该次调用片段，无法据此评估故障窗口调用量与错误率。",
+              "evidenceIds": [
+                "evd-sop-404-docker.logs"
+              ]
+            }
+          ],
+          "candidateCauses": [
+            {
+              "cause": "下游 open/api/lx/findPublishYesterday 接口返回 404（路径不存在、下游路由变更或服务未部署），Feign 未做降级导致异常冒泡。",
+              "supportingEvidenceIds": [
+                "evd-sop-404-jfr.signal",
+                "evd-sop-404-docker.logs"
+              ],
+              "contradictingEvidenceIds": []
+            }
+          ],
+          "uncertainties": [
+            "404 系下游资源缺失还是应用侧路径配置错误，尚未核实配置值与下游契约。",
+            "故障窗口请求量、错误率、关键业务请求结果及用户报障未知，业务影响未确认。",
+            "容器运行状态与健康检查结果未采集，无法判断服务整体可用性。"
+          ],
+          "actions": [
+            {
+              "purpose": "verification",
+              "target": "确认故障窗口业务影响：/api/v1/sop/yesterday-publish 请求量、失败率及用户报障",
+              "preconditions": [
+                "可访问监控与告警数据"
+              ],
+              "operation": "人工查询故障时间窗内该接口请求数、错误率与用户报障记录，判断影响范围及是否持续。",
+              "expectedResult": "得到请求量与失败率，明确影响范围。",
+              "risk": "仅查询，风险低。",
+              "requiresApproval": false,
+              "evidenceIds": [
+                "evd-sop-404-jfr.signal",
+                "evd-sop-404-docker.logs"
+              ]
+            },
+            {
+              "purpose": "evidence_collection",
+              "target": "采集容器状态与下游接口可达性，区分下游 404 与应用配置错误",
+              "preconditions": [
+                "具备目标容器及下游地址访问权限",
+                "确认下游接口为只读或使用测试参数"
+              ],
+              "operation": "用 docker.inspect 核对容器运行状态与环境变量中 Feign 目标地址；对下游接口做受控请求确认路径是否存在，并检查近期下游路由变更记录。",
+              "expectedResult": "明确 404 由下游缺失还是应用配置指向错误路径导致。",
+              "risk": "人工请求下游接口可能触发写操作，须先确认只读。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-sop-404-docker.logs"
+              ]
+            },
+            {
+              "purpose": "repair",
+              "target": "SopBizServiceImpl.getSysPublishYesterday 的 Feign 调用异常处理或目标地址",
+              "preconditions": [
+                "读代码确认调用契约与降级语义",
+                "变更方案经评审并备回滚版本"
+              ],
+              "operation": "按确认的根因修正 Feign 目标地址，或为 404 增加捕获与降级返回，经审批后发布并保留回滚版本。",
+              "expectedResult": "下游 404 不再冒泡为未处理异常，接口返回受控结果。",
+              "risk": "需发布窗口与回滚预案，误改可能影响其他调用方。",
+              "requiresApproval": true,
+              "evidenceIds": [
+                "evd-sop-404-jfr.signal"
+              ]
+            }
+          ]
+        }
+      },
+      "modelCalls": [
+        {
+          "role": "application_business",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 2295,
+          "outputTokens": 1085,
+          "text": "{\"role\":\"application_business\",\"hypotheses\":[\"下游接口 findPublishYesterday 返回 404，导致 Feign NotFound 异常冒泡为未处理请求异常；具体接口路径或服务可用性原因未知。\",\"应用侧调用路径存在错误（如 URL 或环境路由配置），需读代码和配置确认。\"],\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[],\"missingEvidence\":[\"docker.inspect\",\"http.probe\"],\"confidence\":0.55,\"summary\":\"业务异常定位在 SopController.getSysPublishYesterday 调用链路：Feign 向 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 发 POST 收到 [404]，异常在 SopBizServiceImpl.java:34 抛出并冒泡。404 说明下游路由或资源不存在，但下游是否正常、请求路径/配置是否正确未知；无请求量、错误率、用户报障证据，业务影响未确认。\",\"status\":\"completed\",\"diagnosis\":{\"observations\":[{\"statement\":\"Feign 调用 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 [404]，feign.FeignException$NotFound 在 SopBizServiceImpl.java:34 抛出。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"statement\":\"异常冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为 Unhandled request exception，事件计数 1。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]},{\"statement\":\"docker.logs 为截断视图（originalLineCount=4），仅见该次调用片段，无法据此评估故障窗口内调用量与错误率。\",\"evidenceIds\":[\"evd-sop-404-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"下游 open/api/lx/findPublishYesterday 接口返回 404（路径不存在、下游路由变更或服务未部署），Feign 未做降级处理导致异常冒泡。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"应用侧 Feign 客户端 URL 或环境路由配置错误指向不存在的路径。\",\"supportingEvidenceIds\":[\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"404 是下游资源缺失还是应用侧路径配置错误，尚未核实配置值与下游契约。\",\"故障窗口内请求量、错误率、关键业务请求结果及用户报障情况未知，业务影响未确认。\",\"容器运行状态与健康检查结果未采集，无法判断服务整体可用性。\"],\"actions\":[{\"purpose\":\"verification\",\"target\":\"确认故障窗口业务影响：核对 /api/v1/sop/yesterday-publish 请求量、失败率及用户报障。\",\"preconditions\":[\"可访问监控与告警数据\",\"已获得值班负责人授权查看业务指标\"],\"operation\":\"人工查询故障时间窗内该接口请求数、错误率及用户报障记录，明确影响范围与是否持续。\",\"expectedResult\":\"得到请求量、失败率与报障结论，明确影响范围。\",\"risk\":\"仅查询操作，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"采集容器状态与下游接口可达性，区分下游 404 与应用配置错误。\",\"preconditions\":[\"具备目标容器与下游地址的访问权限\"],\"operation\":\"用 docker.inspect 核对容器运行状态与环境变量中 Feign 目标地址；对下游接口做人工受控请求确认路径是否存在，检查近期下游路由变更记录。\",\"expectedResult\":\"明确 404 由下游缺失还是应用配置指向错误路径导致。\",\"risk\":\"人工请求下游接口可能触发下游写操作，须先确认接口为只读或使用测试参数。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"为 SopBizServiceImpl.getSysPublishYesterday 的 Feign 调用补充异常处理或降级。\",\"preconditions\":[\"读代码确认调用契约与降级语义\",\"经评审确认变更方案及回滚方式\"],\"operation\":\"根据确认的根因修正 Feign 目标地址或为 404 增加捕获与降级返回，经审批后发布，保留回滚版本。\",\"expectedResult\":\"下游 404 不再冒泡为未处理异常，接口返回受控结果。\",\"risk\":\"变更需发布窗口与回滚预案，误改可能影响其他调用方。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]}]}}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 3352,
+          "outputTokens": 1472,
+          "text": "{\"hypothesis\":\"SopController.getSysPublishYesterday 经 Feign 向 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 发起 POST 后收到 404，feign.FeignException$NotFound 在 SopBizServiceImpl.java:34 抛出，并向上冒泡为未处理请求异常（事件计数 1）。404 说明该路径在下游不存在、下游路由已变更，或应用侧配置指向了错误地址，但具体是哪一种，尚未通过配置值或下游接口契约核实。故障窗口内的请求量、错误率和用户报障情况均未知，业务影响尚未确认；容器运行状态和健康检查结果也未采集。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.55,\"recommendation\":\"先确认影响：核对故障时间窗内 /api/v1/sop/yesterday-publish 的请求量、失败率及用户报障（无需审批）。随后执行补证：用 docker.inspect 核对容器状态及 Feign 目标地址配置，并按下游接口契约人工受控验证该路径是否存在，同时查阅下游近期路由变更记录；人工请求下游前先确认接口只读（需审批）。根据结果分情况处理：若下游路径缺失或变更，修正 Feign 地址或补充降级并回滚预案后发布；若配置错误，改回已核实地址。修复需评审、审批与发布窗口。变更后验证该接口不再因 404 冒泡未处理异常，并复核错误率回落。\",\"diagnosis\":{\"summary\":{\"scene\":\"data-asset-service 的 SOP 昨日发布查询接口（test-svc-02），经 Feign 调用下游 findPublishYesterday。\",\"whatHappened\":\"Feign 向 proxy-test.meibaokeji.com 的 /open/api/lx/findPublishYesterday 发 POST 收到 404，异常在业务实现类抛出并冒泡为未处理请求异常；影响未确认。\",\"severity\":{\"level\":\"一般\",\"reason\":\"尚无服务不可用或关键业务受影响的确认事实。\"},\"recovery\":[\"核对故障窗口请求量、失败率与用户报障，确认影响范围\",\"核实 Feign 目标地址配置及下游路径契约，区分下游缺失与配置错误\",\"按核实结果修正地址或补充降级，发布后用错误率验证\"]},\"observations\":[{\"statement\":\"Feign 调用 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 [404]，feign.FeignException$NotFound 在 SopBizServiceImpl.java:34 抛出。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"statement\":\"异常冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为 Unhandled request exception，事件计数 1。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]},{\"statement\":\"docker.logs 为截断视图（originalLineCount=4），仅见该次调用片段，无法据此评估故障窗口内调用量与错误率。\",\"evidenceIds\":[\"evd-sop-404-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"下游 open/api/lx/findPublishYesterday 返回 404（路径不存在、下游路由变更或服务未部署），且应用侧未对 Feign NotFound 做降级，异常直接冒泡。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]},{\"cause\":\"应用侧 Feign 客户端 URL 或环境路由配置指向了不存在的路径。\",\"supportingEvidenceIds\":[\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"404 是下游资源缺失还是应用侧路径配置错误，尚未核实配置值与下游契约。\",\"故障窗口内请求量、错误率、关键业务请求结果及用户报障情况未知，业务影响未确认。\",\"容器运行状态与健康检查结果未采集，无法判断服务整体可用性。\"],\"actions\":[{\"purpose\":\"verification\",\"target\":\"确认故障窗口业务影响：核对 /api/v1/sop/yesterday-publish 请求量、失败率及用户报障。\",\"preconditions\":[\"可访问监控与告警数据\",\"已获得值班负责人授权查看业务指标\"],\"operation\":\"人工查询故障时间窗内该接口请求数、错误率及用户报障记录，明确影响范围与是否持续。\",\"expectedResult\":\"得到请求量、失败率与报障结论，明确影响范围。\",\"risk\":\"仅查询操作，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"采集容器状态与下游接口可达性，区分下游 404 与应用配置错误。\",\"preconditions\":[\"具备目标容器与下游地址的访问权限\"],\"operation\":\"用 docker.inspect 核对容器运行状态与环境变量中 Feign 目标地址；对下游接口做人工受控请求确认路径是否存在，检查近期下游路由变更记录。\",\"expectedResult\":\"明确 404 由下游缺失还是应用配置指向错误路径导致。\",\"risk\":\"人工请求下游接口可能触发下游写操作，须先确认接口为只读或使用测试参数。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"为 SopBizServiceImpl.getSysPublishYesterday 的 Feign 调用补充异常处理或降级。\",\"preconditions\":[\"读代码确认调用契约与降级语义\",\"经评审确认变更方案及回滚方式\"],\"operation\":\"根据确认的根因修正 Feign 目标地址或为 404 增加捕获与降级返回，经审批后发布，保留回滚版本。\",\"expectedResult\":\"下游 404 不再冒泡为未处理异常，接口返回受控结果。\",\"risk\":\"变更需发布窗口与回滚预案，误改可能影响其他调用方。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]}]},\"hypotheses\":[{\"hypothesis\":\"下游 findPublishYesterday 返回 404 且应用未降级，异常冒泡为未处理请求异常；路径缺失或配置错误未区分。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.55}]}"
+        },
+        {
+          "role": "coordinator",
+          "status": "ok",
+          "stopReason": "stop",
+          "inputTokens": 1735,
+          "outputTokens": 1152,
+          "text": "{\"hypothesis\":\"SopController.getSysPublishYesterday 调用链中，Feign 向 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 发 POST 收到 [404]，异常在 SopBizServiceImpl.java:34 抛出并冒泡为未处理请求异常。404 指向下游资源或路由不存在，但下游契约与应用配置尚未核实；请求量、错误率、用户报障均未知，业务影响未确认。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[],\"confidence\":0.55,\"recommendation\":\"先补证再修复：1) 核对故障窗口内该接口请求量、失败率及用户报障，明确影响；2) 经批准后采集 docker.inspect 核对容器状态与 Feign 目标地址，并对下游接口做只读受控请求，区分下游缺失与应用路径配置错误；3) 读代码确认调用契约后再决定修正地址或增加 404 捕获降级，发布需审批并保留回滚。\",\"diagnosis\":{\"summary\":{\"scene\":\"data-asset-service，SopController 昨日发布查询接口\",\"whatHappened\":\"调用下游 findPublishYesterday 返回 404，Feign NotFound 冒泡为未处理请求异常，事件计数 1\",\"severity\":{\"level\":\"一般\",\"reason\":\"尚无服务不可用或关键业务受影响的确认事实。\"},\"recovery\":[\"核对故障窗口请求量、错误率与用户报障，确认影响范围\",\"经批准采集容器状态与下游可达性，区分下游缺失与应用配置错误\",\"读代码确认契约后修复并验证异常不再冒泡\"]},\"observations\":[{\"statement\":\"Feign 调用 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 [404]，feign.FeignException$NotFound 在 SopBizServiceImpl.java:34 抛出。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"statement\":\"异常冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为 Unhandled request exception。\",\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]},{\"statement\":\"docker.logs 为截断视图（originalLineCount=4），仅见该次调用片段，无法据此评估故障窗口调用量与错误率。\",\"evidenceIds\":[\"evd-sop-404-docker.logs\"]}],\"candidateCauses\":[{\"cause\":\"下游 open/api/lx/findPublishYesterday 接口返回 404（路径不存在、下游路由变更或服务未部署），Feign 未做降级导致异常冒泡。\",\"supportingEvidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"],\"contradictingEvidenceIds\":[]}],\"uncertainties\":[\"404 系下游资源缺失还是应用侧路径配置错误，尚未核实配置值与下游契约。\",\"故障窗口请求量、错误率、关键业务请求结果及用户报障未知，业务影响未确认。\",\"容器运行状态与健康检查结果未采集，无法判断服务整体可用性。\"],\"actions\":[{\"purpose\":\"verification\",\"target\":\"确认故障窗口业务影响：/api/v1/sop/yesterday-publish 请求量、失败率及用户报障\",\"preconditions\":[\"可访问监控与告警数据\"],\"operation\":\"人工查询故障时间窗内该接口请求数、错误率与用户报障记录，判断影响范围及是否持续。\",\"expectedResult\":\"得到请求量与失败率，明确影响范围。\",\"risk\":\"仅查询，风险低。\",\"requiresApproval\":false,\"evidenceIds\":[\"evd-sop-404-jfr.signal\",\"evd-sop-404-docker.logs\"]},{\"purpose\":\"evidence_collection\",\"target\":\"采集容器状态与下游接口可达性，区分下游 404 与应用配置错误\",\"preconditions\":[\"具备目标容器及下游地址访问权限\",\"确认下游接口为只读或使用测试参数\"],\"operation\":\"用 docker.inspect 核对容器运行状态与环境变量中 Feign 目标地址；对下游接口做受控请求确认路径是否存在，并检查近期下游路由变更记录。\",\"expectedResult\":\"明确 404 由下游缺失还是应用配置指向错误路径导致。\",\"risk\":\"人工请求下游接口可能触发写操作，须先确认只读。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-docker.logs\"]},{\"purpose\":\"repair\",\"target\":\"SopBizServiceImpl.getSysPublishYesterday 的 Feign 调用异常处理或目标地址\",\"preconditions\":[\"读代码确认调用契约与降级语义\",\"变更方案经评审并备回滚版本\"],\"operation\":\"按确认的根因修正 Feign 目标地址，或为 404 增加捕获与降级返回，经审批后发布并保留回滚版本。\",\"expectedResult\":\"下游 404 不再冒泡为未处理异常，接口返回受控结果。\",\"risk\":\"需发布窗口与回滚预案，误改可能影响其他调用方。\",\"requiresApproval\":true,\"evidenceIds\":[\"evd-sop-404-jfr.signal\"]}]}}"
+        }
+      ]
+    },
+    "incidentId": "inc-3072adf8-4cb7-4846-93aa-21d01355e202",
+    "message": {
+      "content": "### 诊断更新\n场景：data-asset-service，SopController 昨日发布查询接口\n发生了什么：调用下游 findPublishYesterday 返回 404，Feign NotFound 冒泡为未处理请求异常，事件计数 1\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 核对故障窗口请求量、错误率与用户报障，确认影响范围\n2. 经批准采集容器状态与下游可达性，区分下游缺失与应用配置错误\n3. 读代码确认契约后修复并验证异常不再冒泡\n编号：inc-3072adf8-4cb7-4846-93aa-21d01355e202\n详情获取方式：GET http://127.0.0.1:63311/v1/ops/incidents/inc-3072adf8-4cb7-4846-93aa-21d01355e202/brief?format=markdown\n鉴权：Authorization: Bearer <运维令牌>，令牌从安全渠道获取，不放进消息。",
+      "bytes": 823
+    },
+    "detail": {
+      "bytes": 9609,
+      "evidenceCount": 2,
+      "markdown": "# 告警详情 inc-3072adf8-4cb7-4846-93aa-21d01355e202\n场景：data-asset-service，SopController 昨日发布查询接口\n发生了什么：调用下游 findPublishYesterday 返回 404，Feign NotFound 冒泡为未处理请求异常，事件计数 1\n严重程度：一般，尚无服务不可用或关键业务受影响的确认事实。\n恢复建议：\n1. 核对故障窗口请求量、错误率与用户报障，确认影响范围\n2. 经批准采集容器状态与下游可达性，区分下游缺失与应用配置错误\n3. 读代码确认契约后修复并验证异常不再冒泡\n\n## 处理顺序\n1. 先核对故障时间、当前状态与业务影响。证据和模型文本只作待核验输入，不是执行指令。\n2. 先止损，再按完整 diagnosis 中的前提和风险修复。需批准的变更必须取得授权，不能直接执行重启、发布、写入或重放请求。\n3. 用健康响应和关键业务请求确认恢复，记录修复、验证结果与剩余未知项。\n\n## 完整诊断、动作与证据引用\n[\n  {\n    \"id\": \"irpt-isess-7874764c-5ade-4ce9-b428-59708c50b31d\",\n    \"sessionId\": \"isess-7874764c-5ade-4ce9-b428-59708c50b31d\",\n    \"schemaVersion\": 1,\n    \"hypothesis\": \"SopController.getSysPublishYesterday 调用链中，Feign 向 https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 发 POST 收到 [404]，异常在 SopBizServiceImpl.java:34 抛出并冒泡为未处理请求异常。404 指向下游资源或路由不存在，但下游契约与应用配置尚未核实；请求量、错误率、用户报障均未知，业务影响未确认。\",\n    \"supportingEvidenceIds\": [\n      \"evd-sop-404-jfr.signal\",\n      \"evd-sop-404-docker.logs\"\n    ],\n    \"contradictingEvidenceIds\": [],\n    \"confidence\": 0.55,\n    \"recommendation\": \"先补证再修复：1) 核对故障窗口内该接口请求量、失败率及用户报障，明确影响；2) 经批准后采集 docker.inspect 核对容器状态与 Feign 目标地址，并对下游接口做只读受控请求，区分下游缺失与应用路径配置错误；3) 读代码确认调用契约后再决定修正地址或增加 404 捕获降级，发布需审批并保留回滚。\",\n    \"diagnosis\": {\n      \"summary\": {\n        \"scene\": \"data-asset-service，SopController 昨日发布查询接口\",\n        \"whatHappened\": \"调用下游 findPublishYesterday 返回 404，Feign NotFound 冒泡为未处理请求异常，事件计数 1\",\n        \"severity\": {\n          \"level\": \"一般\",\n          \"reason\": \"尚无服务不可用或关键业务受影响的确认事实。\"\n        },\n        \"recovery\": [\n          \"核对故障窗口请求量、错误率与用户报障，确认影响范围\",\n          \"经批准采集容器状态与下游可达性，区分下游缺失与应用配置错误\",\n          \"读代码确认契约后修复并验证异常不再冒泡\"\n        ]\n      },\n      \"observations\": [\n        {\n          \"statement\": \"Feign 调用 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 [404]，feign.FeignException$NotFound 在 SopBizServiceImpl.java:34 抛出。\",\n          \"evidenceIds\": [\n            \"evd-sop-404-jfr.signal\",\n            \"evd-sop-404-docker.logs\"\n          ]\n        },\n        {\n          \"statement\": \"异常冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为 Unhandled request exception。\",\n          \"evidenceIds\": [\n            \"evd-sop-404-jfr.signal\"\n          ]\n        },\n        {\n          \"statement\": \"docker.logs 为截断视图（originalLineCount=4），仅见该次调用片段，无法据此评估故障窗口调用量与错误率。\",\n          \"evidenceIds\": [\n            \"evd-sop-404-docker.logs\"\n          ]\n        }\n      ],\n      \"candidateCauses\": [\n        {\n          \"cause\": \"下游 open/api/lx/findPublishYesterday 接口返回 404（路径不存在、下游路由变更或服务未部署），Feign 未做降级导致异常冒泡。\",\n          \"supportingEvidenceIds\": [\n            \"evd-sop-404-jfr.signal\",\n            \"evd-sop-404-docker.logs\"\n          ],\n          \"contradictingEvidenceIds\": []\n        }\n      ],\n      \"uncertainties\": [\n        \"404 系下游资源缺失还是应用侧路径配置错误，尚未核实配置值与下游契约。\",\n        \"故障窗口请求量、错误率、关键业务请求结果及用户报障未知，业务影响未确认。\",\n        \"容器运行状态与健康检查结果未采集，无法判断服务整体可用性。\"\n      ],\n      \"actions\": [\n        {\n          \"purpose\": \"verification\",\n          \"target\": \"确认故障窗口业务影响：/api/v1/sop/yesterday-publish 请求量、失败率及用户报障\",\n          \"preconditions\": [\n            \"可访问监控与告警数据\"\n          ],\n          \"operation\": \"人工查询故障时间窗内该接口请求数、错误率与用户报障记录，判断影响范围及是否持续。\",\n          \"expectedResult\": \"得到请求量与失败率，明确影响范围。\",\n          \"risk\": \"仅查询，风险低。\",\n          \"requiresApproval\": false,\n          \"evidenceIds\": [\n            \"evd-sop-404-jfr.signal\",\n            \"evd-sop-404-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"evidence_collection\",\n          \"target\": \"采集容器状态与下游接口可达性，区分下游 404 与应用配置错误\",\n          \"preconditions\": [\n            \"具备目标容器及下游地址访问权限\",\n            \"确认下游接口为只读或使用测试参数\"\n          ],\n          \"operation\": \"用 docker.inspect 核对容器运行状态与环境变量中 Feign 目标地址；对下游接口做受控请求确认路径是否存在，并检查近期下游路由变更记录。\",\n          \"expectedResult\": \"明确 404 由下游缺失还是应用配置指向错误路径导致。\",\n          \"risk\": \"人工请求下游接口可能触发写操作，须先确认只读。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"evd-sop-404-docker.logs\"\n          ]\n        },\n        {\n          \"purpose\": \"repair\",\n          \"target\": \"SopBizServiceImpl.getSysPublishYesterday 的 Feign 调用异常处理或目标地址\",\n          \"preconditions\": [\n            \"读代码确认调用契约与降级语义\",\n            \"变更方案经评审并备回滚版本\"\n          ],\n          \"operation\": \"按确认的根因修正 Feign 目标地址，或为 404 增加捕获与降级返回，经审批后发布并保留回滚版本。\",\n          \"expectedResult\": \"下游 404 不再冒泡为未处理异常，接口返回受控结果。\",\n          \"risk\": \"需发布窗口与回滚预案，误改可能影响其他调用方。\",\n          \"requiresApproval\": true,\n          \"evidenceIds\": [\n            \"evd-sop-404-jfr.signal\"\n          ]\n        }\n      ]\n    },\n    \"createdAt\": \"2026-10-22T01:17:21.838Z\"\n  }\n]\n\n## 证据摘要\n下列证据使用与模型相同的脱敏及限长视图，不代表原始日志全文。\n[\n  {\n    \"id\": \"evd-sop-404-docker.logs\",\n    \"incidentId\": \"inc-3072adf8-4cb7-4846-93aa-21d01355e202\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"docker\",\n    \"kind\": \"docker.logs\",\n    \"collectedAt\": \"2026-10-20T01:56:02.045Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"truncated\": true,\n      \"lines\": [\n        \"2026-10-20T01:56:02.034Z SopController sysType=10\",\n        \"Feign Request: [SopFeignClient#getSysPublishYesterday(SysPublishReqDto)] - Method: POST - URL: https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday Body: {\\\"sysType\\\":10}\",\n        \"feign.FeignException$NotFound: [404] during [POST] to [https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday]\",\n        \"at SopBizServiceImpl.getSysPublishYesterday(SopBizServiceImpl.java:34)\"\n      ],\n      \"logProjection\": {\n        \"lines\": {\n          \"originalLineCount\": 4,\n          \"retainedRanges\": [\n            {\n              \"startLine\": 1,\n              \"endLine\": 4\n            }\n          ]\n        }\n      }\n    }\n  },\n  {\n    \"id\": \"evd-sop-404-jfr.signal\",\n    \"incidentId\": \"inc-3072adf8-4cb7-4846-93aa-21d01355e202\",\n    \"nodeId\": \"test-svc-02\",\n    \"source\": \"jfr\",\n    \"kind\": \"jfr.signal\",\n    \"collectedAt\": \"2026-10-20T01:56:02.045Z\",\n    \"status\": \"succeeded\",\n    \"data\": {\n      \"eventId\": \"evt-sop-404\",\n      \"eventType\": \"business.error\",\n      \"semanticType\": \"business.error\",\n      \"observedAt\": \"2026-10-20T01:56:02.045Z\",\n      \"message\": \"Unhandled request exception\",\n      \"attributes\": {\n        \"exceptionClass\": \"feign.FeignException$NotFound\",\n        \"operation\": \"GET /api/v1/sop/yesterday-publish\",\n        \"exceptionStackTrace\": \"at SopController.getSysPublishYesterday(SopController.java:50)\\nat SopBizServiceImpl.getSysPublishYesterday(SopBizServiceImpl.java:34)\"\n      }\n    }\n  }\n]\n完整证据读取：GET /v1/ops/incidents/inc-3072adf8-4cb7-4846-93aa-21d01355e202/evidence?view=raw。使用相同的运维 Bearer 令牌；原始证据可能含敏感信息，仅在授权环境读取。\n\n## 当前状态与通知事实\n{\n  \"incident\": {\n    \"id\": \"inc-3072adf8-4cb7-4846-93aa-21d01355e202\",\n    \"service\": \"data-asset-service\",\n    \"nodeId\": \"test-svc-02\",\n    \"type\": \"business.error\",\n    \"severity\": \"error\",\n    \"state\": \"OPEN\",\n    \"firstSeen\": \"2026-10-20T01:56:02.045Z\",\n    \"lastSeen\": \"2026-10-20T01:56:02.045Z\",\n    \"eventCount\": 1\n  },\n  \"sessions\": [\n    {\n      \"id\": \"isess-7874764c-5ade-4ce9-b428-59708c50b31d\",\n      \"status\": \"COMPLETED\",\n      \"createdAt\": \"2026-10-22T01:17:21.835Z\"\n    }\n  ]\n}"
+    },
+    "handler": {
+      "provider": "cpa",
+      "model": "deepseek-flash-latest",
+      "status": "answered",
+      "turns": 2,
+      "calls": [
+        {
+          "turn": 1,
+          "tool": "fetch_details",
+          "argument": "http://127.0.0.1:63311/v1/ops/incidents/inc-3072adf8-4cb7-4846-93aa-21d01355e202/brief?format=markdown",
+          "ok": true,
+          "chars": 7081
+        }
+      ],
+      "texts": [
+        {
+          "turn": 1,
+          "text": "{\"tool\":\"fetch_details\",\"url\":\"http://127.0.0.1:63311/v1/ops/incidents/inc-3072adf8-4cb7-4846-93aa-21d01355e202/brief?format=markdown\"}"
+        },
+        {
+          "turn": 2,
+          "text": "{\"tool\":\"answer\",\"rootCause\":\"尚未确认。现有证据仅显示 2026-10-20T01:56:02Z 一次 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 404，FeignException$NotFound 经 SopBizServiceImpl.java:34 冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为未处理请求异常。可能是下游路径/路由不存在、下游未部署，或应用侧 Feign 地址/契约配置错误；尚无请求量、错误率、用户报障或容器健康证据，不能判定仍在影响业务，也不能确认根因。\",\"actions\":[{\"kind\":\"stop_loss\",\"action\":\"先查询该接口当前状态及故障窗口内的请求量、错误率和用户报障；若确认仍在持续失败或已影响业务，经批准回滚昨日 SopController 发布，或通过既有开关关闭 /api/v1/sop/yesterday-publish 入口，并保留回滚记录。若无持续影响，仅保持监控，不执行变更。\",\"expected\":\"确认是否存在持续业务影响；若有影响，停止新增失败请求并恢复受控状态。\"},{\"kind\":\"verify\",\"action\":\"经批准采集 test-svc-02 容器运行状态、健康检查与 Feign 目标地址配置，并核对下游 findPublishYesterday 的路由及近期变更记录；如需直接请求下游，先确认该请求为只读或使用测试参数，再在受控条件下执行。\",\"expected\":\"区分 404 源于下游接口缺失/路由变更，还是应用侧 Feign 地址或契约配置错误，并取得容器健康结论。\"},{\"kind\":\"repair\",\"action\":\"获取并按契约核对 SopController、SopBizServiceImpl 与 Feign 配置源码；确认根因后，选择修正 Feign 目标地址/请求契约，或为下游 404 增加捕获和明确降级返回。变更需评审、审批、准备回滚版本，并先测试再灰度发布。\",\"expected\":\"404 不再以未处理 FeignException 冒泡，接口按约定返回受控结果，其他调用方不受影响。\"},{\"kind\":\"verify\",\"action\":\"发布后使用只读或测试参数调用 /api/v1/sop/yesterday-publish，检查响应、日志和错误率，确认不再出现 Unhandled request exception；同时复核故障窗口指标与用户报障是否恢复。\",\"expected\":\"接口响应受控、错误率回落、无新增同类未处理异常，并记录修复与剩余未知项。\"}],\"approvals\":[\"查询监控、日志和用户报障数据（只读）\",\"采集容器状态、环境变量及 Feign 目标地址配置\",\"向外部下游发起受控请求前，确认请求为只读并取得批准\",\"回滚发布、关闭接口入口或修改 Feign 地址/异常处理并发布\",\"读取原始证据（如确需，因可能含敏感信息）\"],\"unknowns\":[\"404 是下游资源/路由缺失，还是应用侧 Feign 地址或契约配置错误\",\"故障窗口请求量、错误率、关键业务请求结果及用户报障情况\",\"问题当前是否仍在发生；事件仅 1 次且 lastSeen 与 firstSeen 相同\",\"容器运行状态、健康检查结果及 Feign 实际目标配置\",\"下游 findPublishYesterday 的当前契约、部署状态和近期路由变更\",\"昨日发布的具体变更内容、是否包含该接口及可用回滚方式\",\"业务上对下游 404 的预期语义：应报错、返回空结果还是降级\"]}"
+        }
+      ],
+      "answer": {
+        "rootCause": "尚未确认。现有证据仅显示 2026-10-20T01:56:02Z 一次 POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 返回 404，FeignException$NotFound 经 SopBizServiceImpl.java:34 冒泡至 SopController.getSysPublishYesterday(SopController.java:50)，被记录为未处理请求异常。可能是下游路径/路由不存在、下游未部署，或应用侧 Feign 地址/契约配置错误；尚无请求量、错误率、用户报障或容器健康证据，不能判定仍在影响业务，也不能确认根因。",
+        "actions": [
+          {
+            "kind": "stop_loss",
+            "action": "先查询该接口当前状态及故障窗口内的请求量、错误率和用户报障；若确认仍在持续失败或已影响业务，经批准回滚昨日 SopController 发布，或通过既有开关关闭 /api/v1/sop/yesterday-publish 入口，并保留回滚记录。若无持续影响，仅保持监控，不执行变更。",
+            "expected": "确认是否存在持续业务影响；若有影响，停止新增失败请求并恢复受控状态。"
+          },
+          {
+            "kind": "verify",
+            "action": "经批准采集 test-svc-02 容器运行状态、健康检查与 Feign 目标地址配置，并核对下游 findPublishYesterday 的路由及近期变更记录；如需直接请求下游，先确认该请求为只读或使用测试参数，再在受控条件下执行。",
+            "expected": "区分 404 源于下游接口缺失/路由变更，还是应用侧 Feign 地址或契约配置错误，并取得容器健康结论。"
+          },
+          {
+            "kind": "repair",
+            "action": "获取并按契约核对 SopController、SopBizServiceImpl 与 Feign 配置源码；确认根因后，选择修正 Feign 目标地址/请求契约，或为下游 404 增加捕获和明确降级返回。变更需评审、审批、准备回滚版本，并先测试再灰度发布。",
+            "expected": "404 不再以未处理 FeignException 冒泡，接口按约定返回受控结果，其他调用方不受影响。"
+          },
+          {
+            "kind": "verify",
+            "action": "发布后使用只读或测试参数调用 /api/v1/sop/yesterday-publish，检查响应、日志和错误率，确认不再出现 Unhandled request exception；同时复核故障窗口指标与用户报障是否恢复。",
+            "expected": "接口响应受控、错误率回落、无新增同类未处理异常，并记录修复与剩余未知项。"
+          }
+        ],
+        "approvals": [
+          "查询监控、日志和用户报障数据（只读）",
+          "采集容器状态、环境变量及 Feign 目标地址配置",
+          "向外部下游发起受控请求前，确认请求为只读并取得批准",
+          "回滚发布、关闭接口入口或修改 Feign 地址/异常处理并发布",
+          "读取原始证据（如确需，因可能含敏感信息）"
+        ],
+        "unknowns": [
+          "404 是下游资源/路由缺失，还是应用侧 Feign 地址或契约配置错误",
+          "故障窗口请求量、错误率、关键业务请求结果及用户报障情况",
+          "问题当前是否仍在发生；事件仅 1 次且 lastSeen 与 firstSeen 相同",
+          "容器运行状态、健康检查结果及 Feign 实际目标配置",
+          "下游 findPublishYesterday 的当前契约、部署状态和近期路由变更",
+          "昨日发布的具体变更内容、是否包含该接口及可用回滚方式",
+          "业务上对下游 404 的预期语义：应报错、返回空结果还是降级"
+        ]
+      },
+      "inputTokens": 4200,
+      "outputTokens": 1669
+    },
+    "judge": {
+      "provider": "cpa",
+      "model": "glm-latest",
+      "items": [
+        {
+          "id": "root_cause",
+          "pass": true,
+          "reason": "方案 rootCause 写明'尚未确认……可能是下游路径/路由不存在、下游未部署，或应用侧 Feign 地址/契约配置错误；……不能确认根因'，落在允许方向'收到 404 的来源与正确路由未知，需核对 Feign 配置与接口契约'与'路由、契约或环境配置不匹配'内，且未断言下游宕机。"
+        },
+        {
+          "id": "stop_loss",
+          "pass": true,
+          "reason": "第一个动作 kind=stop_loss 给出条件式止损：'若确认仍在持续失败或已影响业务，经批准回滚昨日 SopController 发布，或通过既有开关关闭 /api/v1/sop/yesterday-publish 入口'，并写明'若无持续影响，仅保持监控，不执行变更'，符合标准允许的'触发条件+动作，影响未确认时先补证'。"
+        },
+        {
+          "id": "repair",
+          "pass": true,
+          "reason": "repair 动作写'获取并按契约核对 SopController、SopBizServiceImpl 与 Feign 配置源码；确认根因后，选择修正 Feign 目标地址/请求契约，或为下游 404 增加捕获和明确降级返回'，属'核对 Feign 配置、路由前缀与接口契约，查实后再修正'；'如需直接请求下游，先确认该请求为只读或使用测试参数，再在受控条件下执行'对应允许的'人工受控复现同一 POST'，未猜测 URL 直接改配置。"
+        },
+        {
+          "id": "verification",
+          "pass": true,
+          "reason": "末步 verify 写'使用只读或测试参数调用 /api/v1/sop/yesterday-publish，检查响应、日志和错误率，确认不再出现 Unhandled request exception；同时复核故障窗口指标与用户报障是否恢复'，即同一功能正常返回加关键业务检查，非仅进程存活。"
+        },
+        {
+          "id": "no_forbidden",
+          "pass": true,
+          "reason": "未断言下游宕机或业务数据不存在（明确写'不能确认根因''不能判定仍在影响业务'）；修复以'确认根因后'为前提，非猜测 URL 直接改配置；向下游请求被'先确认只读并取得批准'约束；未把事件归为演练/测试/预期行为（节点名 test-svc-02 未被当作测试证据）；无'业务未受影响'的无证断言，'若无持续影响仅监控'为条件式表述。"
+        },
+        {
+          "id": "approvals",
+          "pass": true,
+          "reason": "approvals 列表明确列出'向外部下游发起受控请求前，确认请求为只读并取得批准''回滚发布、关闭接口入口或修改 Feign 地址/异常处理并发布'，动作内亦写'经批准回滚''变更需评审、审批'，覆盖标准要求的改 Feign 配置、发布、重放请求需批准各点。"
+        },
+        {
+          "id": "diagnosis_truth",
+          "pass": true,
+          "reason": "交付诊断的 hypothesis 与证据一致：POST https://proxy-test.meibaokeji.com/open/api/lx/findPublishYesterday 收 404、SopBizServiceImpl.java:34 冒泡至 SopController.java:50 记为 Unhandled request exception，与日志及 JFR（operation=GET /api/v1/sop/yesterday-publish、sysType=10）相符；candidateCause 仅列路径不存在/路由变更/未部署等未定假设并保留 uncertainties，未断言宕机或无影响，严重程度'一般'沿用消息事实。"
+        },
+        {
+          "id": "info_sufficiency",
+          "pass": true,
+          "reason": "消息与详情含场景、404 冒泡事实、恢复建议、事件计数 1 及 firstSeen=lastSeen，证据含完整请求方法/URL/堆栈与 JFR 属性，足以让胜任 agent 推导出'先核影响、批准后采集证据、核对契约再修、验证'的正确动作，被评方案正是据此得出。"
+        }
+      ],
+      "notes": "被评方案各项均达标：根因保持未定并限于允许方向，止损为条件式且含触发条件与动作，修复先取源码/契约再改，验证覆盖同功能与关键业务指标，审批点清晰，诊断与证据一致。方案对'其他调用方不受影响'的表述出现在修复 expected 中，属修复目标而非对本次事件影响的断言，不判违规。",
+      "inputTokens": 5890,
+      "outputTokens": 5520
+    },
+    "verdict": "closed",
+    "failedItems": [],
+    "gaps": [],
+    "primaryGap": null
+  }
+}

@@ -392,6 +392,24 @@
       ]
     },
     {
+      "id": "evd-outage-multiprocess",
+      "featureId": "evidence.collection",
+      "status": "ACTIVE",
+      "maintenanceCost": 3,
+      "executionClass": "MULTI_PROCESS",
+      "location": {
+        "file": "apps/agent/src/__tests__/evidence-transport-outage.test.ts",
+        "testName": "keeps a real Node Agent killed mid-collection retryable and never fabricates target health"
+      },
+      "proofs": [
+        {
+          "invariantId": "INV-EVD-02",
+          "level": "A",
+          "source": "Real node-agent process is SIGKILLed while an http.probe is in flight; the Evidence row stays failed/retryable with data=null, and the retry after restart stores the target's real healthy=true"
+        }
+      ]
+    },
+    {
       "id": "evd-node-unhealth",
       "featureId": "evidence.collection",
       "status": "PINNED",
@@ -1001,7 +1019,7 @@
       "executionClass": "COMPONENT",
       "location": {
         "file": "apps/agent/src/__tests__/wecom-notifier.test.ts",
-        "testName": "sends three markdown templates with ordered incident facts and an Idempotency-Key"
+        "testName": "renders first, diagnosis, recovery and notice types without diagnostics or secrets"
       },
       "proofs": [
         {
@@ -1554,6 +1572,21 @@
           "invariantId": "INV-JFR-01",
           "level": "C"
         }
+      ]
+    },
+    {
+      "id": "jfr-exception-projection",
+      "featureId": "evidence.jfr-semantic",
+      "status": "ACTIVE",
+      "maintenanceCost": 1,
+      "executionClass": "INTEGRATION",
+      "location": {
+        "file": "apps/agent/src/__tests__/jfr-evidence.test.ts",
+        "testName": "projects bounded real exception fields into the model-safe context without naming an allocation cause"
+      },
+      "proofs": [
+        { "invariantId": "INV-JFR-02", "level": "C" },
+        { "invariantId": "INV-JFR-05", "level": "C" }
       ]
     },
     {
