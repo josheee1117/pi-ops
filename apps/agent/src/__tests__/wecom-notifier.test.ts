@@ -85,7 +85,12 @@ describe('WeCom notifier', () => {
       async () => new Response(JSON.stringify({ errcode: 45009 })),
       async () => { throw new TypeError(`fetch ${URL} failed`); },
       async (_url, init) => new Promise<Response>((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        // AbortSignal.timeout's timer does not keep the loop alive; a real socket would.
+        const pending = setTimeout(() => {}, 60_000);
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(pending);
+          reject(init.signal?.reason);
+        });
       }),
     ];
     for (const fakeFetch of fetches) {
