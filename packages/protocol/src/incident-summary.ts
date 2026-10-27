@@ -1,7 +1,7 @@
 import type { InvestigationSummary } from './investigation-runtime.js';
 
 export const DEFAULT_SUMMARY_SEVERITY = {
-  unavailableTypes: ['jvm.oom', 'container.oom', 'jvm.stack_overflow', 'health.failure', 'container.die'],
+  unavailableTypes: ['jvm.oom', 'container.oom', 'jvm.stack_overflow', 'runtime.oom', 'runtime.stack_overflow', 'health.failure', 'container.die'],
   unavailable: { level: '严重', reason: '服务可能不可用，需要优先止损。' },
   criticalOperation: { level: '高', reason: '已配置的关键接口或核心业务流程报错。' },
   other: { level: '一般', reason: '尚无服务不可用或关键业务受影响的确认事实。' },
@@ -16,6 +16,8 @@ const FAULTS: Record<string, { scene: string; happened: string; repair: string }
   'jvm.oom': { scene: '应用内存耗尽', happened: '应用报告内存耗尽，请求可能失败。', repair: '修复：核对异常栈和内存限制，区分应用堆与容器内存。' },
   'container.oom': { scene: '容器内存耗尽', happened: '容器因内存不足被系统终止，服务可能中断。', repair: '修复：核对容器限额与实际占用，确认原因后再调整。' },
   'jvm.stack_overflow': { scene: '应用调用栈溢出', happened: '应用调用层级过深，请求可能持续失败。', repair: '修复：按异常栈核对重复调用，确认终止条件。' },
+  'runtime.oom': { scene: '运行时内存耗尽', happened: '应用报告内存耗尽，请求可能失败。', repair: '修复：核对异常栈和内存限制，区分应用内存与容器内存。' },
+  'runtime.stack_overflow': { scene: '运行时调用栈溢出', happened: '应用调用层级过深，请求可能持续失败。', repair: '修复：按异常栈核对重复调用，确认终止条件。' },
   'health.failure': { scene: '服务健康检查', happened: '健康检查连续没有通过，服务可能不可用。', repair: '修复：核对健康检查响应、应用日志和依赖状态。' },
   'business.error': { scene: '业务接口请求', happened: '应用接口出现未处理异常，影响范围待确认。', repair: '修复：按异常位置核对对应版本源码，修复尚未确定。' },
   'container.die': { scene: '容器退出', happened: '容器进程退出，服务可能中断。', repair: '修复：核对退出记录与最近发布，不凭退出码认定内存耗尽。' },

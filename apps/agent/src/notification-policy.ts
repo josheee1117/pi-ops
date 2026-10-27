@@ -22,6 +22,18 @@ export type NotificationObservation =
       failures: CountFact;
       requests: CountFact;
       source: SourceRef;
+      /** Set when a configured log ignore rule matched. Not a failure count. */
+      ruleId?: string;
+    }
+  | {
+      kind: 'runtime-fatal';
+      runtime: 'python' | 'node';
+      fault: 'oom' | 'stack-overflow';
+      exceptionClass: string;
+      exceptionMessage: string;
+      stackTrace: string;
+      stackIncomplete?: boolean;
+      source: SourceRef;
     }
   | {
       kind: 'ordinary-error';
@@ -71,6 +83,8 @@ export type NotificationObservation =
 export type FirstNotificationReason =
   | 'jvm-oome'
   | 'jvm-stack-overflow'
+  | 'runtime-oom'
+  | 'runtime-stack-overflow'
   | 'critical-operation-failed'
   | 'docker-oom'
   | 'health-unavailable'
@@ -182,6 +196,7 @@ function collectMissing(observations: NotificationObservation[]): MissingFact[] 
         break;
       case 'critical-operation':
       case 'jvm-exception':
+      case 'runtime-fatal':
       case 'docker':
         break;
       case 'health':
@@ -230,6 +245,8 @@ function recordReason(observation: NotificationObservation): FirstNotificationRe
       return 'critical-operation-failed';
     case 'jvm-exception':
       return 'exception-not-oome';
+    case 'runtime-fatal':
+      return observation.fault === 'oom' ? 'runtime-oom' : 'runtime-stack-overflow';
     case 'docker':
       return 'container-exit-without-oom';
     case 'health':
@@ -261,6 +278,14 @@ export function decideFirstNotification(facts: FirstNotificationFacts): FirstNot
     && item.exceptionClass === 'java.lang.StackOverflowError'
     && /(?:^|\n)\s*at\s+\S+\([^)\n]*\)/.test(item.stackTrace));
   if (overflow) return { action: 'alert', reason: 'jvm-stack-overflow', missing, failures, requests, sources: [overflow.source] };
+  const runtime = facts.observations.find((item) => item.kind === 'runtime-fatal');
+  if (runtime) {
+    return {
+      action: 'alert',
+      reason: runtime.fault === 'oom' ? 'runtime-oom' : 'runtime-stack-overflow',
+      missing, failures, requests, sources: [runtime.source],
+    };
+  }
   const critical = facts.observations.find((item) => item.kind === 'critical-operation');
   if (critical) return { action: 'alert', reason: 'critical-operation-failed', missing, failures, requests, sources: [critical.source] };
   const docker = facts.observations.find(dockerOom);

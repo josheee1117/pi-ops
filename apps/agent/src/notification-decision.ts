@@ -46,6 +46,7 @@ export function evaluateNotification(
     const job = buildNotificationJob({ type: 'INCIDENT_OPEN', incident: incidentFactsFromRow(incident), evidenceIds, now });
     job.payload.notice = recovered ? 'recovered-before-delivery'
       : decision.reason === 'sustained-impact-unknown' ? 'manual-confirmation' : 'fault';
+    if (facts.observations.some((item) => item.kind === 'runtime-fatal' && item.stackIncomplete)) job.payload.stackIncomplete = true;
     store.scheduleNotificationJob(job);
     initial = job;
     value.valueKeys = impactKeys(facts);
@@ -94,10 +95,16 @@ export function evaluateNotification(
   return value;
 }
 
-function impactLabel(key: string): string {
+export function impactLabel(key: string): string {
   if (key === 'docker:oom') return '容器确认遭遇 OOM';
   if (key.startsWith('health:')) return `健康目标不可用（规则 ${key.slice(7)}）`;
   if (key.startsWith('operation:')) return `关键接口失败（规则 ${key.slice(10)}）`;
+  if (key.startsWith('runtime:')) {
+    const [, runtime, fault] = key.split(':');
+    const language = runtime === 'python' ? 'Python' : runtime === 'node' ? 'Node' : runtime;
+    const what = fault === 'oom' ? '内存耗尽' : fault === 'stack-overflow' ? '调用栈溢出' : fault;
+    return `${language} ${what}`;
+  }
   return `JVM 错误 ${key.slice(10)}`;
 }
 
@@ -106,6 +113,7 @@ function impactKeys(facts: FirstNotificationFacts): string[] {
     if (item.kind === 'critical-operation') return [`operation:${item.ruleId}`];
     if (item.kind === 'health' && item.binding.kind === 'bound') return [`health:${item.binding.ruleId}`];
     if (item.kind === 'jvm-exception' && ['java.lang.OutOfMemoryError', 'java.lang.StackOverflowError'].includes(item.exceptionClass)) return [`exception:${item.exceptionClass}`];
+    if (item.kind === 'runtime-fatal') return [`runtime:${item.runtime}:${item.fault}`];
     if (item.kind === 'docker' && (item.oomKilled || item.dockerAction === 'oom')) return ['docker:oom'];
     return [];
   });

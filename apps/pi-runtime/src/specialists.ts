@@ -61,6 +61,9 @@ export function selectSpecialists(context: RuntimeInvestigationContext): Special
   if (type.startsWith('jvm.')) {
     add('jvm');
     add('container_host');
+  } else if (type.startsWith('runtime.')) {
+    add('application_business');
+    add('container_host');
   } else if (type === 'application.slow_sql' || type.includes('sql')) {
     add('database');
     add('application_business');

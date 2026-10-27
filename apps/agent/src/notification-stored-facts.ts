@@ -74,7 +74,8 @@ export function buildFirstNotificationFactsFromStore(
     }
   }
   const ordinaryItems = qualified.filter((item) => item.event !== undefined && isOrdinarySignal(item.stored.type)
-    && !(typeof item.attributes?.responseStatus === 'number' && item.attributes.responseStatus >= 400 && item.attributes.responseStatus < 500));
+    && !(typeof item.attributes?.responseStatus === 'number' && item.attributes.responseStatus >= 400 && item.attributes.responseStatus < 500)
+    && !expectedLogRule(policy, incident.service, item.stored.message, item.attributes));
   const servicePolicy = serviceNotificationPolicy(policy, incident.service);
   let runStart = ordinaryItems[0]?.time;
   let previous: number | undefined;
@@ -131,7 +132,7 @@ function supported(stored: StoredEvent): boolean {
   if (stored.type.endsWith('_recovered') || stored.type.endsWith('.recovered')) return true;
   if (['application', 'node-agent'].includes(stored.producer_type)
     && ['jfr', 'application', 'docker'].includes(stored.source)
-    && ['jvm.oom', 'jvm.stack_overflow', 'business.error', 'jvm.cpu_pressure', 'jvm.gc_pressure', 'application.slow_sql'].includes(stored.type)) return true;
+    && ['jvm.oom', 'jvm.stack_overflow', 'runtime.oom', 'runtime.stack_overflow', 'business.error', 'jvm.cpu_pressure', 'jvm.gc_pressure', 'application.slow_sql'].includes(stored.type)) return true;
   if (stored.producer_type === 'node-agent' && stored.source === 'host'
     && ['host.memory_pressure', 'host.disk_pressure'].includes(stored.type)) return true;
   if (stored.producer_type === 'node-agent' && stored.source === 'docker'
@@ -156,7 +157,13 @@ function observationsFor(incident: IncidentRow, item: QualifiedEvent, policy: No
       || typeof item.attributes?.exceptionClass === 'string' && /^[\w$]+(?:\.[\w$]+)+$/.test(item.attributes.exceptionClass))) {
       return [{ kind: 'critical-operation', operation: binding.operation ?? binding.path ?? operation, ruleId: binding.ruleId, workflow: binding.workflow, source }];
     }
+    const ignored = expectedLogRule(policy, incident.service, item.stored.message, item.attributes);
+    if (ignored) return [{ kind: 'expected-rejection', failures: UNKNOWN, requests: UNKNOWN, source, ruleId: ignored.ruleId }];
     return [ordinary(source)];
+  }
+  if (item.stored.type === 'runtime.oom' || item.stored.type === 'runtime.stack_overflow') {
+    const fatal = item.event ? runtimeFatalObservation(incident, item.event) : undefined;
+    return fatal ? [fatal] : [];
   }
   if (item.stored.type === 'jvm.oom' || item.stored.type === 'jvm.stack_overflow') {
     const exception = item.event ? exceptionObservation(incident, item.event) : undefined;
@@ -257,6 +264,85 @@ function identityConflicts(incident: IncidentRow, attributes: Record<string, unk
 
 function conflicts(value: unknown, expected: string): boolean {
   return typeof value === 'string' && value.length > 0 && value !== expected;
+}
+
+const DOCKER_TIME_PREFIX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\s+/;
+
+function expectedLogRule(
+  policy: NotificationPolicyConfig,
+  service: string,
+  message: string,
+  attributes: Record<string, unknown> | undefined,
+): { ruleId: string } | undefined {
+  const code = attributes?.businessCode;
+  if (code !== 'LOG_ERROR' && code !== 'UNHANDLED_EXCEPTION') return undefined;
+  const exceptionMessage = typeof attributes?.exceptionMessage === 'string' ? attributes.exceptionMessage : '';
+  return serviceNotificationPolicy(policy, service).expectedLogErrors?.find((rule) =>
+    message.includes(rule.contains) || exceptionMessage.includes(rule.contains));
+}
+
+function lineBodies(text: string): string[] {
+  return text.split('\n').map((line) => line.replace(DOCKER_TIME_PREFIX, ''));
+}
+
+function namedClass(value: string, name: string): boolean {
+  return value === name || value.endsWith(`.${name}`);
+}
+
+function pythonFrame(stack: string): boolean {
+  return lineBodies(stack).some((line) => /^\s*File\s+".*",\s+line\s+\d+/.test(line));
+}
+
+function nodeFrame(stack: string): boolean {
+  return lineBodies(stack).some((line) => /^\s*at\s+\S+/.test(line));
+}
+
+function nodeHeapLine(text: string): boolean {
+  return lineBodies(text).some((line) => line.startsWith('FATAL ERROR:') && line.includes('JavaScript heap out of memory'));
+}
+
+function runtimeEvidence(
+  runtime: 'python' | 'node',
+  fault: 'oom' | 'stack-overflow',
+  exceptionClass: string,
+  exceptionMessage: string,
+  stackTrace: string,
+  message: string,
+  incomplete: boolean,
+): boolean {
+  if (runtime === 'python' && fault === 'oom') return namedClass(exceptionClass, 'MemoryError') && (pythonFrame(stackTrace) || incomplete);
+  if (runtime === 'python' && fault === 'stack-overflow') {
+    return namedClass(exceptionClass, 'RecursionError')
+      && exceptionMessage.includes('maximum recursion depth exceeded')
+      && (pythonFrame(stackTrace) || incomplete);
+  }
+  if (runtime === 'node' && fault === 'oom') return nodeHeapLine(stackTrace) || nodeHeapLine(message);
+  return namedClass(exceptionClass, 'RangeError')
+    && exceptionMessage.includes('Maximum call stack size exceeded')
+    && (nodeFrame(stackTrace) || incomplete);
+}
+
+function runtimeFatalObservation(incident: IncidentRow, event: OpsEvent): NotificationObservation | undefined {
+  if (event.source === 'docker' && identityConflicts(incident, event.attributes)) return undefined;
+  const runtime = event.attributes.runtime;
+  if (runtime !== 'python' && runtime !== 'node') return undefined;
+  const fault = event.type === 'runtime.oom' ? 'oom' : event.type === 'runtime.stack_overflow' ? 'stack-overflow' : undefined;
+  if (!fault) return undefined;
+  const exceptionClass = typeof event.attributes.exceptionClass === 'string' ? event.attributes.exceptionClass : '';
+  const exceptionMessage = typeof event.attributes.exceptionMessage === 'string' ? event.attributes.exceptionMessage : '';
+  const stackTrace = typeof event.attributes.stackTrace === 'string' ? event.attributes.stackTrace : '';
+  const incomplete = event.attributes.stackIncomplete === true;
+  if (!runtimeEvidence(runtime, fault, exceptionClass, exceptionMessage, stackTrace, event.message, incomplete)) return undefined;
+  return {
+    kind: 'runtime-fatal',
+    runtime,
+    fault,
+    exceptionClass,
+    exceptionMessage,
+    stackTrace,
+    ...(incomplete ? { stackIncomplete: true } : {}),
+    source: { kind: 'event', id: event.id },
+  };
 }
 
 function realExceptionStack(value: unknown): string | undefined {

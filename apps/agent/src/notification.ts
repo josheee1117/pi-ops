@@ -50,6 +50,8 @@ export interface NotificationPayload {
     evidenceIds: string[];
   };
   notice?: 'fault' | 'manual-confirmation' | 'diagnosis-update' | 'recovered-before-delivery';
+  /** Fatal log confirmed before the stack was complete. */
+  stackIncomplete?: boolean;
   impactSummary?: string;
   summarySeverity?: InvestigationSummary['severity'];
   analysis?: NotificationAnalysis;

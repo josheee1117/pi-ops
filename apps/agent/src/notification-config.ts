@@ -31,16 +31,24 @@ export interface HealthRule {
   container?: string;
 }
 
+export interface ExpectedLogError {
+  ruleId: string;
+  contains: string;
+}
+
 export interface ServiceNotificationPolicy {
   unknownImpactWaitMs: number;
   observationMaxGapMs: number;
   criticalOperations: CriticalOperation[];
+  expectedLogErrors?: ExpectedLogError[];
 }
 
 export interface NotificationPolicyConfig {
   summarySeverity?: SummarySeverityRules;
   defaultUnknownImpactWaitMs: number;
   defaultObservationMaxGapMs: number;
+  /** Silence after which a log-derived ordinary error opens a new Incident. Missing means 3600000. */
+  logErrorRecurrenceGapMs?: number;
   services: Record<string, ServiceNotificationPolicy>;
   healthRules: HealthRule[];
 }
@@ -49,6 +57,7 @@ export const DEFAULT_NOTIFICATION_POLICY: NotificationPolicyConfig = {
   summarySeverity: DEFAULT_SUMMARY_SEVERITY,
   defaultUnknownImpactWaitMs: 300_000,
   defaultObservationMaxGapMs: 120_000,
+  logErrorRecurrenceGapMs: 3_600_000,
   services: {
     'order-service': {
       unknownImpactWaitMs: 300_000,
@@ -86,6 +95,7 @@ export function loadNotificationPolicy(path: string | undefined): NotificationPo
   if (!path) return DEFAULT_NOTIFICATION_POLICY;
   const raw: unknown = JSON.parse(readFileSync(path, 'utf8'));
   if (!record(raw) || !positive(raw.defaultUnknownImpactWaitMs) || !positive(raw.defaultObservationMaxGapMs)
+    || (raw.logErrorRecurrenceGapMs !== undefined && !positive(raw.logErrorRecurrenceGapMs))
     || !record(raw.services) || !Array.isArray(raw.healthRules)) {
     throw new Error('Invalid notification policy: defaults, services and healthRules are required');
   }
@@ -106,7 +116,13 @@ export function loadNotificationPolicy(path: string | undefined): NotificationPo
         ...(text(item.owner) ? { owner: item.owner } : {}),
       };
     });
-    services[service] = { unknownImpactWaitMs: value.unknownImpactWaitMs, observationMaxGapMs: value.observationMaxGapMs, criticalOperations };
+    const expectedLogErrors = loadExpectedLogErrors(service, value.expectedLogErrors);
+    services[service] = {
+      unknownImpactWaitMs: value.unknownImpactWaitMs,
+      observationMaxGapMs: value.observationMaxGapMs,
+      criticalOperations,
+      ...(expectedLogErrors ? { expectedLogErrors } : {}),
+    };
   }
   const healthRules: HealthRule[] = raw.healthRules.map((item: unknown) => {
     if (!record(item) || !text(item.ruleId) || !positive(item.ruleVersion) || !text(item.nodeId)
@@ -121,7 +137,12 @@ export function loadNotificationPolicy(path: string | undefined): NotificationPo
       ...(text(item.container) ? { container: item.container } : {}),
     };
   });
-  return { defaultUnknownImpactWaitMs: raw.defaultUnknownImpactWaitMs, defaultObservationMaxGapMs: raw.defaultObservationMaxGapMs, services, healthRules,
+  return {
+    defaultUnknownImpactWaitMs: raw.defaultUnknownImpactWaitMs,
+    defaultObservationMaxGapMs: raw.defaultObservationMaxGapMs,
+    logErrorRecurrenceGapMs: raw.logErrorRecurrenceGapMs === undefined ? 3_600_000 : raw.logErrorRecurrenceGapMs,
+    services,
+    healthRules,
     ...(raw.summarySeverity !== undefined ? { summarySeverity: severityRulesSchema.parse(raw.summarySeverity) } : {}),
   };
 }
@@ -143,11 +164,21 @@ export function ruleSummarySeverity(type: string, observations: readonly import(
   const rules = config.summarySeverity ?? DEFAULT_SUMMARY_SEVERITY;
   if (rules.unavailableTypes.includes(type) || observations.some((item) =>
     (item.kind === 'docker' && (item.oomKilled || item.dockerAction === 'oom'))
+    || item.kind === 'runtime-fatal'
     || (item.kind === 'jvm-exception' && ['java.lang.OutOfMemoryError', 'java.lang.StackOverflowError'].includes(item.exceptionClass))
     || (item.kind === 'health' && item.binding.kind === 'bound' && item.transition.kind === 'failure'))) return rules.unavailable;
   if (observations.some((item) => item.kind === 'critical-operation'
     || (item.kind === 'critical-task' && item.binding.kind === 'bound' && item.result === 'failed'))) return rules.criticalOperation;
   return rules.other;
+}
+
+function loadExpectedLogErrors(service: string, value: unknown): ExpectedLogError[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(`Invalid expected log error: ${service}`);
+  return value.map((item: unknown) => {
+    if (!record(item) || !text(item.ruleId) || !text(item.contains)) throw new Error(`Invalid expected log error: ${service}`);
+    return { ruleId: item.ruleId, contains: item.contains };
+  });
 }
 
 function record(value: unknown): value is Record<string, unknown> {

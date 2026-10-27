@@ -233,7 +233,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const EXCEPTION_HEAD = /(?:\b(?:ERROR|FATAL)\b|(?:[\w$]+\.)*[\w$]*(?:Exception|Error)\b\s*:|^\s*(?:Caused by:|Suppressed:)|异常信息[:：])/;
 const STACK_FRAME = /^\s*(?:at\s+)+/;
+const PYTHON_FRAME = /^\s*File\s+".*",\s+line\s+\d+/;
+const DOCKER_TIME_PREFIX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\s+/;
 const FRAMEWORK_FRAME = /^(?:(?:java\.[\w.]+\/)?(?:java|javax|jakarta|jdk|sun)\.|org\.(?:springframework|apache|hibernate)\.|io\.netty\.|com\.(?:sun|fasterxml|zaxxer)\.)/;
+
+function logBody(line: string): string {
+  return line.replace(DOCKER_TIME_PREFIX, '');
+}
 
 function lineTime(line: string): number {
   const timestamp = line.match(/^\s*(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:\d{2})?)/)?.[1];
@@ -259,13 +265,17 @@ function projectData(
     let distance = Infinity;
     const heads = new Set<number>();
     field.lines.forEach((line, index) => {
-      if (typeof line === 'string' && EXCEPTION_HEAD.test(line) && !STACK_FRAME.test(line)) heads.add(index);
+      if (typeof line !== 'string') return;
+      const body = logBody(line);
+      if (EXCEPTION_HEAD.test(body) && !STACK_FRAME.test(body) && !PYTHON_FRAME.test(body)) heads.add(index);
     });
     return field.lines.map((value: unknown, index: number) => {
       const line = typeof value === 'string' ? value : '';
+      const body = logBody(line);
       const timestamp = lineTime(line);
       if (Number.isFinite(timestamp) && Number.isFinite(eventTime)) distance = Math.abs(timestamp - eventTime);
-      const business = STACK_FRAME.test(line) && !FRAMEWORK_FRAME.test(line.replace(STACK_FRAME, ''));
+      const frame = STACK_FRAME.test(body) || PYTHON_FRAME.test(body);
+      const business = frame && (PYTHON_FRAME.test(body) || !FRAMEWORK_FRAME.test(body.replace(STACK_FRAME, '')));
       const rank = heads.has(index) ? 0 : business ? 1 : Number.isFinite(distance) ? 2
         : heads.has(index - 1) || heads.has(index + 1) ? 3 : 4;
       return { key: field.key, index, value, rank, distance, partial: false };

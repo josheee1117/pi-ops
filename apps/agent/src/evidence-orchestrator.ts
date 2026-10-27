@@ -120,9 +120,11 @@ export function planEvidenceQueries(
       return [...docker('docker.stats', 'docker.inspect'), { type: 'host.load', incidentId: incident.id }];
 
     case 'jvm.oom':
+    case 'runtime.oom':
       return [...docker('docker.inspect', 'docker.logs'), { type: 'host.memory', incidentId: incident.id }];
 
     case 'jvm.stack_overflow':
+    case 'runtime.stack_overflow':
       // Recursion depth, not memory pressure, so the log carries the fact.
       return [...docker('docker.inspect', 'docker.logs')];
 

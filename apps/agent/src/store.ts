@@ -841,6 +841,7 @@ export interface EventStore {
     fingerprint: string,
     timestamp: string,
     aggregationWindowMs: number,
+    logEpisode?: boolean,
   ): IncidentRow | undefined;
 
   /** Find the Incident already linked to an immutable Event fact. */
@@ -2554,6 +2555,7 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       fingerprint: string,
       timestamp: string,
       aggregationWindowMs: number,
+      logEpisode = false,
     ): IncidentRow | undefined {
       const eventTime = new Date(timestamp).getTime();
       const rows = listIncidentsByFingerprintStmt.all({ fingerprint }) as IncidentRow[];
@@ -2594,6 +2596,9 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
           || (decision.action === 'analyze' && decision.facts?.observations.some((item) => item.kind === 'ordinary-error')
             && !decision.missing.includes('operation-binding'))
           || store.listNotificationJobs(incident.id).some((job) => job.type === 'INCIDENT_OPEN'));
+        const recurrenceGapMs = notificationPolicy.logErrorRecurrenceGapMs ?? 3_600_000;
+        // Only a marked log episode reopens after the silence. Java, JFR, and health stay bound.
+        if (logEpisode && eventTime - lastSeen > recurrenceGapMs) continue;
         if (distance <= aggregationWindowMs || boundEpisode) {
           candidates.push({ incident, distance, firstSeen });
         }

@@ -12,7 +12,7 @@ function canonicalSource(event: FingerprintEvent): string {
   // A JVM fatal crash (OOM, StackOverflow) is an application-tier failure whether
   // captured directly via JFR or recovered from stdout/stderr via Docker logs.
   const type = RECOVERY_TYPE_MAP[event.type] ?? event.type;
-  if (type === 'jvm.oom' || type === 'jvm.stack_overflow') {
+  if (type === 'jvm.oom' || type === 'jvm.stack_overflow' || type === 'runtime.oom' || type === 'runtime.stack_overflow') {
     return 'application';
   }
   return event.source;

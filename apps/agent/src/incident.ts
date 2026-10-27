@@ -136,10 +136,11 @@ export function createIncidentEngine(
       const fingerprint = store.computeEventFingerprint(event);
       const isExplicitRecovery = RECOVERY_TYPE_MAP[event.type] !== undefined;
       const legacyFingerprint = store.legacyEventFingerprint(event);
+      const logEpisode = event.attributes.logEpisode === true;
       const existing = isExplicitRecovery
         ? store.findRecoveryIncident(fingerprint, timestamp) ?? store.findRecoveryIncident(legacyFingerprint, timestamp)
-        : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs)
-          ?? store.findIncidentForEvent(legacyFingerprint, timestamp, config.aggregationWindowMs);
+        : store.findIncidentForEvent(fingerprint, timestamp, config.aggregationWindowMs, logEpisode)
+          ?? store.findIncidentForEvent(legacyFingerprint, timestamp, config.aggregationWindowMs, logEpisode);
 
       if (existing && isExplicitRecovery) {
         reconcileFingerprint(fingerprint);

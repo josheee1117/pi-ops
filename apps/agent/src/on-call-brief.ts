@@ -39,5 +39,8 @@ export function plainSummary(notification: NotificationPayload): InvestigationSu
     }
     summary = { ...summary, recovery };
   }
+  if (notification.stackIncomplete && !summary.whatHappened.includes('栈不完整')) {
+    summary = { ...summary, whatHappened: `${summary.whatHappened.replace(/。$/, '')}，栈不完整。` };
+  }
   return summary;
 }
