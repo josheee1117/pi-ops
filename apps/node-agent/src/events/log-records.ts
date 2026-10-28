@@ -14,7 +14,7 @@ const NODE_HEAD = /(?:^|\s)([A-Za-z_$][\w$]*Error|Error):\s*(.*)$/;
 
 export function logTemplate(message: string): string {
   return message
-    .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '<quoted>')
+    .replace(/"(?:\\.|[^"\\])*"|(?<=^|[\s([{:;,=])'(?:\\.|[^'\\])*'/g, '<quoted>')
     .replace(/\b[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\b/gi, '<uuid>')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '<ip>')
     .replace(/\b(?:0x[\da-f]+|[\da-f]{16,})\b/gi, '<hex>')

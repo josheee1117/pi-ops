@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { decodeDockerLogs } from '../evidence/docker.js';
 import { scanContainerLog } from '../events/log-events.js';
+import { logTemplate } from '../events/log-records.js';
 
 export const SOURCE = { container: 'log-drill', nodeId: 'local-dev', service: 'log-drill' };
 export const TIME = '2026-10-26T19:30:01.123456789Z';
@@ -122,6 +123,22 @@ describe('multi-language log contract', () => {
     const pidB = scanContainerLog(stamped(['2026-10-27 03:30:01,111 ERROR 44 DB failed 456']), SOURCE, false)[0]!;
     assert.equal(pidA.attributes['module'], pidB.attributes['module']);
     assert.equal(pidA.attributes['module'], 'DB failed <number>');
+  });
+
+  it('keeps contractions intact while replacing delimited quoted values', () => {
+    assert.equal(logTemplate("Can't connect to MySQL server on '<mysql-host>'"), "Can't connect to MySQL server on <quoted>");
+    assert.notEqual(logTemplate("Can't connect to MySQL server on '<mysql-host>'"), logTemplate("Can't write to Redis on '<redis-host>'"));
+    assert.equal(logTemplate("you don't own the document <doc>.pdf"), "you don't own the document <doc>.pdf");
+    for (const delimiter of ['', ' ', '(', '[', '{', ':', ';', ',', '=']) {
+      for (const value of ["'x'", '"x"']) assert.equal(logTemplate(delimiter + value), delimiter + '<quoted>');
+    }
+    const events = scanContainerLog(stamped([
+      "ERROR Can't connect to MySQL server on 'db-a'",
+      "ERROR Can't connect to MySQL server on 'db-b'",
+      "ERROR Can't write to Redis on 'cache-a'",
+    ]), SOURCE, false);
+    assert.equal(events.length, 2);
+    assert.deepEqual(events.map((event) => event.attributes['logRecordCount']), [2, 1]);
   });
 
   it('coalesces one template per batch with a log record count, without merging different dependencies', () => {
