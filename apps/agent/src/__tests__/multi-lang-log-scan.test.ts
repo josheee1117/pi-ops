@@ -221,6 +221,74 @@ describe('multi-language log faults at the center', () => {
     } finally { store.close(); }
   });
 
+  for (const [exceptionClass, exceptionMessage, type, stack] of [
+    ['MemoryError', '', 'runtime.oom', PYTHON_STACK],
+    ['RecursionError', 'maximum recursion depth exceeded', 'runtime.stack_overflow', PYTHON_RECURSION],
+  ]) {
+    for (const fatalLast of [false, true]) {
+      it(`notifies a Python chain with ${exceptionClass} ${fatalLast ? 'wrapping' : 'wrapped by'} an ordinary exception`, async () => {
+        const { store, ingest } = harness();
+        try {
+          const ordinary = 'Traceback (most recent call last):\n  File "worker.py", line 9, in run\nRuntimeError: wrapper';
+          const body = event({
+            id: 'python-chain', type: type!, severity: 'critical',
+            attributes: {
+              containerName: 'ragflow', runtime: 'python',
+              exceptionClass: fatalLast ? exceptionClass : 'RuntimeError',
+              exceptionMessage: fatalLast ? exceptionMessage : 'wrapper',
+              outerExceptionClass: fatalLast ? 'RuntimeError' : exceptionClass,
+              outerExceptionMessage: fatalLast ? 'wrapper' : exceptionMessage,
+              stackTrace: [fatalLast ? ordinary : stack, 'During handling of the above exception, another exception occurred:', fatalLast ? stack : ordinary].join('\n\n'),
+            },
+          });
+          const incident = await ingest([body]);
+          assert.ok(incident);
+          assert.equal(openJobs(store, incident.id).length, 1);
+          const facts = buildFirstNotificationFactsFromStore(store, { incidentId: incident.id, eventIds: [body.id] });
+          const fatal = facts.observations.find((item) => item.kind === 'runtime-fatal');
+          assert.ok(fatal?.kind === 'runtime-fatal');
+          assert.equal(fatal.exceptionClass, exceptionClass);
+          assert.equal(fatal.exceptionMessage, exceptionMessage);
+        } finally { store.close(); }
+      });
+    }
+  }
+
+  for (const recursionLast of [false, true]) {
+    it(`does not borrow a recursion message from the other Python chain endpoint (${recursionLast})`, async () => {
+      const { store, ingest } = harness();
+      try {
+        const body = event({
+          id: 'wrong-recursion-message', type: 'runtime.stack_overflow',
+          attributes: {
+            containerName: 'ragflow', runtime: 'python',
+            exceptionClass: recursionLast ? 'RecursionError' : 'RuntimeError',
+            exceptionMessage: recursionLast ? 'other recursion error' : 'maximum recursion depth exceeded',
+            outerExceptionClass: recursionLast ? 'RuntimeError' : 'RecursionError',
+            outerExceptionMessage: recursionLast ? 'maximum recursion depth exceeded' : 'other recursion error',
+            stackTrace: 'Traceback (most recent call last):\n  File "worker.py", line 9, in run\nRecursionError: other recursion error',
+          },
+        });
+        const incident = await ingest([body]);
+        assert.ok(incident);
+        assert.equal(openJobs(store, incident.id).length, 0);
+      } finally { store.close(); }
+    });
+  }
+
+  it('requires the Node heap fatal line in stackTrace rather than only in message', async () => {
+    const { store, ingest } = harness();
+    try {
+      const body = event({
+        id: 'node-heap-message-only', type: 'runtime.oom', message: NODE_HEAP,
+        attributes: { containerName: 'ragflow', runtime: 'node', exceptionClass: 'Error', stackTrace: '', stackIncomplete: true },
+      });
+      const incident = await ingest([body]);
+      assert.ok(incident);
+      assert.equal(openJobs(store, incident.id).length, 0);
+    } finally { store.close(); }
+  });
+
   it('alerts a runtime fatal fact without using the Java JFR semantic check', () => {
     const observation: NotificationObservation = {
       kind: 'runtime-fatal',
@@ -685,6 +753,36 @@ describe('multi-language log faults at the center', () => {
 
 const fixturePath = new URL('../../../../test/fixtures/log-scan/node-agent-events.json', import.meta.url);
 describe('node-agent log-scan contract', { skip: existsSync(fixturePath) ? false : 'waiting for test/fixtures/log-scan/node-agent-events.json' }, () => {
+  const expectedOpenCounts: Record<string, number> = {
+    '0330-window': 0,
+    'lost-connection-traceback': 0,
+    'jwt-warning-noise': 0,
+    'doc-owner-rejection': 0,
+    'python-oom': 1,
+    'python-stack-overflow': 1,
+    'node-oom': 1,
+    'node-stack-overflow': 1,
+    'python-ordinary': 0,
+    'node-ordinary': 0,
+    'node-json': 0,
+    'java-fatal-mentions': 0,
+    'python-chain': 1,
+  };
+  const { groups } = JSON.parse(readFileSync(fixturePath, 'utf8')) as { groups: Record<string, OpsEvent[]> };
+  it('specifies the notification count for every fixture group', () => {
+    assert.deepEqual(Object.keys(expectedOpenCounts).sort(), Object.keys(groups).sort());
+  });
+  for (const [name, count] of Object.entries(expectedOpenCounts)) {
+    it(`produces ${count} first notifications for ${name}`, async () => {
+      const { store, ingest } = harness();
+      try {
+        const events = groups[name]!;
+        if (events.length) await ingest(events);
+        assert.equal(store.listIncidents().reduce((total, incident) => total + openJobs(store, incident.id).length, 0), count, name);
+      } finally { store.close(); }
+    });
+  }
+
   it('runs the produced events through facts, evidence plans, and notification decisions', async () => {
     const parsed = JSON.parse(readFileSync(fixturePath, 'utf8')) as { groups: Record<string, OpsEvent[]> };
     const groups = parsed.groups;

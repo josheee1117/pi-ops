@@ -307,7 +307,6 @@ function runtimeEvidence(
   exceptionClass: string,
   exceptionMessage: string,
   stackTrace: string,
-  message: string,
   incomplete: boolean,
 ): boolean {
   if (runtime === 'python' && fault === 'oom') return namedClass(exceptionClass, 'MemoryError') && (pythonFrame(stackTrace) || incomplete);
@@ -316,7 +315,7 @@ function runtimeEvidence(
       && exceptionMessage.includes('maximum recursion depth exceeded')
       && (pythonFrame(stackTrace) || incomplete);
   }
-  if (runtime === 'node' && fault === 'oom') return nodeHeapLine(stackTrace) || nodeHeapLine(message);
+  if (runtime === 'node' && fault === 'oom') return nodeHeapLine(stackTrace);
   return namedClass(exceptionClass, 'RangeError')
     && exceptionMessage.includes('Maximum call stack size exceeded')
     && (nodeFrame(stackTrace) || incomplete);
@@ -328,17 +327,24 @@ function runtimeFatalObservation(incident: IncidentRow, event: OpsEvent): Notifi
   if (runtime !== 'python' && runtime !== 'node') return undefined;
   const fault = event.type === 'runtime.oom' ? 'oom' : event.type === 'runtime.stack_overflow' ? 'stack-overflow' : undefined;
   if (!fault) return undefined;
-  const exceptionClass = typeof event.attributes.exceptionClass === 'string' ? event.attributes.exceptionClass : '';
-  const exceptionMessage = typeof event.attributes.exceptionMessage === 'string' ? event.attributes.exceptionMessage : '';
+  const candidates = [{
+    exceptionClass: typeof event.attributes.exceptionClass === 'string' ? event.attributes.exceptionClass : '',
+    exceptionMessage: typeof event.attributes.exceptionMessage === 'string' ? event.attributes.exceptionMessage : '',
+  }];
+  if (runtime === 'python') candidates.push({
+    exceptionClass: typeof event.attributes.outerExceptionClass === 'string' ? event.attributes.outerExceptionClass : '',
+    exceptionMessage: typeof event.attributes.outerExceptionMessage === 'string' ? event.attributes.outerExceptionMessage : '',
+  });
   const stackTrace = typeof event.attributes.stackTrace === 'string' ? event.attributes.stackTrace : '';
   const incomplete = event.attributes.stackIncomplete === true;
-  if (!runtimeEvidence(runtime, fault, exceptionClass, exceptionMessage, stackTrace, event.message, incomplete)) return undefined;
+  const fatal = candidates.find(({ exceptionClass, exceptionMessage }) =>
+    runtimeEvidence(runtime, fault, exceptionClass, exceptionMessage, stackTrace, incomplete));
+  if (!fatal) return undefined;
   return {
     kind: 'runtime-fatal',
     runtime,
     fault,
-    exceptionClass,
-    exceptionMessage,
+    ...fatal,
     stackTrace,
     ...(incomplete ? { stackIncomplete: true } : {}),
     source: { kind: 'event', id: event.id },
