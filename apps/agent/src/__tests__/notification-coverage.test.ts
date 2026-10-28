@@ -123,13 +123,8 @@ describe('production conversion to notification coverage', () => {
     finally { store.close(); }
   });
 
-  it('does not authorize a Docker OOM mention without an exception stack', async () => {
-    const { store, incident, events } = await receive([`${time} docs: java.lang.OutOfMemoryError: Java heap space`]);
-    try {
-      const facts = buildFirstNotificationFactsFromStore(store, { incidentId: incident.id, eventIds: events.map((event) => event.id) });
-      assert.notEqual(decideFirstNotification(facts).reason, 'jvm-oome');
-      assert.equal(store.listNotificationJobs(incident.id).length, 0);
-    } finally { store.close(); }
+  it('does not scan a docs OOM mention as an event', () => {
+    assert.equal(scanContainerLog([`${time} docs: java.lang.OutOfMemoryError: Java heap space`], source, false).length, 0);
   });
 
   it('does not notify an isolated ordinary error', async () => {
