@@ -46,6 +46,7 @@ export interface DockerLogOptions {
   maxLines: number;
   since?: number;
   until?: number;
+  timestamps?: boolean;
 }
 
 export type DockerLogFetcher = (
@@ -169,8 +170,9 @@ export const fetchDockerLogs: DockerLogFetcher = async (
     stdout: '1',
     stderr: '1',
     follow: '0',
-    timestamps: '0',
-    tail: String(options.maxLines),
+    timestamps: options.timestamps === false ? '0' : '1',
+    // One extra line makes Engine-side tail truncation observable.
+    tail: String(options.maxLines + 1),
   });
   if (options.since !== undefined) params.set('since', String(options.since));
   if (options.until !== undefined) params.set('until', String(options.until));
@@ -207,51 +209,69 @@ function isMultiplexHeader(buffer: Buffer, offset: number): boolean {
   );
 }
 
-/** Decode Docker's 8-byte multiplex frames, then enforce output byte/line caps. */
+export interface DockerLogRecord {
+  stream: 'stdout' | 'stderr';
+  line: string;
+  body: string;
+  time?: string;
+  partial?: boolean;
+}
+
+/** Docker's timestamp is authoritative; never trim the application's indentation. */
+export function dockerLogRecord(line: string, stream: DockerLogRecord['stream'] = 'stdout'): DockerLogRecord {
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) (.*)$/.exec(line);
+  return { stream, line, body: match?.[2] ?? line, ...(match?.[1] ? { time: match[1] } : {}) };
+}
+
+/** Decode frames per stream, including lines split across multiplex frames. */
 export function decodeDockerLogs(
   buffer: Buffer,
   maxBytes: number,
   maxLines: number,
   rawTruncated = false,
-): { lines: string[]; truncated: boolean } {
-  const payloads: Buffer[] = [];
+): { lines: string[]; records: DockerLogRecord[]; truncated: boolean } {
+  const records: DockerLogRecord[] = [];
+  const pending = new Map<DockerLogRecord['stream'], Buffer>();
   let payloadBytes = 0;
   let truncated = rawTruncated;
+  function append(stream: DockerLogRecord['stream'], payload: Buffer): void {
+    const combined = Buffer.concat([pending.get(stream) ?? Buffer.alloc(0), payload]);
+    let start = 0;
+    for (let end = 0; end < combined.length; end += 1) {
+      if (combined[end] !== 10) continue;
+      const line = combined.subarray(start, end).toString('utf-8').replace(/\r$/, '');
+      if (line) records.push(dockerLogRecord(line, stream));
+      start = end + 1;
+    }
+    pending.set(stream, combined.subarray(start));
+  }
 
   if (isMultiplexHeader(buffer, 0)) {
     let offset = 0;
-    while (isMultiplexHeader(buffer, offset)) {
+    while (offset < buffer.length) {
+      if (!isMultiplexHeader(buffer, offset)) { truncated = true; break; }
       const frameLength = buffer.readUInt32BE(offset + 4);
       const payloadStart = offset + 8;
       const available = Math.min(frameLength, buffer.length - payloadStart);
-      const remaining = maxBytes - payloadBytes;
-      const take = Math.max(0, Math.min(available, remaining));
-      if (take > 0) {
-        payloads.push(buffer.subarray(payloadStart, payloadStart + take));
-        payloadBytes += take;
-      }
+      const take = Math.max(0, Math.min(available, maxBytes - payloadBytes));
+      append(buffer[offset] === 2 ? 'stderr' : 'stdout', buffer.subarray(payloadStart, payloadStart + take));
+      payloadBytes += take;
       if (available < frameLength || take < frameLength) truncated = true;
-      if (available < frameLength || remaining <= available) break;
       offset = payloadStart + frameLength;
+      if (available < frameLength || take < available) break;
     }
   } else {
     const take = Math.min(buffer.length, maxBytes);
-    payloads.push(buffer.subarray(0, take));
-    payloadBytes = take;
+    append('stdout', buffer.subarray(0, take));
     if (take < buffer.length) truncated = true;
   }
-
-  let lines = Buffer.concat(payloads, payloadBytes)
-    .toString('utf-8')
-    .split(/\r?\n/)
-    .filter((line) => line.length > 0);
-
-  if (lines.length > maxLines) {
-    lines = lines.slice(-maxLines);
-    truncated = true;
+  for (const [stream, bytes] of pending) {
+    if (bytes.length === 0) continue;
+    records.push({ ...dockerLogRecord(bytes.toString('utf-8'), stream), ...(truncated ? { partial: true } : {}) });
   }
-
-  return { lines, truncated };
+  if (records.length > maxLines) truncated = true;
+  const kept = records.slice(-maxLines);
+  return { lines: kept.map((record) => record.line), records: kept, truncated };
 }
 
 export function createDockerEvidenceProvider(
@@ -311,15 +331,12 @@ export function createDockerEvidenceProvider(
               maxLines,
               ...(since !== undefined ? { since } : {}),
               ...(until !== undefined ? { until } : {}),
+              timestamps: false,
             },
             rawLimit,
           );
-          data = decodeDockerLogs(
-            collected.buffer,
-            config.logsMaxBytes,
-            maxLines,
-            collected.truncated,
-          );
+          const decoded = decodeDockerLogs(collected.buffer, config.logsMaxBytes, maxLines, collected.truncated);
+          data = { lines: decoded.lines, truncated: decoded.truncated };
           break;
         }
         case 'docker.stats': {

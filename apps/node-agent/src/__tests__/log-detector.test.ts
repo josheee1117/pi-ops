@@ -75,6 +75,7 @@ async function scan(lines: readonly string[], config = drivenConfig()) {
   const sender = recordingSender();
   const detector = createLogDetector(config, sender, {
     fetchLogs: async () => ({ buffer: Buffer.from(lines.join('\n')), truncated: false }),
+    fetchContainerId: async () => 'container-id',
   });
   await detector.pollOnce();
   return sender.events;

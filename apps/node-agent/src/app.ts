@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { NodeAgentConfig } from './config.js';
+import type { LogScanStats } from './detectors/logs.js';
 import { validateQueryRequest, queryTypeToSource } from './evidence/types.js';
 import { createDockerEvidenceProvider } from './evidence/docker.js';
 import { createHostEvidenceProvider } from './evidence/host.js';
@@ -41,7 +42,7 @@ async function readJsonBody(request: Request, maxBytes: number): Promise<unknown
   return JSON.parse(text) as unknown;
 }
 
-export function createApp(config: NodeAgentConfig): Hono {
+export function createApp(config: NodeAgentConfig, logScanStats?: () => LogScanStats): Hono {
   const app = new Hono();
 
   const dockerProvider = createDockerEvidenceProvider();
@@ -66,6 +67,7 @@ export function createApp(config: NodeAgentConfig): Hono {
       status: 'ok',
       nodeId: config.nodeId,
       allowedContainers: [...config.allowedContainers],
+      ...(logScanStats ? { logScan: logScanStats() } : {}),
     });
   });
 

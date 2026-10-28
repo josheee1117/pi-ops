@@ -18,6 +18,8 @@
  */
 import { createHash } from 'node:crypto';
 import type { OpsEvent } from '@pi-ops/protocol';
+import { dockerLogRecord, type DockerLogRecord } from '../evidence/docker.js';
+import { scanRawRecords, coalesceLogEvents } from './log-records.js';
 
 export const JFR_LOG_PREFIX = '[PI_OPS_JFR] ';
 
@@ -33,21 +35,6 @@ const JFR_LOG_TYPES: Record<string, { type: string; severity: OpsEvent['severity
   JVM_OOM: { type: 'jvm.oom', severity: 'critical' },
   JVM_STACK_OVERFLOW: { type: 'jvm.stack_overflow', severity: 'critical' },
 };
-
-const OOM_RE = /\bjava\.lang\.OutOfMemoryError\b/;
-const STACK_OVERFLOW_RE = /\bjava\.lang\.StackOverflowError\b/;
-const EXCEPTION_HEAD_RE = /^\s*(?:[\w$]+\.)+[\w$]*(?:Exception|Error)\b/;
-const STACK_FRAME_RE = /^\s+at\s/;
-
-/**
- * True when a class name sits inside a quoted value, such as a JSON payload
- * field or a JSON-encoded stack trace. That is data, not a stack head, and
- * reading it as a head yields an event with no frames.
- */
-function insideQuotedValue(line: string, index: number): boolean {
-  const before = index > 0 ? line[index - 1] : '';
-  return before === '"' || before === "'";
-}
 
 function stableId(parts: unknown[]): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
@@ -170,9 +157,15 @@ function fromJfrPayload(
     ?? (exceptionClass || undefined)
     ?? rawType;
 
+  // Keep the existing JFR identity before renaming its stack output field.
+  const id = stableId(['docker.logs', source.nodeId, source.container, resolvedType, observedAt ?? eventTime, attributes]);
+  attributes['stackTrace'] = attributes['stackTrace'] ?? attributes['exceptionStackTrace'] ?? '';
+  delete attributes['exceptionStackTrace'];
+  attributes['logRecordCount'] = 1;
+
   return {
     schemaVersion: 1,
-    id: stableId(['docker.logs', source.nodeId, source.container, resolvedType, observedAt ?? eventTime, attributes]),
+    id,
     time: eventTime,
     source: 'application',
     nodeId: source.nodeId,
@@ -184,147 +177,43 @@ function fromJfrPayload(
   };
 }
 
-function fatalErrorEvent(
-  type: string,
-  severity: OpsEvent['severity'],
-  exceptionClass: string,
-  message: string,
-  stack: string[],
-  source: LogScanSource,
-  line: string,
-  timestamp?: string,
-): OpsEvent {
-  const attributes: Record<string, unknown> = {
-    observedVia: 'docker.logs',
-    containerName: source.container,
-    exceptionClass,
-    exceptionMessage: message,
-    stackTrace: stack.join('\n').slice(0, 4096),
-  };
-  const eventTime = timestamp ?? new Date().toISOString();
-  return {
-    schemaVersion: 1,
-    id: stableId(['docker.logs', source.nodeId, source.container, type, exceptionClass, eventTime, line.slice(0, 200)]),
-    time: eventTime,
-    source: 'docker',
-    nodeId: source.nodeId,
-    service: source.service,
-    type,
-    severity,
-    message: `${exceptionClass}: ${message}`.slice(0, 512),
-    attributes,
-  };
+export interface ContainerLogScanResult {
+  events: OpsEvent[];
+  pending: DockerLogRecord[];
+  unfinishedDropped: number;
 }
 
-/**
- * Recognizes faults in one container's log lines.
- *
- * `instrumented` must be true when the container's log showed JFR payload lines
- * at any point. Fatal JVM errors are still read from raw stacks, because the
- * starter has no event for them; only duplicate exception reporting is skipped.
- */
+export function scanContainerRecords(
+  records: readonly DockerLogRecord[],
+  source: LogScanSource,
+  instrumented: boolean,
+  recentFatal: ReadonlySet<string> = new Set(),
+  deferIncomplete = false,
+  settledRecords: ReadonlySet<DockerLogRecord> = new Set(),
+): ContainerLogScanResult {
+  const events: OpsEvent[] = [];
+  const fatalFromPayload = new Set(recentFatal);
+  for (const record of records) {
+    const payload = jfrPayload(record.body);
+    if (!payload) continue;
+    const event = fromJfrPayload(payload, source);
+    if (!event) continue;
+    if (event.type === 'jvm.oom') fatalFromPayload.add('java.lang.OutOfMemoryError');
+    if (event.type === 'jvm.stack_overflow') fatalFromPayload.add('java.lang.StackOverflowError');
+    events.push(event);
+  }
+  const raw = scanRawRecords(records, source, instrumented || hasJfrPayload(records.map((record) => record.body)), fatalFromPayload, deferIncomplete, settledRecords);
+  return { ...raw, events: coalesceLogEvents([...events, ...raw.events]) };
+}
+
+/** Stateless entry point for complete batches and fixture replay. */
 export function scanContainerLog(
-  lines: readonly string[],
+  lines: readonly (string | DockerLogRecord)[],
   source: LogScanSource,
   instrumented: boolean,
   recentFatal?: ReadonlySet<string>,
 ): OpsEvent[] {
-  const events: OpsEvent[] = [];
-  const fatalFromPayload = new Set<string>(recentFatal ?? []);
-
-  // Pass 1: Recover all JFR payloads in this batch first, so any payload-reported
-  // fatal error suppresses raw stack duplicates regardless of line order.
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    const payload = jfrPayload(line);
-    if (!payload) continue;
-
-    const event = fromJfrPayload(payload, source);
-    if (!event) continue;
-
-    if (event.type === 'jvm.oom' || event.type === 'jvm.stack_overflow') {
-      const clazz = bounded(event.attributes['exceptionClass'], 256);
-      if (clazz) fatalFromPayload.add(clazz);
-      if (event.type === 'jvm.oom') fatalFromPayload.add('java.lang.OutOfMemoryError');
-      if (event.type === 'jvm.stack_overflow') fatalFromPayload.add('java.lang.StackOverflowError');
-    }
-    events.push(event);
-  }
-
-  // Pass 2: Extract raw fatal errors and uninstrumented exceptions.
-  let currentTimestamp: string | undefined;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    const lineTs = extractLogTimestamp(line);
-    if (lineTs) currentTimestamp = lineTs;
-
-    // JFR payloads already processed in pass 1
-    if (jfrPayload(line)) continue;
-
-    const oom = OOM_RE.exec(line);
-    if (oom && !insideQuotedValue(line, oom.index)) {
-      if (fatalFromPayload.has('java.lang.OutOfMemoryError')) continue;
-      const message = line.slice(oom.index + oom[0].length).replace(/^\s*[:|-]\s*/, '').trim();
-      const stack: string[] = [];
-      for (let next = index + 1; next < lines.length && STACK_FRAME_RE.test(lines[next] ?? ''); next += 1) {
-        stack.push((lines[next] ?? '').trim());
-      }
-      events.push(fatalErrorEvent('jvm.oom', 'critical', 'java.lang.OutOfMemoryError', message, stack, source, line, currentTimestamp));
-      continue;
-    }
-
-    const overflow = STACK_OVERFLOW_RE.exec(line);
-    if (overflow && !insideQuotedValue(line, overflow.index)) {
-      if (fatalFromPayload.has('java.lang.StackOverflowError')) continue;
-      const message = line.slice(overflow.index + overflow[0].length).replace(/^\s*[:|-]\s*/, '').trim();
-      const stack: string[] = [];
-      for (let next = index + 1; next < lines.length && STACK_FRAME_RE.test(lines[next] ?? ''); next += 1) {
-        stack.push((lines[next] ?? '').trim());
-      }
-      events.push(fatalErrorEvent('jvm.stack_overflow', 'critical', 'java.lang.StackOverflowError', message, stack, source, line, currentTimestamp));
-      continue;
-    }
-
-    // Raw exception stacks duplicate what an instrumented container reports.
-    if (instrumented) continue;
-    if (!EXCEPTION_HEAD_RE.test(line)) continue;
-
-    const className = EXCEPTION_HEAD_RE.exec(line)?.[0]?.trim();
-    if (!className) continue;
-    const stack: string[] = [];
-    for (let next = index + 1; next < lines.length && STACK_FRAME_RE.test(lines[next] ?? ''); next += 1) {
-      stack.push((lines[next] ?? '').trim());
-    }
-    if (stack.length === 0) continue;
-
-    const message = line.replace(className, '').replace(/^\s*[:|-]\s*/, '').trim();
-    const attributes: Record<string, unknown> = {
-      observedVia: 'docker.logs',
-      containerName: source.container,
-      errorCode: 'UNHANDLED_EXCEPTION',
-      businessCode: 'UNHANDLED_EXCEPTION',
-      module: className,
-      exceptionClass: className,
-      exceptionMessage: message,
-      exceptionStackTrace: stack.join('\n').slice(0, 4096),
-    };
-    const eventTime = currentTimestamp ?? new Date().toISOString();
-    events.push({
-      schemaVersion: 1,
-      id: stableId(['docker.logs', source.nodeId, source.container, 'business.error', className, eventTime, line.slice(0, 200)]),
-      time: eventTime,
-      source: 'docker',
-      nodeId: source.nodeId,
-      service: source.service,
-      type: 'business.error',
-      severity: 'error',
-      message: `${className}: ${message}`.slice(0, 512),
-      attributes,
-    });
-  }
-
-  return events;
+  return scanContainerRecords(lines.map((line) => typeof line === 'string' ? dockerLogRecord(line) : line), source, instrumented, recentFatal).events;
 }
 
 /** True when the container's log carries Pi-Ops JFR payload lines. */

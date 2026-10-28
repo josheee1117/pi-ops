@@ -9,7 +9,6 @@ import { createHealthDetector } from './detectors/health.js';
 import { createLogDetector, logScanEnabled } from './detectors/logs.js';
 
 const config = loadConfig();
-const app = createApp(config);
 
 const sender = createEventSender(config);
 sender.start();
@@ -18,6 +17,7 @@ const memoryDetector = createMemoryDetector(config, sender);
 const diskDetector = createDiskDetector(config, sender);
 const healthDetector = createHealthDetector(config, sender);
 const logDetector = createLogDetector(config, sender);
+const app = createApp(config, () => logDetector.stats());
 
 memoryDetector.start();
 diskDetector.start();

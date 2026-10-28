@@ -1,147 +1,165 @@
-/**
- * Container-log discovery from the Docker log API.
- *
- * This is the fault-detection path for deployments that run the application
- * image alone: no Pi-Ops sender, no Node Agent probes inside the app. It reads
- * only containers already present in `allowedContainers`, and it is strictly
- * read-only (the same logs endpoint evidence collection uses).
- */
+import { createHash } from 'node:crypto';
 import type { OpsEvent } from '@pi-ops/protocol';
 import { serviceForContainer, type NodeAgentConfig } from '../config.js';
 import type { EventSender } from '../events/sender.js';
-import { decodeDockerLogs, fetchDockerLogs, type DockerLogFetcher } from '../evidence/docker.js';
-import { hasJfrPayload, scanContainerLog, type LogScanSource } from '../events/log-events.js';
+import { decodeDockerLogs, fetchDockerJson, fetchDockerLogs, type DockerLogFetcher, type DockerLogRecord } from '../evidence/docker.js';
+import { hasJfrPayload, scanContainerRecords, type LogScanSource } from '../events/log-events.js';
+
+export interface LogScanStats {
+  truncations: number;
+  retryDropped: number;
+  unfinishedDropped: number;
+  dropped: number;
+  retryQueueDepth: number;
+}
 
 export interface LogDetector {
   start(): void;
   stop(): void;
   pollOnce(): Promise<void>;
+  stats(): LogScanStats;
 }
 
 export interface LogDetectorOptions {
   fetchLogs?: DockerLogFetcher;
+  fetchContainerId?: (container: string) => Promise<string>;
+  now?: () => number;
 }
 
 interface ContainerCursor {
-  /** Unix seconds; Docker's `since` granularity means the overlap re-reads a little. */
+  id: string;
   since: number;
   instrumented: boolean;
   recentFatal: Map<string, number>;
+  reread: Map<string, number>;
+  pending: { records: DockerLogRecord[]; since: number; collectionGap: boolean } | undefined;
+  retries: Array<{ event: OpsEvent; rounds: number }>;
 }
 
-export function createLogDetector(
-  config: NodeAgentConfig,
-  sender: EventSender,
-  options: LogDetectorOptions = {},
-): LogDetector {
+export function createLogDetector(config: NodeAgentConfig, sender: EventSender, options: LogDetectorOptions = {}): LogDetector {
   const fetchLogs = options.fetchLogs ?? fetchDockerLogs;
+  const now = options.now ?? Date.now;
+  const fetchContainerId = options.fetchContainerId ?? (async (container: string) => {
+    const inspect = await fetchDockerJson(config, `/containers/${encodeURIComponent(container)}/json`, config.maxResponseBytes);
+    if (!inspect || typeof inspect !== 'object' || !('Id' in inspect) || typeof inspect.Id !== 'string') throw new Error('Docker inspect is missing Id');
+    return inspect.Id;
+  });
   const cursors = new Map<string, ContainerCursor>();
   const seen = new Map<string, number>();
+  const counters = { truncations: 0, retryDropped: 0, unfinishedDropped: 0 };
   let timer: ReturnType<typeof setInterval> | null = null;
+  let polling = false;
 
-  function pruneSeen(nowMs: number): void {
-    for (const [id, at] of seen) {
-      if (nowMs - at > config.logScanDedupWindowMs) seen.delete(id);
-    }
+  function deliver(cursor: ContainerCursor, event: OpsEvent, nowMs: number): void {
+    if (seen.has(event.id) || cursor.retries.some((entry) => entry.event.id === event.id)) return;
+    if (sender.enqueue(event)) seen.set(event.id, nowMs);
+    else if (cursor.retries.length < 100) cursor.retries.push({ event, rounds: 0 });
+    else counters.retryDropped += 1;
   }
 
   async function scanContainer(container: string, nowMs: number): Promise<void> {
-    const cursor = cursors.get(container) ?? {
-      since: Math.floor((nowMs - config.logScanInitialLookbackSeconds * 1000) / 1000),
-      instrumented: false,
-      recentFatal: new Map<string, number>(),
-    };
-
-    for (const [clazz, at] of cursor.recentFatal) {
-      if (nowMs - at > config.logScanDedupWindowMs) cursor.recentFatal.delete(clazz);
+    let cursor = cursors.get(container);
+    if (cursor) {
+      cursor.retries = cursor.retries.filter((entry) => {
+        if (sender.enqueue(entry.event)) { seen.set(entry.event.id, nowMs); return false; }
+        entry.rounds += 1;
+        if (entry.rounds < 5) return true;
+        counters.retryDropped += 1;
+        return false;
+      });
     }
-
-    let collected: { buffer: Buffer; truncated: boolean };
-    try {
-      collected = await fetchLogs(
-        config,
-        container,
-        { maxLines: config.logScanMaxLines, since: cursor.since },
-        config.logsMaxBytes + config.logScanMaxLines * 8,
-      );
-    } catch {
-      // Engine unreachable or container gone: keep the cursor and retry next poll.
+    let id: string;
+    try { id = await fetchContainerId(container); } catch { return; }
+    if (!cursor || cursor.id !== id) {
+      if (cursor?.pending) counters.unfinishedDropped += 1;
+      cursor = {
+        id, since: Math.floor((nowMs - config.logScanInitialLookbackSeconds * 1000) / 1000),
+        instrumented: false, recentFatal: new Map(), reread: new Map(), pending: undefined,
+        // A failed event is already a complete observation of the old container.
+        retries: cursor?.retries ?? [],
+      };
       cursors.set(container, cursor);
-      return;
     }
-
-    const decoded = decodeDockerLogs(
-      collected.buffer,
-      config.logsMaxBytes,
-      config.logScanMaxLines,
-      collected.truncated,
-    );
-
-    // Once a container shows JFR payloads, it reports its own exceptions.
-    if (!cursor.instrumented && hasJfrPayload(decoded.lines)) cursor.instrumented = true;
-
-    const source: LogScanSource = { container, nodeId: config.nodeId, service: serviceForContainer(config, container) };
-    let emitted = 0;
-    const activeRecentFatal = new Set(cursor.recentFatal.keys());
-    for (const event of scanContainerLog(decoded.lines, source, cursor.instrumented, activeRecentFatal)) {
-      if (event.source === 'application' && (event.type === 'jvm.oom' || event.type === 'jvm.stack_overflow')) {
-        const clazz = typeof event.attributes['exceptionClass'] === 'string' ? event.attributes['exceptionClass'] : undefined;
-        if (clazz) cursor.recentFatal.set(clazz, nowMs);
-        if (event.type === 'jvm.oom') cursor.recentFatal.set('java.lang.OutOfMemoryError', nowMs);
-        if (event.type === 'jvm.stack_overflow') cursor.recentFatal.set('java.lang.StackOverflowError', nowMs);
-      }
-      if (seen.has(event.id)) continue;
-      seen.set(event.id, nowMs);
-      sender.enqueue(event);
-      emitted += 1;
+    if (cursor.pending && nowMs - cursor.pending.since >= 60000) {
+      counters.unfinishedDropped += 1;
+      cursor.pending = undefined;
     }
-
-    if (emitted > 0) {
-      console.log(`[node-agent] log detector emitted ${emitted} event(s) from ${container}`);
+    for (const [clazz, at] of cursor.recentFatal) if (nowMs - at > config.logScanDedupWindowMs) cursor.recentFatal.delete(clazz);
+    let collected: Awaited<ReturnType<DockerLogFetcher>>;
+    try {
+      collected = await fetchLogs(config, id, { maxLines: config.logScanMaxLines, since: cursor.since }, config.logsMaxBytes + (config.logScanMaxLines + 1) * 8);
+    } catch { return; }
+    const decoded = decodeDockerLogs(collected.buffer, config.logsMaxBytes, config.logScanMaxLines, collected.truncated);
+    if (decoded.truncated) {
+      counters.truncations += 1;
+      console.warn(`[node-agent] log scan truncated for ${container}; collectionGap=true`);
     }
-
-    cursors.set(container, {
-      since: Math.floor((nowMs - config.logScanOverlapSeconds * 1000) / 1000),
-      instrumented: cursor.instrumented,
-      recentFatal: cursor.recentFatal,
+    const batchKeys = new Map<string, number>();
+    const fresh = decoded.records.filter((record) => {
+      const key = createHash('sha256').update(JSON.stringify([record.stream, record.time, record.line])).digest('hex');
+      const occurrence = (batchKeys.get(key) ?? 0) + 1;
+      batchKeys.set(key, occurrence);
+      return occurrence > (cursor.reread.get(key) ?? 0);
     });
+    // Keep only the latest bounded response, rather than accumulating every log line.
+    cursor.reread = batchKeys;
+    if (hasJfrPayload(decoded.lines)) cursor.instrumented = true;
+    const pendingSince = cursor.pending?.since ?? nowMs;
+    const collectionGap = decoded.truncated || (cursor.pending?.collectionGap ?? false);
+    const settledRecords = new Set(cursor.pending?.records ?? []);
+    const records = [...settledRecords, ...fresh];
+    cursor.pending = undefined;
+    const source: LogScanSource = { container, nodeId: config.nodeId, service: serviceForContainer(config, container) };
+    const scanned = scanContainerRecords(records, source, cursor.instrumented, new Set(cursor.recentFatal.keys()), true, settledRecords);
+    counters.unfinishedDropped += scanned.unfinishedDropped;
+    if (scanned.pending.length > 0) {
+      // One bounded unfinished block per container, never an unbounded log buffer.
+      const stream = scanned.pending[0]!.stream;
+      const pending = scanned.pending.filter((record) => record.stream === stream);
+      if (pending.length < scanned.pending.length) counters.unfinishedDropped += 1;
+      if (pending.length > 200 || Buffer.byteLength(pending.map((record) => record.line).join('\n')) > 65536) counters.unfinishedDropped += 1;
+      else cursor.pending = { records: pending, since: settledRecords.has(pending[0]!) ? pendingSince : nowMs, collectionGap };
+    }
+    for (const event of scanned.events) {
+      if (collectionGap) event.attributes['collectionGap'] = true;
+      if (event.source === 'application' && (event.type === 'jvm.oom' || event.type === 'jvm.stack_overflow')) {
+        cursor.recentFatal.set(event.type === 'jvm.oom' ? 'java.lang.OutOfMemoryError' : 'java.lang.StackOverflowError', nowMs);
+      }
+      deliver(cursor, event, nowMs);
+    }
+    cursor.since = Math.floor((nowMs - config.logScanOverlapSeconds * 1000) / 1000);
   }
 
   async function pollOnce(): Promise<void> {
-    const nowMs = Date.now();
-    pruneSeen(nowMs);
-    for (const container of config.allowedContainers) {
-      await scanContainer(container, nowMs);
-    }
+    if (polling) return;
+    polling = true;
+    try {
+      const nowMs = now();
+      for (const [id, at] of seen) if (nowMs - at > config.logScanDedupWindowMs) seen.delete(id);
+      for (const container of config.allowedContainers) await scanContainer(container, nowMs);
+    } finally { polling = false; }
   }
 
   return {
-    async pollOnce() {
-      await pollOnce();
-    },
-    start(): void {
-      if (config.allowedContainers.size === 0) {
-        console.log('[node-agent] log detector idle (no PI_OPS_ALLOWED_CONTAINERS)');
-        return;
-      }
-      console.log(
-        `[node-agent] log detector started (${config.allowedContainers.size} container(s), interval ${config.logScanIntervalMs}ms)`,
-      );
+    pollOnce,
+    stats: () => ({
+      ...counters, dropped: counters.retryDropped + counters.unfinishedDropped,
+      retryQueueDepth: [...cursors.values()].reduce((total, cursor) => total + cursor.retries.length, 0),
+    }),
+    start() {
+      if (config.allowedContainers.size === 0 || timer) return;
+      console.log(`[node-agent] log detector started (${config.allowedContainers.size} container(s), interval ${config.logScanIntervalMs}ms)`);
       timer = setInterval(() => {
-        pollOnce().catch((error: unknown) => {
-          console.error(`[node-agent] log detector error: ${error instanceof Error ? error.message : String(error)}`);
-        });
+        pollOnce().catch((error: unknown) => console.error(`[node-agent] log detector error: ${error instanceof Error ? error.message : String(error)}`));
       }, config.logScanIntervalMs);
     },
-    stop(): void {
+    stop() {
       if (timer) clearInterval(timer);
       timer = null;
-      console.log('[node-agent] log detector stopped');
     },
   };
 }
 
-/** Exposed for tests and for the entrypoint's startup check. */
 export function logScanEnabled(config: NodeAgentConfig): boolean {
   return config.logScanEnabled && config.allowedContainers.size > 0;
 }

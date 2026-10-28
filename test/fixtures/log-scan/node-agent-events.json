@@ -1,0 +1,384 @@
+{
+  "groups": {
+    "0330-window": [
+      {
+        "schemaVersion": 1,
+        "id": "d1d3ed1b80be888a44fb47e6f01c71261b12a440ca190fb73797ed791a661a3c",
+        "time": "2026-10-26T19:30:07.550708523Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "peewee.OperationalError: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "module": "peewee.OperationalError",
+          "exceptionClass": "peewee.OperationalError",
+          "exceptionMessage": "(2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "stackTrace": "2026-10-27 03:30:07,542 ERROR    35 update_progress exception\nTraceback (most recent call last):\n  File \"/ragflow/.venv/lib/python3.13/site-packages/pymysql/connections.py\", line 661, in connect\n    sock = socket.create_connection(\n        (self.host, self.port), self.connect_timeout, **kwargs\n    )\n  File \"/root/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/socket.py\", line 864, in create_connection\n    raise exceptions[0]\n  File \"/root/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/socket.py\", line 849, in create_connection\n    sock.connect(sa)\n    ~~~~~~~~~~~~^^^^\nConnectionRefusedError: [Errno 111] Connection refused\nDuring handling of the above exception, another exception occurred:\nTraceback (most recent call last):\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 3263, in connect\n    self._state.set_connection(self._connect())\n                               ~~~~~~~~~~~~~^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/playhouse/pool.py\", line 83, in inner\n    return fn(self, *args, **kwargs)\n  File \"/ragflow/.venv/lib/python3.13/site-packages/playhouse/pool.py\", line 177, in _connect\n    conn = super(PooledDatabase, self)._connect()\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 4229, in _connect\n    conn = mysql.connect(db=self.database, autocommit=True,\n                         **self.connect_params)\n  File \"/ragflow/.venv/lib/python3.13/site-packages/pymysql/connections.py\", line 365, in __init__\n    self.connect()\n    ~~~~~~~~~~~~^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/pymysql/connections.py\", line 723, in connect\n    raise exc\npymysql.err.OperationalError: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")\nDuring handling of the above exception, another exception occurred:\nTraceback (most recent call last):\n  File \"/ragflow/api/ragflow_server.py\", line 65, in update_progress\n    DocumentService.update_progress()\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 3158, in inner\n    with ConnectionContext(self.db):\n         ~~~~~~~~~~~~~~~~~^^^^^^^^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 3153, in __enter__\n    self.db.connect()\n    ~~~~~~~~~~~~~~~^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/playhouse/pool.py\", line 128, in connect\n    return super(PooledDatabase, self).connect(reuse_if_open)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 3262, in connect\n    with __exception_wrapper__:\n         ^^^^^^^^^^^^^^^^^^^^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 3088, in __exit__\n    reraise(new_type, new_type(exc_value, *exc_args), traceback)\n    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 196, in reraise\n    raise value.with_traceback(tb)\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 3263, in connect\n    self._state.set_connection(self._connect())\n                               ~~~~~~~~~~~~~^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/playhouse/pool.py\", line 83, in inner\n    return fn(self, *args, **kwargs)\n  File \"/ragflow/.venv/lib/python3.13/site-packages/playhouse/pool.py\", line 177, in _connect\n    conn = super(PooledDatabase, self)._connect()\n  File \"/ragflow/.venv/lib/python3.13/site-packages/peewee.py\", line 4229, in _connect\n    conn = mysql.connect(db=self.database, autocommit=True,\n                         **self.connect_params)\n  File \"/ragflow/.venv/lib/python3.13/site-packages/pymysql/connections.py\", line 365, in __init__\n    self.connect()\n    ~~~~~~~~~~~~^^\n  File \"/ragflow/.venv/lib/python3.13/site-packages/pymysql/connections.py\", line 723, in connect\n    raise exc\npeewee.OperationalError: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "logRecordCount": 3,
+          "outerExceptionClass": "ConnectionRefusedError",
+          "outerExceptionMessage": "[Errno 111] Connection refused",
+          "businessCode": "UNHANDLED_EXCEPTION",
+          "logEpisode": true
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "id": "975d1c41eb6e8fd2dbf9bf2761843e55a1760032e411d9525d46adc92300000e",
+        "time": "2026-10-26T19:30:02.467423691Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "DB execution failure: (1053, 'Server shutdown in progress')",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "DB execution failure: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,466 ERROR    37 DB execution failure: (1053, 'Server shutdown in progress')",
+          "logEpisode": true,
+          "logRecordCount": 97
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "id": "006a62f6ff4ea5f3e9038ad1db44e035fb069aed123abef30706a672e8710837",
+        "time": "2026-10-26T19:30:02.661850593Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "Failed to reconnect: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "Failed to reconnect: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,661 ERROR    35 Failed to reconnect: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "logEpisode": true,
+          "logRecordCount": 2
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "id": "7f7f65fbfd9ad5a760580e200d88da4bba517dcb74a1accc8cad1d5a2586ecb6",
+        "time": "2026-10-26T19:30:02.772205930Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "Failed to reconnect on second attempt: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "Failed to reconnect on second attempt: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,771 ERROR    35 Failed to reconnect on second attempt: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "logEpisode": true,
+          "logRecordCount": 2
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "id": "3622becf2a76ee2ae565217f72ee1ad73f642d8173e71547c4f2cc744fdb5b06",
+        "time": "2026-10-26T19:30:02.795892000Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "chat channel reconcile failed: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "chat channel reconcile failed: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,795 ERROR    35 chat channel reconcile failed: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "logEpisode": true,
+          "logRecordCount": 2
+        }
+      }
+    ],
+    "lost-connection-traceback": [
+      {
+        "schemaVersion": 1,
+        "id": "975d1c41eb6e8fd2dbf9bf2761843e55a1760032e411d9525d46adc92300000e",
+        "time": "2026-10-26T19:30:02.467423691Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "DB execution failure: (1053, 'Server shutdown in progress')",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "DB execution failure: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,466 ERROR    37 DB execution failure: (1053, 'Server shutdown in progress')",
+          "logEpisode": true,
+          "logRecordCount": 1
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "id": "006a62f6ff4ea5f3e9038ad1db44e035fb069aed123abef30706a672e8710837",
+        "time": "2026-10-26T19:30:02.661850593Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "Failed to reconnect: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "Failed to reconnect: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,661 ERROR    35 Failed to reconnect: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "logEpisode": true,
+          "logRecordCount": 1
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "id": "7f7f65fbfd9ad5a760580e200d88da4bba517dcb74a1accc8cad1d5a2586ecb6",
+        "time": "2026-10-26T19:30:02.772205930Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "Failed to reconnect on second attempt: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "Failed to reconnect on second attempt: (<number>, <quoted>)",
+          "stackTrace": "2026-10-27 03:30:02,771 ERROR    35 Failed to reconnect on second attempt: (2003, \"Can't connect to MySQL server on '<mysql-host>' ([Errno 111] Connection refused)\")",
+          "logEpisode": true,
+          "logRecordCount": 1
+        }
+      }
+    ],
+    "jwt-warning-noise": [],
+    "doc-owner-rejection": [
+      {
+        "schemaVersion": 1,
+        "id": "3ae11da6baee9ae2afbedb138afa0588f0e4e6b7c39c8ea4f587aefb4cbdbdeb",
+        "time": "2026-10-23T16:00:04.897090157Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "ragflow",
+        "type": "business.error",
+        "severity": "error",
+        "message": "you don't own the document <doc>.pdf",
+        "attributes": {
+          "containerName": "ragflow",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "you don't own the document <doc>.pdf",
+          "stackTrace": "2026-10-24 00:00:04,896 ERROR    35 you don't own the document <doc>.pdf",
+          "logEpisode": true,
+          "logRecordCount": 3
+        }
+      }
+    ],
+    "python-oom": [
+      {
+        "schemaVersion": 1,
+        "id": "ce14aa85eb806de6bd3ce8fc2aaad267772b07c44026a80a376ae7da52a3d881",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "runtime.oom",
+        "severity": "critical",
+        "message": "MemoryError: ",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "MemoryError",
+          "exceptionClass": "MemoryError",
+          "exceptionMessage": "",
+          "stackTrace": "Traceback (most recent call last):\n  File \"worker.py\", line 7, in run\n    allocate()\nMemoryError",
+          "logRecordCount": 1,
+          "runtime": "python"
+        }
+      }
+    ],
+    "python-stack-overflow": [
+      {
+        "schemaVersion": 1,
+        "id": "98beb46b0d0c175b24e4a1414656faf8360f2da75dbdc6fe771f0dba92b37414",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "runtime.stack_overflow",
+        "severity": "critical",
+        "message": "RecursionError: maximum recursion depth exceeded",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "RecursionError",
+          "exceptionClass": "RecursionError",
+          "exceptionMessage": "maximum recursion depth exceeded",
+          "stackTrace": "Traceback (most recent call last):\n  File \"worker.py\", line 7, in run\n    recurse()\nRecursionError: maximum recursion depth exceeded",
+          "logRecordCount": 1,
+          "runtime": "python"
+        }
+      }
+    ],
+    "node-oom": [
+      {
+        "schemaVersion": 1,
+        "id": "88a810a0c42fddf691ff579d67a39c0bac0c74436fe1d201e9637527087fa64e",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "runtime.oom",
+        "severity": "critical",
+        "message": "Error: Reached heap limit Allocation failed - JavaScript heap out of memory",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "Error",
+          "exceptionClass": "Error",
+          "exceptionMessage": "Reached heap limit Allocation failed - JavaScript heap out of memory",
+          "stackTrace": "FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory",
+          "logRecordCount": 1,
+          "runtime": "node",
+          "stackIncomplete": true
+        }
+      }
+    ],
+    "node-stack-overflow": [
+      {
+        "schemaVersion": 1,
+        "id": "f2d5b3b15bdd1ffdfd6a4c3f9e1dd7bf29d1f3ff10a762df3887730487125a1a",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "runtime.stack_overflow",
+        "severity": "critical",
+        "message": "RangeError: Maximum call stack size exceeded",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "RangeError",
+          "exceptionClass": "RangeError",
+          "exceptionMessage": "Maximum call stack size exceeded",
+          "stackTrace": "RangeError: Maximum call stack size exceeded\n    at recurse (/app/worker.js:7:3)",
+          "logRecordCount": 1,
+          "runtime": "node"
+        }
+      }
+    ],
+    "python-ordinary": [
+      {
+        "schemaVersion": 1,
+        "id": "a98aee0d3b9c249d1b1eb5a251092ed8d94bf25a6e78c84be68ce0121ca5471d",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "business.error",
+        "severity": "error",
+        "message": "pymysql.err.OperationalError: Lost connection to MySQL server during query",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "pymysql.err.OperationalError",
+          "exceptionClass": "pymysql.err.OperationalError",
+          "exceptionMessage": "Lost connection to MySQL server during query",
+          "stackTrace": "ERROR request failed\nTraceback (most recent call last):\n  File \"worker.py\", line 7, in run\n    connect()\npymysql.err.OperationalError: Lost connection to MySQL server during query",
+          "logRecordCount": 1,
+          "businessCode": "UNHANDLED_EXCEPTION",
+          "logEpisode": true
+        }
+      }
+    ],
+    "node-ordinary": [
+      {
+        "schemaVersion": 1,
+        "id": "49dfca5072263a466229e94712f16ebf92a228b238a5442d6a97574fc0e72b1d",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "business.error",
+        "severity": "error",
+        "message": "TypeError: broken",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "TypeError",
+          "exceptionClass": "TypeError",
+          "exceptionMessage": "broken",
+          "stackTrace": "failed TypeError: broken\n    at run /app/worker.js:7:3",
+          "logRecordCount": 1,
+          "businessCode": "UNHANDLED_EXCEPTION",
+          "logEpisode": true
+        }
+      }
+    ],
+    "node-json": [
+      {
+        "schemaVersion": 1,
+        "id": "00d4e9352a62cfc1dcaafb0c55da5d6b8cfd65a5d85a6037328cf369dfd1fcda",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "business.error",
+        "severity": "error",
+        "message": "request failed",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "businessCode": "LOG_ERROR",
+          "module": "request failed",
+          "stackTrace": "{\"level\":\"error\",\"msg\":\"request failed\",\"stack\":\"RangeError: Maximum call stack size exceeded\\n    at run (/app/a.js:1:1)\"}",
+          "logEpisode": true,
+          "logRecordCount": 1
+        }
+      }
+    ],
+    "java-fatal-mentions": [],
+    "python-chain": [
+      {
+        "schemaVersion": 1,
+        "id": "2c0b00d475548949deae3bbd55d08736765273ae3a503cb7c019fea554678ba7",
+        "time": "2026-10-26T19:30:01.123456789Z",
+        "source": "docker",
+        "nodeId": "local-dev",
+        "service": "log-drill",
+        "type": "runtime.oom",
+        "severity": "critical",
+        "message": "RuntimeError: wrapper",
+        "attributes": {
+          "containerName": "log-drill",
+          "observedVia": "docker.logs",
+          "module": "RuntimeError",
+          "exceptionClass": "RuntimeError",
+          "exceptionMessage": "wrapper",
+          "stackTrace": "Traceback (most recent call last):\n  File \"worker.py\", line 7, in run\nMemoryError\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"worker.py\", line 9, in run\nRuntimeError: wrapper",
+          "logRecordCount": 1,
+          "outerExceptionClass": "MemoryError",
+          "outerExceptionMessage": "",
+          "runtime": "python"
+        }
+      }
+    ]
+  }
+}

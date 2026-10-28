@@ -1,0 +1,12 @@
+services:
+  pi-ops-drill:
+    image: python:3.12-slim-bookworm
+    pull_policy: never
+    command: ["python", "-u", "/log-drill.py"]
+    volumes:
+      - ../../apps/node-agent/test/log-drill.py:/log-drill.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health')"]
+  pi-ops-node-agent:
+    environment:
+      PI_OPS_LOG_SCAN_INTERVAL_MS: "1000"
