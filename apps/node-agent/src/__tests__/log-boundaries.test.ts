@@ -45,6 +45,22 @@ describe('log scan boundaries and delivery', () => {
     assert.equal(d.events.length, 1);
   });
 
+  it('keeps the event id after restarting the detector and rereading the same log window', async () => {
+    const lines = [line('ERROR connection failed 1'), line('INFO done', 1)];
+    const first = driver([{ lines }]);
+    await first.detector.pollOnce();
+    const restarted = driver([{ lines: [...lines, line('ERROR connection failed 2', 2), line('INFO done', 3)], truncated: true }]);
+    restarted.advance(10000);
+    await restarted.detector.pollOnce();
+    assert.equal(first.events.length, 1);
+    assert.equal(restarted.events.length, 1);
+    assert.equal(restarted.events[0]!.id, first.events[0]!.id);
+    assert.equal(first.events[0]!.attributes['logRecordCount'], 1);
+    assert.equal(restarted.events[0]!.attributes['logRecordCount'], 2);
+    assert.equal(first.events[0]!.attributes['collectionGap'], undefined);
+    assert.equal(restarted.events[0]!.attributes['collectionGap'], true);
+  });
+
   it('claims an ERROR at the previous poll boundary instead of sending it twice', async () => {
     const d = driver([{ lines: [line('ERROR request failed')] }, { lines: [line('Traceback (most recent call last):', 1), line('  File "x.py", line 1, in run', 2), line('MemoryError', 3), line('INFO done', 4)] }]);
     await d.detector.pollOnce();

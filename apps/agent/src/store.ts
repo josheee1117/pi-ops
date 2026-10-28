@@ -2225,6 +2225,9 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
     event: OpsEvent,
     stored: StoredEvent,
   ): boolean {
+    // A reread may change these display fields; keep the first stored payload.
+    const { logRecordCount: _storedCount, collectionGap: _storedGap, ...storedAttributes } = JSON.parse(stored.attributes);
+    const { logRecordCount: _count, collectionGap: _gap, ...attributes } = event.attributes;
     return stored.schema_version === event.schemaVersion
       && stored.event_time === event.time
       && stored.producer_id === batch.producer.id
@@ -2238,8 +2241,8 @@ VALUES (@evidence_id, @category, @reliability_score, @diagnostic_weight);
       && stored.trace_id === (event.traceId ?? null)
       && stored.message === event.message
       && isDeepStrictEqual(
-        JSON.parse(stored.attributes),
-        JSON.parse(JSON.stringify(event.attributes)),
+        storedAttributes,
+        JSON.parse(JSON.stringify(attributes)),
       );
   }
 

@@ -224,6 +224,59 @@ describe('POST /v1/events', () => {
     assert.equal(store.count(), 1); // no new row
   });
 
+  for (const displayAttributes of [
+    { logRecordCount: 2 },
+    { logRecordCount: 1, collectionGap: true },
+    { logRecordCount: 2, collectionGap: false },
+  ]) {
+    it(`accepts a reread with display-only changes ${JSON.stringify(displayAttributes)} without blocking new events`, async () => {
+      const { app, store } = setupInMemory();
+      try {
+        const original = {
+          ...makeValidEvent('log-reread'), type: 'business.error', message: 'connection failed',
+          attributes: { containerName: 'dataease', businessCode: 'LOG_ERROR', module: 'connection failed', stackTrace: 'ERROR connection failed', logEpisode: true, logRecordCount: 1 },
+        };
+        const post = (events: Record<string, unknown>[]) => app.request('/v1/events', {
+          method: 'POST', headers: authHeaders(), body: JSON.stringify({ ...makeValidBatch(), events }),
+        });
+        assert.equal((await post([original])).status, 200);
+        const stored = store.getEvent('log-reread');
+        const retry = { ...original, attributes: { ...original.attributes, ...displayAttributes } };
+        const response = await post([makeValidEvent('new-alongside-reread'), retry]);
+        assert.equal(response.status, 200, await response.text());
+        assert.equal((await post([retry])).status, 200);
+        assert.equal(store.count(), 2);
+        assert.ok(store.getEvent('new-alongside-reread'));
+        assert.deepEqual(store.getEvent('log-reread'), stored);
+        assert.equal(store.findIncidentByEventId('log-reread')?.event_count, 1);
+      } finally { store.close(); }
+    });
+  }
+
+  for (const changed of ['message', 'exceptionClass', 'stackTrace']) {
+    it(`still rejects a duplicate when ${changed} changes along with display fields`, async () => {
+      const { app, store } = setupInMemory();
+      try {
+        const original = {
+          ...makeValidEvent('log-conflict'), type: 'business.error', message: 'TypeError: broken',
+          attributes: { containerName: 'dataease', businessCode: 'UNHANDLED_EXCEPTION', exceptionClass: 'TypeError', stackTrace: 'TypeError: broken\n    at run (/app/a.js:1:1)', logRecordCount: 1 },
+        };
+        const post = (events: Record<string, unknown>[]) => app.request('/v1/events', {
+          method: 'POST', headers: authHeaders(), body: JSON.stringify({ ...makeValidBatch(), events }),
+        });
+        assert.equal((await post([original])).status, 200);
+        const conflict = {
+          ...original,
+          ...(changed === 'message' ? { message: 'different message' } : {}),
+          attributes: { ...original.attributes, logRecordCount: 2, collectionGap: true, ...(changed === 'message' ? {} : { [changed]: 'different value' }) },
+        };
+        assert.equal((await post([makeValidEvent('new-in-conflict'), conflict])).status, 409);
+        assert.equal(store.count(), 1);
+        assert.equal(store.getEvent('new-in-conflict'), undefined);
+      } finally { store.close(); }
+    });
+  }
+
   it('accepts an exact Event retry after producer envelope version changes', async () => {
     const { app, store } = setupInMemory();
     const firstBatch = makeValidBatch(1);
