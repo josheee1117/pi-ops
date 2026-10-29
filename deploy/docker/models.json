@@ -24,6 +24,23 @@
           }
         }
       ]
+    },
+    "bailian": {
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api": "openai-completions",
+      "compat": { "thinkingFormat": "qwen", "supportsDeveloperRole": false, "supportsStore": false, "supportsReasoningEffort": true },
+      "models": [
+        {
+          "id": "qwen3.8-max",
+          "name": "Qwen3.8 Max (Bailian)",
+          "reasoning": true,
+          "input": ["text"],
+          "thinkingLevelMap": { "minimal": null, "low": "low", "medium": "medium", "high": null, "xhigh": "xhigh", "max": null },
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
     }
   }
 }

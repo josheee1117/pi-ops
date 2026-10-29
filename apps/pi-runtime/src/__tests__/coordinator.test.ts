@@ -231,6 +231,37 @@ describe('bounded multi-agent coordinator', () => {
     assert.equal(outcome.report, undefined);
   });
 
+  it('records an upstream model error as a failed specialist without a legacy finding', async () => {
+    const fake = createFakeRuntimeModel();
+    const model: RuntimeModel = {
+      provider: 'fake', model: 'upstream-error', networkCalls: 0,
+      async invoke(request) {
+        if (request.system.includes('SPECIALIST_ROLE=database')) {
+          throw new Error('model upstream error: 429 rate limited');
+        }
+        return fake.invoke(request);
+      },
+    };
+    const outcome = await investigate(context(), { model });
+    assert.equal(outcome.specialistStatus['database'], 'failed');
+    assert.equal(outcome.status, 'completed');
+    assert.deepEqual(outcome.findings.map((item) => item.role), ['application_business']);
+    assert.equal(outcome.findings.some((item) => item.summary.startsWith('诊断不完整')), false);
+  });
+
+  it('reports the first upstream error when every specialist fails', async () => {
+    const model: RuntimeModel = {
+      provider: 'test', model: 'upstream-error', networkCalls: 0,
+      async invoke() {
+        throw new Error('model upstream error: 429 rate limited');
+      },
+    };
+    const outcome = await investigate(context(), { model });
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.error, 'all specialists failed: model upstream error: 429 rate limited');
+    assert.deepEqual(outcome.findings, []);
+  });
+
   it('does not let historical knowledge replace current Evidence', async () => {
     const outcome = await investigate(context({
       historicalKnowledge: {
