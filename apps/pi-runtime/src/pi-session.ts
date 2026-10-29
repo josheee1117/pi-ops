@@ -14,6 +14,13 @@ export interface PiSdkModelOptions {
   thinkingLevel?: RuntimeThinkingLevel;
 }
 
+/** Throws when the SDK stopped on an upstream error so callers record a real failure. */
+export function assertModelCompleted(stopReason: string | undefined, errorMessage: string | undefined): void {
+  if (stopReason === 'error') {
+    throw new Error(`model upstream error: ${errorMessage || 'unknown'}`);
+  }
+}
+
 export async function createPiSdkRuntimeModel(
   config: PiRuntimeConfig,
   options: PiSdkModelOptions = {},
@@ -106,6 +113,7 @@ export async function createPiSdkRuntimeModel(
           .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
           .map((part) => part.text)
           .join('');
+        assertModelCompleted(assistant.stopReason, assistant.errorMessage);
         return {
           text,
           provider: String(assistant.provider ?? config.piProvider),

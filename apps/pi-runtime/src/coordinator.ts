@@ -80,6 +80,7 @@ export async function investigate(
   const run = async (signal: AbortSignal): Promise<CoordinatorOutcome> => {
     const usage = { inputTokens: 0, outputTokens: 0 };
     const specialistStatus: Record<string, 'completed' | 'failed' | 'skipped'> = {};
+    const failure: { first?: string } = {};
     const findingsByRole = new Map<SpecialistRole, SpecialistFinding>();
     const bounded = boundInvestigationContext(context, options.maxContextBytes);
     const selectedSpecialists = selectSpecialists(bounded);
@@ -103,15 +104,15 @@ export async function investigate(
       };
     }
 
-    await runRound(selectedSpecialists, working, model, options, signal, specialistStatus, findingsByRole, usage);
-    working = await enrichOnce(working, selectedSpecialists, findingsByRole, options, signal, specialistStatus, usage, model);
+    await runRound(selectedSpecialists, working, model, options, signal, specialistStatus, findingsByRole, usage, failure);
+    working = await enrichOnce(working, selectedSpecialists, findingsByRole, options, signal, specialistStatus, usage, model, failure);
 
     const completed = [...findingsByRole.values()].filter((item) => item.status === 'completed');
     if (signal.aborted) throw new ExecutionTimeoutError();
     if (completed.length === 0) {
       return {
         status: 'failed',
-        error: 'all specialists failed',
+        error: failure.first ? `all specialists failed: ${failure.first}` : 'all specialists failed',
         selectedSpecialists,
         findings: completed,
         specialistStatus,
@@ -169,6 +170,7 @@ async function runRound(
   specialistStatus: Record<string, 'completed' | 'failed' | 'skipped'>,
   findingsByRole: Map<SpecialistRole, SpecialistFinding>,
   usage: { inputTokens: number; outputTokens: number },
+  failure: { first?: string },
 ): Promise<void> {
   for (const role of roles) {
     if (signal.aborted) throw new ExecutionTimeoutError();
@@ -195,6 +197,7 @@ async function runRound(
       }
       specialistStatus[role] = 'failed';
       const message = error instanceof Error ? error.message : String(error);
+      failure.first ??= message;
       console.log(`[pi-runtime] specialist ${role} failed: ${message}`);
     }
   }
@@ -209,6 +212,7 @@ async function enrichOnce(
   specialistStatus: Record<string, 'completed' | 'failed' | 'skipped'>,
   usage: { inputTokens: number; outputTokens: number },
   model: RuntimeModel,
+  failure: { first?: string },
 ): Promise<RuntimeInvestigationContext> {
   if (!options.evidenceClient || MAX_EVIDENCE_ENRICHMENT_ROUNDS < 1) return context;
   if (!options.runtimeRequestId || !options.runtimeTaskId || !options.sessionId) return context;
@@ -284,7 +288,7 @@ async function enrichOnce(
   const rerunRoles = [...new Set(requests
     .filter((item) => collected.some((result) => result.type === item.type))
     .flatMap((item) => item.requestingRoles))];
-  await runRound(rerunRoles, bounded, model, options, signal, specialistStatus, findingsByRole, usage);
+  await runRound(rerunRoles, bounded, model, options, signal, specialistStatus, findingsByRole, usage, failure);
   return bounded;
 }
 
